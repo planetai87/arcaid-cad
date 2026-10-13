@@ -149,7 +149,9 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - 색상 인자는 ACI 인덱스(1-256) 또는 한국어·영어·중국어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다
 - 그린 뒤에는 screenshot으로 결과를 확인하고, list_entities로 도면의 실제 내용을 조회하는 것을 권장한다
 - send_command는 CAD 명령행에 그대로 보내고, 명령이 끝나거나 입력을 기다릴 때까지 기다린다.
-  결과의 still_active=true는 명령이 아직 입력을 기다린다는 뜻이다. 이어서 입력을 보내거나 cancel_command로 취소한다
+  결과의 still_active=true는 명령이 아직 입력을 기다린다는 뜻이다. 이어서 입력을 보내거나 cancel_command로 취소한다.
+  BricsCAD는 이어서 보낸 입력을 받지 않으므로 명령과 모든 입력을 한 문자열에 담아 보낸다
+  (예: "_.-INSERT\n블록\n0,0\n1\n1\n0\nX1\n")
 - cancel_command는 멈춘 명령을 ESC처럼 취소한다(대화상자·문자 편집기가 열려 COM이 막힌 경우 포함)
 - run_lisp는 AutoLISP 식의 결과 값을 돌려받는다(예: (getvar "CLAYER")). 진행 중인 명령이 있으면 거부된다
 - undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
@@ -682,6 +684,14 @@ async def _ensure_running(ctx: Context) -> bool:
     return False
 
 
+async def _busy_refusal() -> Optional[str]:
+    """명령이 진행 중이면 도면을 닫거나 바꾸지 않도록 거부 메시지를 돌려준다(아니면 None)"""
+    reason = await com(cad_service.controller.command_busy_reason)
+    if reason:
+        return f"{reason}. 도면을 열거나 닫거나 바꾸기 전에 cancel_command로 먼저 취소하세요"
+    return None
+
+
 # ==================== MCP 서버와 도구 등록 ====================
 
 mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
@@ -995,6 +1005,8 @@ async def new_drawing(ctx: Context) -> ToolResult:
     """새 도면 문서를 만든다"""
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    if busy := await _busy_refusal():
+        return ToolResult(success=False, message=busy)
     ok = await com(cad_service.controller.new_drawing)
     if ok:
         # 세션 그리기 기록은 이전 문서 것이므로 문서를 바꾸면 비운다
@@ -1007,6 +1019,8 @@ async def open_drawing(ctx: Context, file_path: str) -> ToolResult:
     """기존 도면 파일(DWG/DXF 등)을 연다"""
     if cad_service.controller.app is None and not await com(cad_service.controller.start_cad):
         return ToolResult(success=False, message="CAD 미연결, 시작 실패")
+    if cad_service.controller.doc is not None and (busy := await _busy_refusal()):
+        return ToolResult(success=False, message=busy)
     try:
         ok = await com(cad_service.controller.open_drawing, file_path)
     except FileNotFoundError as e:
@@ -1021,6 +1035,8 @@ async def close_drawing(ctx: Context, save: bool = False) -> ToolResult:
     """현재 문서를 닫는다(save=False면 저장하지 않고 바로 닫는다)"""
     if not cad_service.controller.is_running():
         return ToolResult(success=False, message="CAD 미연결")
+    if busy := await _busy_refusal():
+        return ToolResult(success=False, message=busy)
     ok = await com(cad_service.controller.close_drawing, save)
     if ok:
         cad_service.drawing_state["entities"] = []
@@ -1047,6 +1063,8 @@ async def switch_drawing(ctx: Context, name_or_path: str) -> ToolResult:
     """
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    if busy := await _busy_refusal():
+        return ToolResult(success=False, message=busy)
     name = await com(cad_service.controller.switch_drawing, name_or_path)
     if name is None:
         return ToolResult(success=False, message=f"열린 도면 중에 없습니다: {name_or_path}. list_drawings로 확인하세요")
@@ -1059,6 +1077,8 @@ async def save_drawing(ctx: Context, file_path: str) -> ToolResult:
     """현재 도면을 저장한다(확장자에 따라 DWG/DXF 형식을 자동 선택. 같은 이름의 파일은 덮어쓴다)"""
     if not cad_service.controller.is_running():
         return ToolResult(success=False, message="CAD 미연결")
+    if busy := await _busy_refusal():
+        return ToolResult(success=False, message=busy)
     await ctx.info(f"도면을 저장하는 중: {file_path} ...")
     try:
         ok = await com(cad_service.save_drawing, file_path)
@@ -1076,16 +1096,20 @@ async def send_command(ctx: Context, command: str) -> CommandResult:
     명령 앞에 "_."를 붙여 영문 명령 이름을 강제하면 현지화된 CAD에서도 동작한다.
     명령이 끝나거나 입력을 기다리는 상태가 될 때까지 기다린 뒤 돌아온다.
     still_active=true면 명령이 아직 입력(점, 옵션)을 기다리는 중이다. 이어서 입력을 보내거나 cancel_command로 취소한다.
+    BricsCAD는 입력을 기다리는 명령에 이어서 보낸 입력을 받지 않는다. 명령과 입력을 한 문자열에 모두 담아 보낸다.
     """
     if not await _ensure_running(ctx):
         return CommandResult(success=False, message="CAD 미연결, 자동 시작 실패")
     result = await com(cad_service.controller.send_command, command)
     cmd = result["cmdactive"]
-    still_active = None if cmd < 0 else cmd != 0
+    still_active = True if result["pending"] else (None if cmd < 0 else cmd != 0)
     if not result["ok"]:
         return CommandResult(success=False, message="명령 실행 실패", still_active=still_active, cmdactive=cmd,
-                             error="자세한 내용은 cad_mcp.log 참고")
-    if still_active:
+                             error=result["error"] or "자세한 내용은 cad_mcp.log 참고")
+    if result["pending"]:
+        message = (f"명령을 보냈고 명령이 입력을 기다리는 중입니다(CMDACTIVE={cmd}). 이 CAD(예: BricsCAD)는 "
+                   "명령이 끝날 때까지 다음 입력을 받지 않으므로, cancel_command로 취소한 뒤 필요한 입력을 모두 포함해 한 번에 다시 보내세요")
+    elif still_active:
         message = f"명령을 보냈습니다. 명령이 아직 입력을 기다리는 중입니다(CMDACTIVE={cmd})"
     elif still_active is None:
         message = "명령을 보냈습니다. 명령 상태는 읽지 못했습니다"

@@ -163,6 +163,8 @@ class CADController:
         self.command_timeout = float(config["cad"].get("command_timeout", 10))
         # CAD 메인 창 핸들. COM이 막혀도(대화상자·문자 편집기) ESC를 보낼 수 있게 미리 저장한다
         self._hwnd = None
+        # 아직 돌아오지 않은 SendCommand 보조 스레드(BricsCAD는 명령이 끝날 때까지 SendCommand가 돌아오지 않는다)
+        self._pending_send = None
         # CAD 종류
         self.cad_type = config["cad"]["type"]
         # 유효한 선굵기 값 목록
@@ -769,6 +771,7 @@ class CADController:
             return None
 
         closed_polyline = None
+        hatch = None
         try:
             # 점이 모두 유효한지 확인한다
             if not points or len(points) < 3:
@@ -782,8 +785,8 @@ class CADController:
                     logger.error("해치 만들기 실패: 경계 폴리선을 만들 수 없음")
                     return None
 
-                # 해치 객체를 만든다(0은 일반 해치, True는 경계와 연관)
-                hatch = self._call_attr(self._ms(), "AddHatch", 0, pattern_name, True)
+                # 해치 객체를 만든다(True는 경계와 연관)
+                hatch = self._add_hatch(pattern_name)
 
                 # 바깥 경계 루프 추가
                 # 객체 배열을 VARIANT로 감싼다
@@ -796,21 +799,44 @@ class CADController:
                 # 레이어, 색 설정
                 self._apply_style(hatch, layer, color)
 
-                # 해치 갱신(해치 영역 계산)
-                self._call_attr(hatch, "Evaluate")
+                # 해치 갱신(해치 영역 다시 계산). GstarCAD 2021은 Evaluate에서 서버 오류(RPC_E_SERVERFAULT)를 내지만,
+                # AppendOuterLoop만으로 해치가 이미 완성돼 있다(면적이 맞게 계산됨을 확인). 그래서 실패해도 해치를 유지한다
+                try:
+                    self._call_attr(hatch, "Evaluate")
+                except Exception as e:
+                    logger.info(f"해치 Evaluate 실패(해치는 유지): {str(e)}")
 
             logger.debug(f"해치 만듦: 패턴 {pattern_name}, 축척 {scale}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return hatch
         except Exception as e:
-            # 실패하면 이미 만든 경계 폴리선을 지워 도면에 고아 객체가 남지 않게 한다
-            # (호출한 쪽은 "실패"를 봤는데 도면에 닫힌 폴리선이 하나 더 있으면 안 된다)
-            if closed_polyline is not None:
-                try:
-                    self._call_attr(closed_polyline, "Delete")
-                except Exception:
-                    pass
+            # 실패하면 이미 만든 해치와 경계 폴리선을 지워 도면에 고아 객체가 남지 않게 한다
+            # (호출한 쪽은 "실패"를 봤는데 도면에 객체가 남아 있으면 안 된다)
+            for leftover in (hatch, closed_polyline):
+                if leftover is not None:
+                    try:
+                        self._call_attr(leftover, "Delete")
+                    except Exception:
+                        pass
             logger.error(f"해치 만들기 오류: {str(e)}")
             return None
+
+    def _add_hatch(self, pattern_name: str):
+        """모형 공간에 해치 객체를 만든다(패턴 유형을 CAD에 맞춰 고른다)
+
+        AddHatch의 첫 인자는 패턴 유형이다(0 사용자 정의, 1 기본 제공, 2 사용자 파일).
+        SOLID/ANSI31 같은 기본 패턴은 1이 맞다. 원본 코드는 0을 썼는데(직접 확인):
+        - BricsCAD V26: 0은 "해치 패턴에 대한 잘못된 이름" 오류, 1은 된다
+        - GstarCAD 2021: 0과 1 모두 된다
+        그래서 1을 먼저 쓰고, 실패하면 0으로 다시 시도한다(실패한 시도는 객체를 남기지 않는다).
+        """
+        last_error = None
+        for pattern_type in (1, 0):
+            try:
+                return self._call_attr(self._ms(), "AddHatch", pattern_type, pattern_name, True)
+            except Exception as e:
+                last_error = e
+                logger.info(f"AddHatch(패턴 유형 {pattern_type}) 실패, 다음 유형 시도: {str(e)}")
+        raise last_error
 
     def zoom_extents(self) -> bool:
         """모든 객체가 보이도록 뷰를 줌한다"""
@@ -1292,10 +1318,8 @@ class CADController:
         try:
             # 주의: AutoCAD에서 "_.UNDO 1"처럼 접두어와 숫자 인자를 함께 쓰면 동작하지 않음을 확인했다.
             # 순수 영문 명령 이름 "UNDO 1"이 안정적이다(현지화된 CAD도 영문 명령 이름을 그대로 지원)
-            self._call_attr(self.doc, "SendCommand", "UNDO 1\n")
-            # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아가야 이후 호출이 취소 결과를 본다
-            self._wait_cmd_idle()
-            return True
+            # 명령이 처리될 때까지 기다린 뒤 돌아가야 이후 호출이 취소 결과를 본다
+            return self._send_and_wait("UNDO 1\n")["ok"]
         except Exception as e:
             logger.error(f"실행 취소 실패: {str(e)}")
             return False
@@ -1305,10 +1329,8 @@ class CADController:
         if not self.is_running():
             return False
         try:
-            self._call_attr(self.doc, "SendCommand", "_.REDO\n")
-            # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아간다
-            self._wait_cmd_idle()
-            return True
+            # 명령이 처리될 때까지 기다린 뒤 돌아간다
+            return self._send_and_wait("_.REDO\n")["ok"]
         except Exception as e:
             logger.error(f"다시 실행 실패: {str(e)}")
             return False
@@ -1550,26 +1572,108 @@ class CADController:
                 return value
             time.sleep(0.1)
 
+    def command_busy_reason(self) -> Optional[str]:
+        """도면을 닫거나 바꾸면 안 되는 상태(명령 진행 중)면 그 이유를, 아니면 None을 돌려준다
+
+        BricsCAD V26에서 명령이 붙잡혀 있는 상태로 도면을 닫은 직후 BricsCAD가 종료된 적이 있다.
+        """
+        if self._send_pending():
+            return "앞서 보낸 명령이 아직 입력을 기다리는 중입니다"
+        cmd = self._read_cmdactive(retry=False)
+        if cmd > 0:
+            return f"CAD에서 명령이 진행 중입니다(CMDACTIVE={cmd})"
+        return None
+
+    def _send_pending(self) -> bool:
+        """앞서 보낸 SendCommand가 아직 돌아오지 않았는지(명령이 입력을 기다리며 붙잡혀 있는지)"""
+        return self._pending_send is not None and self._pending_send.is_alive()
+
+    def _send_on_helper(self, command: str) -> Tuple[threading.Thread, Dict[str, Any]]:
+        """SendCommand를 보조 스레드에서 보낸다(COM 스레드에서 호출)
+
+        CAD마다 SendCommand가 돌아오는 시점이 다르다.
+        - GstarCAD: 명령을 대기열에 넣고 바로 돌아온다.
+        - BricsCAD: 명령이 끝날 때까지 돌아오지 않는다. 입력을 기다리는 명령이면 무한정 붙잡힌다.
+        전용 COM 스레드에서 직접 부르면 BricsCAD에서 MCP 전체가 멈추고 cancel_command도 그 뒤에 줄을 선다.
+        그래서 지금 대상 도면의 인터페이스를 보조 스레드로 넘겨(마샬링) 거기서 보낸다.
+        """
+        state: Dict[str, Any] = {"error": None}
+        target = self.doc
+        stream = None
+        try:
+            stream = pythoncom.CoMarshalInterThreadInterfaceInStream(pythoncom.IID_IDispatch, self.doc._oleobj_)
+        except AttributeError:
+            # COM 객체가 아닌 경우(시험용 가짜 객체)에는 그대로 넘긴다
+            stream = None
+
+        def worker():
+            pythoncom.CoInitialize()
+            try:
+                doc = target
+                if stream is not None:
+                    doc = win32com.client.Dispatch(
+                        pythoncom.CoGetInterfaceAndReleaseStream(stream, pythoncom.IID_IDispatch))
+                # 바쁜 CAD가 거부하면 호출 단위로 재시도한다(거부된 호출은 실행되지 않았으므로 안전)
+                _call_with_com_retry(lambda: doc.SendCommand(command), (), {})
+            except Exception as e:
+                state["error"] = str(e)
+                logger.error(f"명령 보내기 실패: {str(e)}")
+            finally:
+                pythoncom.CoUninitialize()
+
+        thread = threading.Thread(target=worker, name="cad-send", daemon=True)
+        thread.start()
+        self._pending_send = thread
+        return thread, state
+
+    def _send_and_wait(self, command: str, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """명령을 보내고, 끝나거나 입력을 기다리는 상태가 될 때까지 기다린다(COM 스레드에서 호출)
+
+        돌려주는 값: {"ok", "cmdactive", "pending", "error"}
+        pending=True면 SendCommand가 아직 돌아오지 않았다(BricsCAD에서 명령이 입력을 기다리는 중).
+        이 상태에서는 이어서 입력을 보내도 명령이 받지 않으므로 새 명령을 보내지 않는다.
+        """
+        if self._send_pending():
+            return {"ok": False, "cmdactive": self._read_cmdactive(retry=False), "pending": True,
+                    "error": "앞서 보낸 명령이 아직 입력을 기다리는 중이라 새 명령을 보내지 않았습니다. cancel_command로 먼저 취소하세요"}
+        if timeout is None:
+            timeout = self.command_timeout
+        deadline = time.monotonic() + timeout
+        thread, state = self._send_on_helper(command)
+        thread.join(0.3)
+        if thread.is_alive():
+            # SendCommand가 붙잡혀 있다(BricsCAD). 명령이 끝나면 돌아오고, 입력을 기다리면
+            # CAD가 COM에 응답하면서 같은 CMDACTIVE 값을 유지한다. 같은 값이 0.5초 이어지면 입력 대기로 본다
+            same_reads, last = 0, None
+            while thread.is_alive() and time.monotonic() < deadline:
+                value = self._read_cmdactive()
+                same_reads = same_reads + 1 if (value > 0 and value == last) else 0
+                last = value
+                if same_reads >= 5:
+                    break
+                thread.join(0.1)
+            if thread.is_alive():
+                return {"ok": True, "cmdactive": self._read_cmdactive(retry=False), "pending": True, "error": None}
+        if state["error"]:
+            return {"ok": False, "cmdactive": self._read_cmdactive(retry=False), "pending": False, "error": state["error"]}
+        # SendCommand가 바로 돌아오는 CAD(GstarCAD)는 명령이 끝나거나 입력을 기다릴 때까지 기다린다
+        # (ZOOM이나 저장 같은 명령이 진행 중이면 이어지는 SaveAs 등이 오류를 낸다)
+        cmd = self._wait_cmd_idle(max(0.5, deadline - time.monotonic()))
+        return {"ok": True, "cmdactive": cmd, "pending": False, "error": None}
+
     def send_command(self, command: str) -> Dict[str, Any]:
         """CAD 명령행에 임의의 명령을 그대로 보낸다(예: "_.ZOOM E")
 
         도구로 없는 기능을 쓰는 비상구다: 도구로 만들어지지 않은 어떤 CAD 명령도 이것으로 실행할 수 있다.
-        돌려주는 값: {"ok": 보냈는지, "cmdactive": 보낸 뒤 CMDACTIVE 값(0이면 끝남, -1이면 읽지 못함)}
+        돌려주는 값: {"ok": 보냈는지, "cmdactive": 보낸 뒤 CMDACTIVE 값(0이면 끝남, -1이면 읽지 못함),
+                      "pending": SendCommand가 아직 돌아오지 않았는지, "error": 실패 이유}
         """
         if not self.is_running():
-            return {"ok": False, "cmdactive": -1}
-        try:
-            # 명령이 Enter/공백으로 끝나지 않으면 Enter를 하나 붙여 명령이 제출되게 한다
-            if not command.endswith(("\n", "\r", " ")):
-                command += "\n"
-            # SendCommand 자체가 바쁜 CAD에 거부될 수 있어, 호출 단위 재시도로 명령이 대기열에 들어가게 한다
-            self._call_attr(self.doc, "SendCommand", command)
-            # SendCommand는 비동기다: 명령이 끝나거나 입력을 기다리는 상태가 될 때까지 기다린다
-            # (ZOOM이나 저장 같은 명령이 진행 중이면 이어지는 SaveAs 등이 오류를 낸다)
-            return {"ok": True, "cmdactive": self._wait_cmd_idle()}
-        except Exception as e:
-            logger.error(f"명령 실행 실패: {str(e)}")
-            return {"ok": False, "cmdactive": self._read_cmdactive(retry=False)}
+            return {"ok": False, "cmdactive": -1, "pending": False, "error": "CAD 미연결"}
+        # 명령이 Enter/공백으로 끝나지 않으면 Enter를 하나 붙여 명령이 제출되게 한다
+        if not command.endswith(("\n", "\r", " ")):
+            command += "\n"
+        return self._send_and_wait(command)
 
     def _send_escape_keys(self, count: int = 2) -> bool:
         """CAD 창을 앞으로 가져와 키보드로 ESC를 보낸다(COM이 막혔을 때 쓰는 수단)
@@ -1599,7 +1703,9 @@ class CADController:
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.3)
-        if not cad_is_foreground():
+        for _ in range(3):
+            if cad_is_foreground():
+                break
             try:
                 win32gui.SetForegroundWindow(hwnd)
             except Exception:
@@ -1623,33 +1729,41 @@ class CADController:
     def cancel_command(self) -> Dict[str, Any]:
         """진행 중인 명령을 취소한다(ESC와 같음)
 
-        1) CAD가 COM에 응답하면 SendCommand로 ESC 문자(chr(27))를 두 번 보낸다.
+        1) CAD가 COM에 응답하면 보조 스레드에서 SendCommand로 ESC 문자(chr(27))를 두 번 보낸다.
            GstarCAD 2021에서 확인: ESC 문자는 바로 취소되고, Ctrl+C 문자(chr(3))는 취소되지 않았다.
-        2) 그래도 끝나지 않거나 COM이 막혀 있으면(대화상자·문자 편집기) CAD 창에 키보드 ESC를 보낸다.
+        2) 그래도 끝나지 않거나, COM이 막혀 있거나(대화상자·문자 편집기),
+           앞서 보낸 SendCommand가 붙잡혀 있으면(BricsCAD) CAD 창에 키보드 ESC를 보낸다.
+           BricsCAD에서 확인: 붙잡힌 명령에는 다른 SendCommand가 전달되지 않고, 키보드 ESC는 통한다.
         돌려주는 값: {"ok": 명령이 없는 상태가 됐는지, "method": 쓴 방법, "cmdactive": 마지막 CMDACTIVE}
         이 메서드는 COM이 막혀 있어도 빨리 끝나도록 재시도 없이 읽는다.
         """
         if self.app is None or self.doc is None:
             return {"ok": False, "method": None, "cmdactive": -1}
         before = self._read_cmdactive(retry=False)
-        if before == 0:
+        if before == 0 and not self._send_pending():
             return {"ok": True, "method": "none", "cmdactive": 0}
         methods = []
         cmd = before
-        if before != -1:
-            try:
-                self.doc.SendCommand(chr(27) + chr(27))
-                methods.append("esc_char")
-            except Exception as e:
-                logger.info(f"ESC 문자 보내기 실패, 키보드 ESC로 넘어감: {str(e)}")
-            cmd = self._wait_cmd_idle(timeout=2, retry=False)
-        if cmd != 0:
-            if self._send_escape_keys():
-                methods.append("esc_key")
-                cmd = self._wait_cmd_idle(timeout=3, retry=False)
-            else:
+        if before != -1 and not self._send_pending():
+            methods.append("esc_char")
+            result = self._send_and_wait(chr(27) + chr(27), timeout=2)
+            cmd = result["cmdactive"]
+        # 키보드 ESC는 최대 3번까지 보낸다. 창을 앞으로 가져올 때 쓴 Alt 키가 BricsCAD의 리본 단축키 모드를 켜서
+        # 첫 ESC가 그 모드를 끄는 데 쓰이는 경우가 있었다(BricsCAD V26에서 첫 시도만 실패한 것을 확인)
+        for _ in range(3):
+            if cmd == 0 and not self._send_pending():
+                break
+            if not self._send_escape_keys():
                 cmd = self._read_cmdactive(retry=False)
-        return {"ok": cmd == 0, "method": "+".join(methods) or None, "cmdactive": cmd}
+                continue
+            if "esc_key" not in methods:
+                methods.append("esc_key")
+            # 붙잡혀 있던 SendCommand가 풀려 돌아오기를 잠깐 기다린다
+            if self._pending_send is not None:
+                self._pending_send.join(1.5)
+            cmd = self._wait_cmd_idle(timeout=1.5, retry=False)
+        ok = cmd == 0 and not self._send_pending()
+        return {"ok": ok, "method": "+".join(methods) or None, "cmdactive": cmd}
 
     @staticmethod
     def _lisp_result_path() -> str:
@@ -1674,7 +1788,7 @@ class CADController:
         if not self.is_running():
             return {"ok": False, "value": None, "cmdactive": -1, "error": "CAD 미연결"}
         cmd = self._read_cmdactive()
-        if cmd != 0:
+        if cmd != 0 or self._send_pending():
             return {"ok": False, "value": None, "cmdactive": cmd,
                     "error": f"진행 중인 명령이 있어 실행하지 않음(CMDACTIVE={cmd}). cancel_command로 먼저 취소하세요"}
 
@@ -1683,12 +1797,13 @@ class CADController:
         body = " ".join(expression.splitlines())
         wrapped = (f'(progn (setq mcp-r {body}) (setq mcp-f (open "{lisp_path}" "w")) '
                    f'(prin1 mcp-r mcp-f) (close mcp-f) (setq mcp-r nil mcp-f nil) (princ))\n')
-        try:
-            self._call_attr(self.doc, "SendCommand", wrapped)
-        except Exception as e:
-            return {"ok": False, "value": None, "cmdactive": self._read_cmdactive(retry=False),
-                    "error": f"LISP 보내기 실패: {str(e)}"}
-        cmd = self._wait_cmd_idle(timeout)
+        sent = self._send_and_wait(wrapped, timeout)
+        cmd = sent["cmdactive"]
+        if not sent["ok"]:
+            return {"ok": False, "value": None, "cmdactive": cmd, "error": f"LISP 보내기 실패: {sent['error']}"}
+        if sent["pending"]:
+            return {"ok": False, "value": None, "cmdactive": cmd,
+                    "error": "LISP가 입력을 기다리는 중입니다(getpoint 같은 대화형 함수 등). cancel_command로 취소하세요"}
 
         # 파일이 닫히고 보이기까지 잠깐 걸릴 수 있다
         for _ in range(5):
