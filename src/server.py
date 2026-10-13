@@ -798,8 +798,8 @@ async def add_dimension(ctx: Context, start_point: Point, end_point: Point,
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_layers(ctx: Context) -> ListLayersResult:
     """현재 도면의 모든 레이어를 나열한다(이름, 색, 동결/잠금/켜짐 상태, 현재 레이어 여부)"""
-    if not cad_service.controller.is_running():
-        return ListLayersResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ListLayersResult(success=False, message="CAD 미연결, 자동 시작 실패")
     layers = await com(cad_service.controller.list_layers)
     return ListLayersResult(success=True, message=f"레이어 {len(layers)}개", layers=layers)
 
@@ -812,8 +812,8 @@ async def list_entities(ctx: Context, entity_type: Optional[str] = None,
     객체 핸들(handle)을 돌려주며, 편집 도구와 get_entity_properties에 쓸 수 있다.
     entity_type으로 종류를 거를 수 있고(예: line/circle/arc/text), limit으로 돌려줄 개수를 정한다.
     """
-    if not cad_service.controller.is_running():
-        return ListEntitiesResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ListEntitiesResult(success=False, message="CAD 미연결, 자동 시작 실패")
     result = await com(cad_service.controller.list_entities, entity_type, limit)
     return ListEntitiesResult(success=True,
                               message=f"모형 공간 객체 {result['total']}개 중 {len(result['entities'])}개 반환",
@@ -825,8 +825,8 @@ async def list_entities(ctx: Context, entity_type: Optional[str] = None,
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_entity_properties(ctx: Context, handle: str) -> EntityPropertiesResult:
     """핸들로 객체 상세 속성을 조회한다(기하 정보는 객체 종류마다 다르다: 좌표, 반지름, 문자 내용 등)"""
-    if not cad_service.controller.is_running():
-        return EntityPropertiesResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return EntityPropertiesResult(success=False, message="CAD 미연결, 자동 시작 실패")
     try:
         props = await com(cad_service.controller.get_entity_properties, handle)
         return EntityPropertiesResult(success=True, message="조회 성공", **props)
@@ -853,8 +853,8 @@ async def screenshot(ctx: Context):
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def erase_entity(ctx: Context, handle: str) -> ToolResult:
     """지정한 핸들의 객체를 지운다"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.erase_entity, handle)
     return ToolResult(success=ok, message="객체를 지웠습니다" if ok else f"핸들 {handle} 지우기 실패")
 
@@ -862,8 +862,8 @@ async def erase_entity(ctx: Context, handle: str) -> ToolResult:
 @mcp.tool()
 async def move_entity(ctx: Context, handle: str, displacement: Point) -> ToolResult:
     """객체를 이동한다(displacement는 이동 벡터 [dx, dy, dz])"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.move_entity, handle, displacement)
     return ToolResult(success=ok, message="객체를 이동했습니다" if ok else f"핸들 {handle} 이동 실패")
 
@@ -871,8 +871,8 @@ async def move_entity(ctx: Context, handle: str, displacement: Point) -> ToolRes
 @mcp.tool()
 async def rotate_entity(ctx: Context, handle: str, base_point: Point, angle_degrees: float) -> ToolResult:
     """기준점을 중심으로 객체를 회전한다(각도 단위: 도, 반시계 방향이 양수)"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.rotate_entity, handle, base_point, angle_degrees)
     return ToolResult(success=ok, message="객체를 회전했습니다" if ok else f"핸들 {handle} 회전 실패")
 
@@ -880,8 +880,8 @@ async def rotate_entity(ctx: Context, handle: str, base_point: Point, angle_degr
 @mcp.tool()
 async def scale_entity(ctx: Context, handle: str, base_point: Point, scale_factor: PosFloat) -> ToolResult:
     """기준점을 중심으로 객체 크기를 바꾼다(scale_factor>1이면 확대, <1이면 축소)"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.scale_entity, handle, base_point, scale_factor)
     return ToolResult(success=ok, message="객체 크기를 바꿨습니다" if ok else f"핸들 {handle} 크기 조정 실패")
 
@@ -889,8 +889,8 @@ async def scale_entity(ctx: Context, handle: str, base_point: Point, scale_facto
 @mcp.tool()
 async def copy_entity(ctx: Context, handle: str, displacement: Point) -> ToolResult:
     """객체를 복사해 지정한 만큼 옮기고, 새 객체 핸들을 돌려준다"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     copy = await com(cad_service.controller.copy_entity, handle, displacement)
     return await _entity_result(copy, "객체를 복사했습니다", f"핸들 {handle} 복사 실패")
 
@@ -898,8 +898,8 @@ async def copy_entity(ctx: Context, handle: str, displacement: Point) -> ToolRes
 @mcp.tool()
 async def mirror_entity(ctx: Context, handle: str, point1: Point, point2: Point) -> ToolResult:
     """두 점으로 정한 대칭축을 기준으로 객체를 대칭 복사하고(원본 유지), 새 객체 핸들을 돌려준다"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     mirrored = await com(cad_service.controller.mirror_entity, handle, point1, point2)
     return await _entity_result(mirrored, "객체를 대칭 복사했습니다", f"핸들 {handle} 대칭 실패")
 
@@ -907,8 +907,8 @@ async def mirror_entity(ctx: Context, handle: str, point1: Point, point2: Point)
 @mcp.tool()
 async def offset_entity(ctx: Context, handle: str, distance: float) -> ToolResult:
     """객체를 간격 띄우기 하고(양수/음수로 방향 결정), 새 객체 핸들을 돌려준다"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.offset_entity, handle, distance)
     return await _entities_result(entities, "객체를 간격 띄우기 했습니다", f"핸들 {handle} 간격 띄우기 실패")
 
@@ -916,8 +916,8 @@ async def offset_entity(ctx: Context, handle: str, distance: float) -> ToolResul
 @mcp.tool()
 async def array_linear_entity(ctx: Context, handle: str, count: ArrayCount, displacement: Point) -> ToolResult:
     """직선 배열: 이동 벡터 방향으로 count-1개를 복사한다(원본 포함 총 count개)"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.array_linear_entity, handle, count, displacement)
     return await _entities_result(entities, f"{count}개 직선 배열 완료", f"핸들 {handle} 배열 실패")
 
@@ -926,8 +926,8 @@ async def array_linear_entity(ctx: Context, handle: str, count: ArrayCount, disp
 async def array_polar_entity(ctx: Context, handle: str, count: ArrayCount, center: Point,
                              total_angle_degrees: float = 360.0) -> ToolResult:
     """원형 배열: 중심점을 기준으로 total_angle 범위 안에 count-1개를 복사한다"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.array_polar_entity, handle, count, center, total_angle_degrees)
     return await _entities_result(entities, f"{count}개 원형 배열 완료", f"핸들 {handle} 배열 실패")
 
@@ -966,8 +966,8 @@ async def create_layer(ctx: Context, layer_name: str) -> ToolResult:
 @mcp.tool()
 async def set_current_layer(ctx: Context, layer_name: str) -> ToolResult:
     """현재 레이어를 바꾼다(레이어가 이미 있어야 한다)"""
-    if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.set_current_layer, layer_name)
     if ok:
         cad_service.drawing_state["current_layer"] = layer_name
@@ -1069,8 +1069,8 @@ async def insert_block(ctx: Context, block_name: str, position: Point,
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_blocks(ctx: Context) -> ListBlocksResult:
     """현재 도면의 사용자 블록 정의를 나열한다"""
-    if not cad_service.controller.is_running():
-        return ListBlocksResult(success=False, message="CAD 미연결")
+    if not await _ensure_running(ctx):
+        return ListBlocksResult(success=False, message="CAD 미연결, 자동 시작 실패")
     blocks = await com(cad_service.controller.list_blocks)
     return ListBlocksResult(success=True, message=f"블록 {len(blocks)}개", blocks=blocks)
 
