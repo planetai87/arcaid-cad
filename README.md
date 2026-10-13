@@ -110,14 +110,41 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 CAD-MCP/
 ├── pyproject.toml
 ├── requirements.txt
-└── src/
-    ├── server.py          # MCP 서버와 도구 정의 (FastMCP)
-    ├── cad_controller.py  # COM 계층: 전용 COM 스레드, 재시도, 그리기·조회·편집
-    ├── config.py          # 설정 로더 (config.json + config.local.json)
-    ├── config.json        # 공통 기본 설정
-    ├── models.py          # 구조화 출력 모델
-    └── nlp_processor.py   # 자연어 명령 해석(옛 인터페이스)
+├── src/
+│   ├── server.py          # MCP 서버와 도구 정의 (FastMCP)
+│   ├── cad_controller.py  # COM 계층: 전용 COM 스레드, 재시도, 그리기·조회·편집
+│   ├── config.py          # 설정 로더 (config.json + config.local.json)
+│   ├── config.json        # 공통 기본 설정
+│   ├── models.py          # 구조화 출력 모델
+│   └── nlp_processor.py   # 자연어 명령 해석(옛 인터페이스)
+├── skills/
+│   └── cad-drawing-standard/  # 회사 도면 표준 스킬 (SKILL.md, references/, assets/회사표준_템플릿.dwg)
+└── tools/
+    └── template/          # 표준매뉴얼 DWG에서 템플릿을 다시 만드는 스크립트
 ```
+
+## 회사 도면 표준 스킬
+
+`skills/cad-drawing-standard`는 회사(HEO architects) 도면작성 표준에 맞춰 이 MCP로 도면을 그리게 하는 Claude 스킬입니다.
+스킬이 쓰는 템플릿 DWG(표준 레이어, 문자·치수 스타일, 블록)는 `assets/`에 함께 들어 있습니다.
+
+**Claude Code에 설치**: 저장소 폴더를 사용자 스킬 폴더에 정션으로 연결합니다. 저장소를 고치면 바로 반영됩니다.
+
+```bat
+mklink /J "%USERPROFILE%\.claude\skills\cad-drawing-standard" "<저장소>\skills\cad-drawing-standard"
+```
+
+**claude.ai에 올리기**: `skills/cad-drawing-standard` 폴더를 zip으로 묶어 claude.ai의 스킬 설정에서 올립니다. 저장소에서 스킬을 고친 뒤에는 다시 올려야 합니다.
+
+**템플릿 다시 만들기**(GstarCAD 실행 중, 저장소 `.venv`의 파이썬):
+
+```bat
+python tools\template\build_template.py "<표준매뉴얼.dwg>" report.json
+python tools\template\add_standard_blocks.py
+python tools\template\fix_block_origins.py
+```
+
+표준매뉴얼 원본 DWG는 저장소에 넣지 않습니다.
 
 ## 라이선스
 
