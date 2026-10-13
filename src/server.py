@@ -1098,7 +1098,7 @@ async def send_command(ctx: Context, command: str) -> CommandResult:
 async def cancel_command(ctx: Context) -> CommandResult:
     """진행 중인 CAD 명령을 취소한다(ESC와 같음)
 
-    먼저 명령행에 Ctrl+C를 보내고, 끝나지 않거나 CAD가 COM에 응답하지 않으면
+    먼저 명령행에 ESC 문자를 보내고, 끝나지 않거나 CAD가 COM에 응답하지 않으면
     (대화상자·문자 편집기가 열린 경우) CAD 창을 앞으로 가져와 키보드 ESC를 보낸다.
     명령이 입력을 기다리며 멈췄을 때, 또는 run_lisp가 진행 중인 명령 때문에 거부됐을 때 쓴다.
     """

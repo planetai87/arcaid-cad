@@ -1623,7 +1623,8 @@ class CADController:
     def cancel_command(self) -> Dict[str, Any]:
         """진행 중인 명령을 취소한다(ESC와 같음)
 
-        1) CAD가 COM에 응답하면 SendCommand로 Ctrl+C 문자(chr(3))를 두 번 보낸다.
+        1) CAD가 COM에 응답하면 SendCommand로 ESC 문자(chr(27))를 두 번 보낸다.
+           GstarCAD 2021에서 확인: ESC 문자는 바로 취소되고, Ctrl+C 문자(chr(3))는 취소되지 않았다.
         2) 그래도 끝나지 않거나 COM이 막혀 있으면(대화상자·문자 편집기) CAD 창에 키보드 ESC를 보낸다.
         돌려주는 값: {"ok": 명령이 없는 상태가 됐는지, "method": 쓴 방법, "cmdactive": 마지막 CMDACTIVE}
         이 메서드는 COM이 막혀 있어도 빨리 끝나도록 재시도 없이 읽는다.
@@ -1637,10 +1638,10 @@ class CADController:
         cmd = before
         if before != -1:
             try:
-                self.doc.SendCommand(chr(3) + chr(3))
-                methods.append("ctrl_c")
+                self.doc.SendCommand(chr(27) + chr(27))
+                methods.append("esc_char")
             except Exception as e:
-                logger.info(f"Ctrl+C 보내기 실패, 키보드 ESC로 넘어감: {str(e)}")
+                logger.info(f"ESC 문자 보내기 실패, 키보드 ESC로 넘어감: {str(e)}")
             cmd = self._wait_cmd_idle(timeout=2, retry=False)
         if cmd != 0:
             if self._send_escape_keys():
