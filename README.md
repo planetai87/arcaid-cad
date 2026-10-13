@@ -1,208 +1,115 @@
-# CAD-MCP Server (CAD Model Context Protocol Server)
+# arcaid-cad
 
-[English](/README_en.md) | [中文](/README_zh.md) 
+Claude 같은 AI가 Windows의 CAD 프로그램(GstarCAD, BricsCAD, AutoCAD, ZWCAD)을 직접 조작하게 해 주는 MCP 서버입니다.
+COM 자동화로 실행 중인 CAD에 붙어서 그리기·조회·편집·도면 관리·CAD 명령 실행을 합니다.
 
-## Project Introduction
+> 이 프로젝트는 [daobataotie/CAD-MCP](https://github.com/daobataotie/CAD-MCP)(MIT, © 2025 曹瑞)를 바탕으로 독립해 개발합니다.
+> 원본은 `upstream` remote에 참고용으로만 두고, 원본 업데이트를 따라가지 않습니다.
 
-CAD-MCP is an innovative CAD control service that allows controlling CAD software for drawing operations through natural language instructions. This project combines natural language processing and CAD automation technology, enabling users to create and modify CAD drawings through simple text commands without manually operating the CAD interface.
+## 지원 CAD
 
-Version 2.0 is fully upgraded based on the latest MCP specification (FastMCP, structured output, tool annotations, progress notifications, Streamable HTTP), and adds 35 tools in total covering querying, editing, layers, drawing management, blocks, and command passthrough — forming a complete "draw → inspect → correct" feedback loop.
+| CAD | `cad.type` 값 | COM ProgID |
+|---|---|---|
+| GstarCAD | `GSTARCAD` (또는 `GCAD`) | `GCAD.Application`, `GstarCAD.Application` |
+| BricsCAD | `BRICSCAD` | `BricscadApp.AcadApplication` |
+| AutoCAD | `AUTOCAD` | `AutoCAD.Application` |
+| ZWCAD | `ZWCAD` | `ZWCAD.Application` |
 
-## Features
+- 실제로 쓰고 검증하는 환경은 GstarCAD 2021입니다. BricsCAD는 동료 PC에서 검증 중입니다.
+- 이미 실행 중인 CAD가 있으면 그 창에 붙습니다. 없으면 새로 띄웁니다.
 
-### CAD Control Functions
+## 설치
 
-- **Multiple CAD Software Support**: Supports mainstream CAD software including AutoCAD, GstarCAD (GCAD) and ZWCAD
-- **Basic Drawing Functions**:
-  - Line drawing
-  - Circle drawing
-  - Arc drawing
-  - Ellipse drawing
-  - Rectangle drawing
-  - Polyline drawing
-  - Text addition
-  - Pattern filling
-  - Dimension annotation
-- **Query Functions (the AI can see the actual drawing content)**:
-  - List all layers
-  - List entities in model space (returns editable entity handles)
-  - Query detailed entity properties by handle (coordinates/radius/text content, etc.)
-  - Screenshot of the CAD window for preview
-- **Editing Functions**: erase, move, rotate, scale, copy, mirror, offset, array (linear/polar), undo/redo
-- **Layer Management**: Create and switch layers, query layer states
-- **Drawing Management**: New / open / close / save drawings (DWG/DXF)
-- **Block Operations**: Create, insert, and list blocks
-- **Command Passthrough**: Execute any CAD command via `send_command` (an escape hatch for everything else)
+필요한 것: Windows, Python 3.10 이상, [uv](https://docs.astral.sh/uv/), 위 CAD 중 하나, Claude Code.
 
-### MCP Protocol Features
-
-- **Structured Output**: All tools return `structuredContent` with an `outputSchema` that clients can parse directly
-- **Tool Annotations**: Query tools are marked `readOnlyHint`; destructive operations are marked `destructiveHint` for client confirmation policies
-- **Progress Notifications**: Long-running operations (CAD startup, saving) send message notifications to the client
-- **Dual Transport Modes**: `stdio` (local, single client) and `streamable-http` (remote / multiple clients sharing one CAD instance)
-- **Error Semantics**: Input validation errors are returned as tool errors, enabling model self-correction
-
-### Natural Language Processing Functions (legacy interface)
-
-- **Command Parsing**: Parse natural language instructions into CAD operation parameters
-- **Color Recognition**: Extract color information from text and apply it to drawing objects
-- **Shape Keyword Mapping**: Support recognition of various shape description words
-- **Action Keyword Mapping**: Recognize various drawing and editing actions
-
-## Demo
-
-The following is the demo video.
-
-![Demo](imgs/demo.gif)
-
-## Installation Requirements
-
-### Dependencies
-
-```
-pywin32>=306       # Windows COM interface support
-mcp>=1.12,<2       # MCP Python SDK (FastMCP, structured output, Streamable HTTP)
-pydantic>=2.0.0    # Data validation
-Pillow>=10.0.0     # PNG encoding for screenshot previews
+```powershell
+git clone https://github.com/planetai87/arcaid-cad.git
+cd arcaid-cad
+uv venv --python 3.10
+uv pip install -r requirements.txt
 ```
 
-### System Requirements
+비공개 저장소이므로 clone하려면 저장소에 초대된 GitHub 계정이 필요합니다.
 
-- Windows operating system
-- Installed CAD software (AutoCAD, GstarCAD, or ZWCAD)
-- Python 3.10+
+## 설정
 
-## Configuration
-
-The configuration file is located at `src/config.json` and contains the following main settings:
+공통 기본값은 `src/config.json`에 있습니다. **PC마다 다른 값은 `src/config.local.json`에 적습니다.**
+이 파일은 git에 올라가지 않고, `config.json` 위에 덮어써집니다.
 
 ```json
 {
-    "server": {
-        "name": "CAD MCP 服务器",
-        "version": "2.0.0",
-        "transport": "stdio",
-        "host": "127.0.0.1",
-        "port": 8000
-    },
-    "cad": {
-        "type": "AUTOCAD",  
-        "startup_wait_time": 20,
-        "command_delay": 0.5
-    },
-    "output": {
-        "directory": "./output",
-        "default_filename": "cad_drawing.dwg"
-    }
+    "cad": { "type": "BRICSCAD" },
+    "output": { "directory": "D:\\work\\arcaid-cad\\output" }
 }
 ```
 
-- **server**: Server name, version, and transport settings
-  - `transport`: Transport mode, `stdio` (default, local single client) or `streamable-http` (remote / multi-client)
-  - `host` / `port`: Listen address and port for Streamable HTTP mode (can also be overridden via `--host` / `--port` command-line arguments)
-- **cad**: 
-  - `type`: CAD software type (AutoCAD, GCAD, GstarCAD, or ZWCAD)
-  - `startup_wait_time`: CAD startup waiting time (seconds)
-  - `command_delay`: Command execution delay (seconds)
-- **output**: Output file settings
+주요 설정 항목:
 
-## Usage
+- `cad.type`: 위 표의 CAD 종류
+- `cad.startup_wait_time`: CAD를 새로 띄울 때 기다리는 시간(초)
+- `cad.command_delay`: 일부 명령 뒤에 기다리는 시간(초)
+- `output.directory`: 도면 저장 기본 폴더. 상대 경로는 MCP를 실행한 위치 기준이라, 절대 경로로 적는 것을 권장합니다.
+- `server.transport`: `stdio`(기본) 또는 `streamable-http`
 
-### Starting the Service
+## Claude Code에 등록
 
-```bash
-# Option 1: Run directly (fully compatible with existing Claude/Cursor configs)
-python src/server.py
+경로는 실제 설치 위치로 바꿉니다. 등록 이름은 모두 `arcaid-cad`로 통일합니다.
 
-# Option 2: Install as a CLI tool
-pip install -e .
-cad-mcp
-
-# Option 3: Run with Streamable HTTP transport (remote / multi-client sharing one CAD instance)
-python src/server.py --transport streamable-http --port 8000
-# Clients connect to http://127.0.0.1:8000/mcp
+```powershell
+claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python.exe" "C:\path\to\arcaid-cad\src\server.py"
 ```
 
-### Connect from an MCP Client
+등록한 뒤 Claude Code에서 `/mcp`로 연결 상태를 확인합니다. 도구 이름은 `mcp__arcaid-cad__draw_line`처럼 보입니다.
 
-The server uses `stdio` transport by default, so the same JSON config works for any MCP client (Claude Desktop, Cursor, Windsurf, TRAE, etc.). Add it to your client's MCP server config file (e.g. `claude_desktop_config.json`, Cursor's `mcp.json`), replacing the path with your own:
+## 도구
 
-```json
-{
-    "mcpServers": {
-        "CAD": {
-            "command": "python",
-            "args": [
-                # Your actual path, such as:"C:\\cad-mcp\\src\\server.py"
-            ]
-        }
-    }
-}
-```
+**그리기**
+- `draw_line`: 선
+- `draw_circle`: 원
+- `draw_arc`: 호
+- `draw_ellipse`: 타원
+- `draw_polyline`: 폴리선
+- `draw_rectangle`: 사각형
+- `draw_text`: 문자
+- `draw_hatch`: 해치
+- `add_dimension`: 선형 치수
 
-For Streamable HTTP mode, point the client to `http://127.0.0.1:8000/mcp` instead.
+**조회**
+- `list_layers`: 레이어 목록
+- `list_entities`: 모형 공간 객체 목록(편집에 쓰는 핸들 포함)
+- `get_entity_properties`: 핸들로 객체 상세 정보 조회
+- `screenshot`: CAD 창 캡처
 
-### MCP Inspector
+**편집**
+- `erase_entity`, `move_entity`, `rotate_entity`, `scale_entity`: 지우기, 이동, 회전, 크기 조정
+- `copy_entity`, `mirror_entity`, `offset_entity`: 복사, 대칭, 간격 띄우기
+- `array_linear_entity`, `array_polar_entity`: 직선 배열, 원형 배열
+- `undo`, `redo`: 실행 취소, 다시 실행
 
-```bash
-# Note: use your path  
-npx -y @modelcontextprotocol/inspector python C:\\cad-mcp\\src\\server.py
-```
+**레이어·도면·블록**
+- `create_layer`, `set_current_layer`: 레이어 만들기, 현재 레이어 바꾸기
+- `new_drawing`, `open_drawing`, `close_drawing`, `save_drawing`: 새 도면, 열기, 닫기, 저장
+- `create_block`, `insert_block`, `list_blocks`: 블록 만들기, 넣기, 목록
 
-### Service API
+**명령**
+- `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다.
+- `process_command`: 자연어 명령 해석(옛 인터페이스)
 
-The server provides the following tools (35 in total):
-
-**Basic drawing:**
-- `draw_line`: Draw a line
-- `draw_circle`: Draw a circle
-- `draw_arc`: Draw an arc
-- `draw_ellipse`: Draw an ellipse
-- `draw_polyline`: Draw a polyline
-- `draw_rectangle`: Draw a rectangle
-- `draw_text`: Add text
-- `draw_hatch`: Draw a hatch pattern
-- `add_dimension`: Add linear dimension
-
-**Query:**
-- `list_layers`: List all layers
-- `list_entities`: List entities in model space (returns editable handles)
-- `get_entity_properties`: Query detailed entity properties by handle
-- `screenshot`: Capture the CAD window to confirm drawing results
-
-**Editing:**
-- `erase_entity` / `move_entity` / `rotate_entity` / `scale_entity`: Erase / move / rotate / scale entities
-- `copy_entity` / `mirror_entity` / `offset_entity`: Copy / mirror / offset entities
-- `array_linear_entity` / `array_polar_entity`: Linear / polar arrays
-- `undo` / `redo`: Undo / redo
-
-**Layer & drawing management:**
-- `create_layer` / `set_current_layer`: Layer management
-- `new_drawing` / `open_drawing` / `close_drawing` / `save_drawing`: Drawing management
-- `create_block` / `insert_block` / `list_blocks`: Block operations
-- `send_command`: Execute any CAD command via the command line
-
-**Legacy:**
-- `process_command`: Process natural language commands
-
-## Project Structure
+## 구조
 
 ```
 CAD-MCP/
-├── imgs/                # Images and video resources
-│   └── CAD-mcp.mp4     # Demo video
-├── pyproject.toml       # Packaging config (pip install -e .)
-├── requirements.txt     # Project dependencies
-└── src/                 # Source code
-    ├── __init__.py     # Package initialization
-    ├── cad_controller.py # CAD controller (COM layer: drawing/query/editing/drawings/blocks)
-    ├── config.py        # Config singleton loader
-    ├── config.json     # Configuration file
-    ├── models.py        # Structured output models (outputSchema)
-    ├── nlp_processor.py # Natural language processor
-    └── server.py       # Server implementation (FastMCP)
+├── pyproject.toml
+├── requirements.txt
+└── src/
+    ├── server.py          # MCP 서버와 도구 정의 (FastMCP)
+    ├── cad_controller.py  # COM 계층: 전용 COM 스레드, 재시도, 그리기·조회·편집
+    ├── config.py          # 설정 로더 (config.json + config.local.json)
+    ├── config.json        # 공통 기본 설정
+    ├── models.py          # 구조화 출력 모델
+    └── nlp_processor.py   # 자연어 명령 해석(옛 인터페이스)
 ```
 
-## License
+## 라이선스
 
-MIT License
+MIT. 원저작권 표시는 `LICENSE`에 유지합니다.
