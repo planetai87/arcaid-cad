@@ -7,18 +7,21 @@ dist/
 .venv/
 venv/
 
-# 运行时产物
+# 실행 중 생기는 파일
 *.log
 
-# CAD保存过程的临时产物（SaveAs重试期间产生的save*.tmp）与备份
+# CAD 저장 과정의 임시 파일(SaveAs 재시도 중 생기는 save*.tmp)과 백업
 *.tmp
 *.bak
 
-# 输出图纸（含测试在仓库根目录落下的dwg）
+# 출력 도면(테스트가 저장소 루트에 남긴 dwg 포함)
 output/
 /*.dwg
 
-# 本地手工集成测试（需要真实AutoCAD运行，不随源码分发）
+# PC별 설정(CAD 종류, 출력 경로 등). config.json 위에 덮어쓴다
+src/config.local.json
+
+# 로컬 수동 통합 테스트(실제 CAD 실행 필요, 배포하지 않음)
 _integration_test.py
 
 # IDE
