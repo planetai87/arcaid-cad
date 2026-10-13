@@ -72,14 +72,14 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 - `draw_polyline`: 폴리선
 - `draw_rectangle`: 사각형
 - `draw_text`: 문자
-- `draw_hatch`: 해치
+- `draw_hatch`: 해치(경계 폴리선 포함). GstarCAD는 COM 해치가 화면에 그려지지 않아 명령행 `-HATCH`로 만듭니다
 - `add_dimension`: 선형 치수
 
 **조회**
 - `list_layers`: 레이어 목록
 - `list_entities`: 모형 공간 객체 목록(편집에 쓰는 핸들 포함). 종류·레이어·색으로 거를 수 있음
 - `get_entity_properties`: 핸들로 객체 상세 정보 조회
-- `screenshot`: CAD 창 캡처
+- `screenshot`: CAD 창 캡처. 창을 앞으로 가져오지 않고, 다른 창에 가려져 있어도 CAD 화면만 찍습니다
 
 **편집**
 - `erase_entity`, `move_entity`, `rotate_entity`, `scale_entity`: 지우기, 이동, 회전, 크기 조정

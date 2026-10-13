@@ -766,9 +766,14 @@ class CADController:
 
         Returns:
             성공하면 해치 객체, 실패하면 None
+
+        GstarCAD는 COM(AddHatch)으로 만든 해치가 속성은 맞아도 화면에 그려지지 않으므로
+        명령행 -HATCH로 만든다(_draw_hatch_by_command). 나머지 CAD는 COM으로 만든다.
         """
         if not self.is_running():
             return None
+        if self.cad_type.lower() in ("gcad", "gstarcad"):
+            return self._draw_hatch_by_command(points, pattern_name, scale, layer, color)
 
         closed_polyline = None
         hatch = None
@@ -820,13 +825,71 @@ class CADController:
             logger.error(f"해치 만들기 오류: {str(e)}")
             return None
 
+    def _draw_hatch_by_command(self, points, pattern_name: str, scale: float, layer: str = None, color: int = None) -> Any:
+        """경계 폴리선을 COM으로 그린 뒤 명령행 -HATCH로 해치를 만든다(GstarCAD용)
+
+        GstarCAD 2021에서 확인: COM 해치는 Evaluate가 서버 오류를 내고 저장·다시 열기 후에도 표시되지 않지만,
+        같은 경계에 -HATCH를 쓰면 SOLID와 패턴 해치가 정상 표시된다.
+        -HATCH는 해치를 현재 레이어에 만들므로 만든 뒤 레이어와 색을 맞춘다.
+        해치는 명령 하나라 자체 실행 취소 단계가 된다(undo 한 번에 해치만 취소되고 경계는 남는다).
+        """
+        if not points or len(points) < 3:
+            logger.error("해치 만들기 실패: 해치 경계를 정하려면 점이 3개 이상 필요합니다")
+            return None
+        busy = self.command_busy_reason()
+        if busy:
+            logger.error(f"해치 만들기 실패: {busy}")
+            return None
+
+        boundary = self.draw_polyline(points, closed=True, layer=layer)
+        if not boundary:
+            logger.error("해치 만들기 실패: 경계 폴리선을 만들 수 없음")
+            return None
+        ms = self._ms()
+        before = self._call(getattr, ms, "Count")
+
+        pattern = pattern_name.strip()
+        if pattern.upper() == "SOLID":
+            command = "_.-HATCH\n_P\nSOLID\n_S\n_L\n\n\n"
+        else:
+            # 패턴 해치는 이름 다음에 축척과 각도를 묻는다
+            command = f"_.-HATCH\n_P\n{pattern}\n{scale}\n0\n_S\n_L\n\n\n"
+        sent = self._send_and_wait(command)
+
+        def cleanup(reason: str):
+            # 명령이 입력을 기다리며 멈췄으면(잘못된 패턴 이름 등) 먼저 취소하고, 새로 생긴 객체와 경계를 지운다
+            if sent.get("pending") or sent.get("cmdactive", 0) != 0:
+                self.cancel_command()
+            for i in range(self._call(getattr, ms, "Count") - 1, before - 1, -1):
+                try:
+                    self._call_attr(self._call_attr(ms, "Item", i), "Delete")
+                except Exception:
+                    pass
+            try:
+                self._call_attr(boundary, "Delete")
+            except Exception:
+                pass
+            logger.error(f"해치 만들기 실패: {reason}")
+            return None
+
+        if not sent["ok"] or sent["pending"] or sent["cmdactive"] != 0:
+            return cleanup(f"-HATCH가 끝나지 않음(패턴 이름 {pattern} 확인 필요): {sent}")
+        after = self._call(getattr, ms, "Count")
+        hatch = self._call_attr(ms, "Item", after - 1) if after == before + 1 else None
+        if hatch is None or str(self._safe_attr(hatch, "ObjectName", "")) != "AcDbHatch":
+            return cleanup(f"-HATCH로 해치가 만들어지지 않음(객체 수 {before}→{after})")
+
+        self._apply_style(hatch, layer, color)
+        logger.debug(f"해치 만듦(-HATCH): 패턴 {pattern}, 축척 {scale}, 레이어 {layer if layer else '현재'}")
+        return hatch
+
     def _add_hatch(self, pattern_name: str):
         """모형 공간에 해치 객체를 만든다(패턴 유형을 CAD에 맞춰 고른다)
 
         AddHatch의 첫 인자는 패턴 유형이다(0 사용자 정의, 1 기본 제공, 2 사용자 파일).
         SOLID/ANSI31 같은 기본 패턴은 1이 맞다. 원본 코드는 0을 썼는데(직접 확인):
         - BricsCAD V26: 0은 "해치 패턴에 대한 잘못된 이름" 오류, 1은 된다
-        - GstarCAD 2021: 0과 1 모두 된다
+        - GstarCAD 2021: 0과 1 모두 객체는 만들어지지만 화면에 그려지지 않는다(그래서 GstarCAD는 -HATCH를 쓴다)
         그래서 1을 먼저 쓰고, 실패하면 0으로 다시 시도한다(실패한 시도는 객체를 남기지 않는다).
         """
         last_error = None
@@ -1128,8 +1191,73 @@ class CADController:
             "document_name": self._call(getattr, self.doc, "Name"),
         }
 
+    @staticmethod
+    def _print_window(hwnd):
+        """PrintWindow로 창 내용만 받아 온다(창을 앞으로 가져오지 않음, 가려져 있어도 됨). 실패하면 None"""
+        import ctypes
+
+        # 화면 배율(DPI)이 100%가 아니면, DPI를 모르는 스레드는 창 크기를 배율 적용 전 값으로 받는데
+        # PrintWindow는 실제 픽셀로 그려 왼쪽 위 일부만 찍힌다. 캡처하는 동안만 이 스레드를 모니터별 DPI 인식으로 바꾼다
+        user32 = ctypes.windll.user32
+        old_dpi_ctx = None
+        try:
+            user32.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+            user32.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+            old_dpi_ctx = user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))  # PER_MONITOR_AWARE_V2
+        except AttributeError:
+            pass  # Windows 10 1607 이전
+        try:
+            return CADController._print_window_rect(hwnd)
+        finally:
+            if old_dpi_ctx:
+                user32.SetThreadDpiAwarenessContext(ctypes.c_void_p(old_dpi_ctx))
+
+    @staticmethod
+    def _print_window_rect(hwnd):
+        """_print_window의 실제 캡처 부분(DPI 설정은 호출한 쪽에서 한다)"""
+        import ctypes
+        import win32gui
+        import win32ui
+        from PIL import Image
+
+        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+        width, height = right - left, bottom - top
+        if width <= 0 or height <= 0:
+            return None
+        hwnd_dc = win32gui.GetWindowDC(hwnd)
+        src_dc = mem_dc = bitmap = None
+        try:
+            src_dc = win32ui.CreateDCFromHandle(hwnd_dc)
+            mem_dc = src_dc.CreateCompatibleDC()
+            bitmap = win32ui.CreateBitmap()
+            bitmap.CreateCompatibleBitmap(src_dc, width, height)
+            mem_dc.SelectObject(bitmap)
+            # 2 = PW_RENDERFULLCONTENT: 하드웨어 가속으로 그리는 창 내용까지 받아 온다
+            if not ctypes.windll.user32.PrintWindow(hwnd, mem_dc.GetSafeHdc(), 2):
+                return None
+            info = bitmap.GetInfo()
+            img = Image.frombuffer("RGB", (info["bmWidth"], info["bmHeight"]),
+                                   bitmap.GetBitmapBits(True), "raw", "BGRX", 0, 1)
+            # 전부 검은색이면 캡처에 실패한 것으로 본다
+            if img.getextrema() == ((0, 0), (0, 0), (0, 0)):
+                return None
+            return img
+        finally:
+            if bitmap is not None:
+                win32gui.DeleteObject(bitmap.GetHandle())
+            if mem_dc is not None:
+                mem_dc.DeleteDC()
+            if src_dc is not None:
+                src_dc.DeleteDC()
+            win32gui.ReleaseDC(hwnd, hwnd_dc)
+
     def screenshot(self) -> bytes:
-        """CAD 메인 창을 캡처해 PNG 바이트를 돌려준다"""
+        """CAD 메인 창을 캡처해 PNG 바이트를 돌려준다
+
+        PrintWindow로 CAD 창 내용만 받아 온다. 창을 앞으로 가져오지 않으므로 사용자의 포커스를 뺏지 않고,
+        다른 창이 위에 있어도 CAD 화면이 찍힌다(GstarCAD 2021, BricsCAD V26에서 확인).
+        PrintWindow가 실패하면 예전 방식(창을 앞으로 가져와 화면 영역을 찍기)으로 대신한다.
+        """
         if not self.is_running():
             raise RuntimeError("CAD 미연결")
 
@@ -1148,20 +1276,29 @@ class CADController:
         hwnd = self._call(getattr, self.app, "HWND")
         self._hwnd = hwnd
         # 창이 최소화돼 있으면 GetWindowRect가 무효 좌표(-32000 근처)를 돌려주고,
-        # 그대로 찍으면 쓰레기 이미지가 나오므로 먼저 창을 복원한다
+        # 그대로 찍으면 쓰레기 이미지가 나오므로 먼저 창을 복원한다(활성화하지 않고 복원)
         if win32gui.IsIconic(hwnd):
-            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            win32gui.ShowWindow(hwnd, win32con.SW_SHOWNOACTIVATE)
             time.sleep(0.3)
-        # 가능하면 CAD 창을 앞으로 가져와 다른 창에 가려지지 않게 한다
-        try:
-            win32gui.SetForegroundWindow(hwnd)
-            time.sleep(0.3)
-        except Exception as e:
-            logger.warning(f"CAD 창을 앞으로 가져올 수 없음(그래도 캡처를 시도함): {str(e)}")
 
-        left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        # all_screens=True로 여러 모니터/음수 좌표 상황을 지원한다
-        img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+        img = None
+        try:
+            img = self._print_window(hwnd)
+        except Exception as e:
+            logger.warning(f"PrintWindow 캡처 실패: {str(e)}")
+        if img is None:
+            logger.warning("PrintWindow 캡처 실패, CAD 창을 앞으로 가져와 화면 영역을 찍는 방식으로 대신함")
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+                time.sleep(0.3)
+            except Exception as e:
+                logger.warning(f"CAD 창을 앞으로 가져올 수 없음(그래도 캡처를 시도함): {str(e)}")
+            left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+            # all_screens=True로 여러 모니터/음수 좌표 상황을 지원한다
+            img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
+        # 화면 배율이 크면 이미지가 커지므로 긴 변을 2560px로 줄인다(읽는 쪽 부담을 줄이기 위해)
+        if max(img.size) > 2560:
+            img.thumbnail((2560, 2560))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()

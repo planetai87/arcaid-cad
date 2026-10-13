@@ -147,7 +147,8 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
   여러 도면이 열려 있으면 list_drawings로 활성 도면을 확인하고, 필요하면 switch_drawing으로 바꾼다
 - 그리기·편집 도구는 entity_handles(객체 핸들)를 돌려준다. 이후 편집과 조회에 쓴다
 - 색상 인자는 ACI 인덱스(1-256) 또는 한국어·영어·중국어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다
-- 그린 뒤에는 screenshot으로 결과를 확인하고, list_entities로 도면의 실제 내용을 조회하는 것을 권장한다
+- 그린 뒤에는 screenshot으로 결과를 확인하고, list_entities로 도면의 실제 내용을 조회하는 것을 권장한다.
+  screenshot은 CAD 창을 앞으로 가져오지 않으며, 다른 창에 가려져 있어도 CAD 화면만 찍힌다
 - send_command는 CAD 명령행에 그대로 보내고, 명령이 끝나거나 입력을 기다릴 때까지 기다린다.
   결과의 still_active=true는 명령이 아직 입력을 기다린다는 뜻이다. 이어서 입력을 보내거나 cancel_command로 취소한다.
   BricsCAD는 이어서 보낸 입력을 받지 않으므로 명령과 모든 입력을 한 문자열에 담아 보낸다
@@ -793,6 +794,8 @@ async def draw_hatch(ctx: Context, points: HatchPoints, pattern_name: str = "SOL
     """CAD에 해치를 그린다(points는 닫힌 경계 점 목록, 3개 이상)
 
     pattern_name은 해치 패턴 이름이고 기본값은 SOLID(솔리드 채우기)다.
+    경계 폴리선이 같은 레이어에 함께 만들어진다. 패턴 이름이 잘못되면 실패하고 아무것도 남기지 않는다.
+    GstarCAD는 명령행 -HATCH로 만든다(COM 해치가 화면에 그려지지 않아서). 이때 undo 한 번에는 해치만 취소된다.
     """
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
@@ -860,7 +863,10 @@ async def get_entity_properties(ctx: Context, handle: str) -> EntityPropertiesRe
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def screenshot(ctx: Context):
-    """CAD 메인 창을 캡처해 PNG 미리보기를 돌려준다(그린 결과 확인용)"""
+    """CAD 메인 창을 캡처해 PNG 미리보기를 돌려준다(그린 결과 확인용)
+
+    창을 앞으로 가져오지 않으므로 사용자의 작업 창 포커스를 뺏지 않고, 다른 창에 가려져 있어도 CAD 화면만 찍힌다.
+    """
     if not await _ensure_running(ctx):
         return [TextContent(type="text", text="CAD 미연결, 자동 시작 실패. 캡처할 수 없습니다")]
     png_bytes = await com(cad_service.controller.screenshot)
