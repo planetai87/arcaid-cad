@@ -166,6 +166,7 @@ class CADController:
     def _get_app_info(self) -> Tuple[List[str], str]:
         """설정된 CAD 종류에 따라 (후보 COM ProgID 목록, 표시 이름)을 돌려준다
 
+        지원: AutoCAD, GstarCAD(GCAD/GSTARCAD), ZWCAD, BricsCAD.
         참고: COM ProgID 조회는 대소문자를 구분하지 않는다. GCAD.Application과 Gcad.Application은 같다.
         같은 CAD라도 버전에 따라 등록하는 ProgID가 다를 수 있다(GstarCAD는 GCAD/GstarCAD 두 가지).
         그래서 후보 목록을 돌려주고 start_cad가 차례로 시도하게 해, 대상 PC에 다른 쪽만 등록돼 있어도 연결되게 한다.
@@ -176,6 +177,7 @@ class CADController:
             "gcad": (["GCAD.Application", "GstarCAD.Application"], "GstarCAD"),
             "gstarcad": (["GCAD.Application", "GstarCAD.Application"], "GstarCAD"),
             "zwcad": (["ZWCAD.Application"], "ZWCAD"),
+            "bricscad": (["BricscadApp.AcadApplication"], "BricsCAD"),
         }
         return app_map.get(self.cad_type.lower(), (["AutoCAD.Application"], "AutoCAD"))
 
