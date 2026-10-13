@@ -77,7 +77,7 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 
 **조회**
 - `list_layers`: 레이어 목록
-- `list_entities`: 모형 공간 객체 목록(편집에 쓰는 핸들 포함)
+- `list_entities`: 모형 공간 객체 목록(편집에 쓰는 핸들 포함). 종류·레이어·색으로 거를 수 있음
 - `get_entity_properties`: 핸들로 객체 상세 정보 조회
 - `screenshot`: CAD 창 캡처
 
@@ -90,11 +90,19 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 **레이어·도면·블록**
 - `create_layer`, `set_current_layer`: 레이어 만들기, 현재 레이어 바꾸기
 - `new_drawing`, `open_drawing`, `close_drawing`, `save_drawing`: 새 도면, 열기, 닫기, 저장
+- `list_drawings`, `switch_drawing`: 열린 도면 목록, 활성 도면 전환
 - `create_block`, `insert_block`, `list_blocks`: 블록 만들기, 넣기, 목록
 
 **명령**
-- `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다.
+- `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다. 명령이 끝나거나 입력을 기다릴 때까지 기다리고, 아직 입력을 기다리면 `still_active=true`를 돌려줍니다.
+- `cancel_command`: 진행 중인 명령을 ESC처럼 취소합니다. 대화상자나 문자 편집기가 열려 CAD가 응답하지 않을 때는 CAD 창에 키보드 ESC를 보냅니다.
+- `run_lisp`: AutoLISP 식을 실행하고 결과 값을 돌려받습니다(예: `(getvar "CLAYER")`).
 - `process_command`: 자연어 명령 해석(옛 인터페이스)
+
+## 동작 원칙
+
+- **활성 도면에 작업합니다.** 도구를 호출할 때마다 CAD의 활성 도면을 확인하므로, CAD에서 탭을 바꾸면 그 도면에 작업합니다.
+- **조회·편집 도구는 실행 중인 CAD에 자동으로 붙습니다.** 단 `undo`, `redo`, `close_drawing`, `save_drawing`은 연결 전에는 실행하지 않습니다. 사용자가 손으로 한 작업을 되돌리거나 열린 도면을 닫지 않기 위해서입니다.
 
 ## 구조
 

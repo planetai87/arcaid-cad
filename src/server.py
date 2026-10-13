@@ -124,8 +124,11 @@ PROMPT_TEMPLATE = """
 레이어·도면 관리:
 "create_layer" / "set_current_layer": 레이어 관리
 "new_drawing" / "open_drawing" / "close_drawing" / "save_drawing": 도면 관리
+"list_drawings" / "switch_drawing": 열린 도면 목록과 활성 도면 전환
 "create_block" / "insert_block" / "list_blocks": 블록 작업
 "send_command": CAD 명령행에 임의의 명령을 그대로 보낸다
+"cancel_command": 진행 중인 명령을 취소한다(ESC)
+"run_lisp": AutoLISP 식을 실행하고 결과 값을 돌려받는다
 
 옛 인터페이스:
 "process_command": 자연어 명령을 CAD 작업으로 바꿔 실행한다(위의 구조화 도구를 먼저 쓰는 것을 권장)
@@ -139,11 +142,17 @@ PROMPT_TEMPLATE = """
 SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCAD / AutoCAD / ZWCAD를 조작한다.
 
 사용 요점:
-- 도구를 처음 호출할 때 CAD가 실행 중이 아니면 자동으로 띄운다(약 20초 걸릴 수 있음). 그동안 진행 알림이 간다
+- 도구를 처음 호출할 때 실행 중인 CAD에 붙고, CAD가 없으면 자동으로 띄운다(약 20초 걸릴 수 있음)
+- 모든 도구는 CAD의 "활성 도면"에 작업한다. 사용자가 CAD에서 탭을 바꾸면 그 도면을 따라간다.
+  여러 도면이 열려 있으면 list_drawings로 활성 도면을 확인하고, 필요하면 switch_drawing으로 바꾼다
 - 그리기·편집 도구는 entity_handles(객체 핸들)를 돌려준다. 이후 편집과 조회에 쓴다
-- 색상 인자는 ACI 인덱스(1-256) 또는 중국어·영어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다
+- 색상 인자는 ACI 인덱스(1-256) 또는 한국어·영어·중국어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다
 - 그린 뒤에는 screenshot으로 결과를 확인하고, list_entities로 도면의 실제 내용을 조회하는 것을 권장한다
-- send_command는 CAD 명령행에 그대로 보내므로, 도구로 만들어지지 않은 어떤 CAD 명령도 실행할 수 있다
+- send_command는 CAD 명령행에 그대로 보내고, 명령이 끝나거나 입력을 기다릴 때까지 기다린다.
+  결과의 still_active=true는 명령이 아직 입력을 기다린다는 뜻이다. 이어서 입력을 보내거나 cancel_command로 취소한다
+- cancel_command는 멈춘 명령을 ESC처럼 취소한다(대화상자·문자 편집기가 열려 COM이 막힌 경우 포함)
+- run_lisp는 AutoLISP 식의 결과 값을 돌려받는다(예: (getvar "CLAYER")). 진행 중인 명령이 있으면 거부된다
+- undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
 """
 
 # ==================== 인자 타입(원본 schema의 좌표 제약 유지) ====================
@@ -625,7 +634,7 @@ def _noop() -> None:
 
 
 def _resolve_color(color) -> Optional[int]:
-    """색상 인자를 ACI 인덱스로 바꾼다: None=ByLayer. 인덱스와 중국어·영어 색 이름을 받는다"""
+    """색상 인자를 ACI 인덱스로 바꾼다: None=ByLayer. 인덱스와 한국어·영어·중국어 색 이름을 받는다"""
     return cad_service.nlp_processor.color_to_index(color)
 
 
@@ -686,7 +695,7 @@ async def draw_line(ctx: Context, start_point: Point, end_point: Point,
                     lineweight: Optional[float] = None) -> ToolResult:
     """CAD에 선을 그린다
 
-    color는 CAD 색상 인덱스(1-256) 또는 중국어·영어 색 이름(예: "红色", "red")을 받는다. 지정하지 않으면 ByLayer를 유지한다.
+    color는 CAD 색상 인덱스(1-256) 또는 한국어·영어·중국어 색 이름(예: "빨강", "red")을 받는다. 지정하지 않으면 ByLayer를 유지한다.
     """
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
@@ -700,7 +709,7 @@ async def draw_circle(ctx: Context, center: Point, radius: PosFloat,
                       lineweight: Optional[float] = None) -> ToolResult:
     """CAD에 원을 그린다
 
-    color는 CAD 색상 인덱스(1-256) 또는 중국어·영어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다.
+    color는 CAD 색상 인덱스(1-256) 또는 한국어·영어·중국어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다.
     """
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
