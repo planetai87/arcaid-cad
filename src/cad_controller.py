@@ -984,12 +984,15 @@ class CADController:
             })
         return layers
 
-    def list_entities(self, entity_type: str = None, limit: int = 50) -> Dict[str, Any]:
+    def list_entities(self, entity_type: str = None, limit: int = 50,
+                      layer: str = None, color: int = None) -> Dict[str, Any]:
         """모형 공간의 객체를 나열한다(실시간 조회, CAD 문서와 항상 일치)
 
         Args:
             entity_type: 종류로 거른다(line/circle/arc 등, 대소문자 무시). None이면 거르지 않는다
             limit: 돌려줄 최대 객체 수(큰 도면에서 한 번에 너무 많이 돌려주지 않기 위해)
+            layer: 레이어 이름으로 거른다(대소문자 무시). None이면 거르지 않는다
+            color: 객체 색상 인덱스(ACI)로 거른다. 256은 ByLayer. None이면 거르지 않는다
 
         Returns:
             {"total": 모형 공간 객체 총수, "entities": [객체 정보]}
@@ -1005,6 +1008,10 @@ class CADController:
             info = self.get_entity_info(self._call_attr(ms, "Item", i))
             # 종류 이름을 정확히 비교한다(부분 문자열 비교면 "line"에 polyline까지 걸린다)
             if entity_type and info["entity_type"].lower() != entity_type.lower():
+                continue
+            if layer and str(info["layer"] or "").casefold() != layer.casefold():
+                continue
+            if color is not None and info["color"] != color:
                 continue
             entities.append(info)
             if len(entities) >= limit:
@@ -1383,6 +1390,58 @@ class CADController:
         except Exception as e:
             logger.error(f"문서 닫기 실패: {str(e)}")
             return False
+
+    def list_drawings(self) -> List[Dict[str, Any]]:
+        """CAD에 열린 도면을 모두 나열한다(인덱스, 이름, 전체 경로, 활성 여부, 저장 여부)"""
+        if self.app is None:
+            return []
+        docs = self._call(getattr, self.app, "Documents")
+        active_name = self._safe_attr(self._safe_attr(self.app, "ActiveDocument"), "Name")
+        drawings = []
+        for i in range(self._call(getattr, docs, "Count")):
+            doc = self._call_attr(docs, "Item", i)
+            name = str(self._call(getattr, doc, "Name"))
+            saved = self._safe_attr(doc, "Saved")
+            drawings.append({
+                "index": i,
+                "name": name,
+                "full_name": str(self._safe_attr(doc, "FullName") or ""),
+                "is_active": name == active_name,
+                "saved": None if saved is None else bool(saved),
+            })
+        return drawings
+
+    def switch_drawing(self, name_or_path: str) -> Optional[str]:
+        """열린 도면 중 하나를 활성 도면으로 바꾸고 그 이름을 돌려준다(못 찾으면 None)
+
+        전체 경로가 일치하는 도면을 먼저 찾고, 없으면 이름(대소문자 무시)이 일치하는 도면을 찾는다.
+        """
+        if self.app is None:
+            return None
+        docs = self._call(getattr, self.app, "Documents")
+        candidates = [self._call_attr(docs, "Item", i) for i in range(self._call(getattr, docs, "Count"))]
+        target = None
+        wanted_path = os.path.normcase(os.path.abspath(name_or_path)) if os.path.isabs(name_or_path) else None
+        if wanted_path:
+            for doc in candidates:
+                full = self._safe_attr(doc, "FullName")
+                if full and os.path.normcase(str(full)) == wanted_path:
+                    target = doc
+                    break
+        if target is None:
+            wanted_name = os.path.basename(name_or_path).casefold()
+            for doc in candidates:
+                if str(self._safe_attr(doc, "Name", "")).casefold() == wanted_name:
+                    target = doc
+                    break
+        if target is None:
+            logger.warning(f"열린 도면 중에 찾지 못함: {name_or_path}")
+            return None
+        self._call_attr(target, "Activate")
+        self.doc = target
+        name = str(self._call(getattr, target, "Name"))
+        logger.info(f"활성 도면 전환: {name}")
+        return name
 
     # ==================== 블록 작업 ====================
 

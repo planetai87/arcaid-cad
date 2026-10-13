@@ -17,14 +17,14 @@ if __package__:
     from .cad_controller import CADController
     from .config import get_config
     from .models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
-                         ListBlocksResult, CommandResult, LispResult)
+                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
     from .nlp_processor import NLPProcessor
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
     from config import get_config
     from models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
-                        ListBlocksResult, CommandResult, LispResult)
+                        ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
     from nlp_processor import NLPProcessor
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -806,15 +806,20 @@ async def list_layers(ctx: Context) -> ListLayersResult:
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_entities(ctx: Context, entity_type: Optional[str] = None,
-                        limit: int = 50) -> ListEntitiesResult:
+                        limit: int = 50, layer: Optional[str] = None,
+                        color: Union[int, str, None] = None) -> ListEntitiesResult:
     """모형 공간의 객체를 나열한다(실시간 조회, CAD 문서와 항상 일치)
 
     객체 핸들(handle)을 돌려주며, 편집 도구와 get_entity_properties에 쓸 수 있다.
     entity_type으로 종류를 거를 수 있고(예: line/circle/arc/text), limit으로 돌려줄 개수를 정한다.
+    layer로 레이어 이름(대소문자 무시), color로 객체 색(ACI 인덱스 또는 색 이름, 256=ByLayer)을 거를 수 있다.
     """
     if not await _ensure_running(ctx):
         return ListEntitiesResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    result = await com(cad_service.controller.list_entities, entity_type, limit)
+    color_index = _resolve_color(color)
+    if color is not None and color_index is None:
+        return ListEntitiesResult(success=False, message=f"알 수 없는 색: {color}")
+    result = await com(cad_service.controller.list_entities, entity_type, limit, layer, color_index)
     return ListEntitiesResult(success=True,
                               message=f"모형 공간 객체 {result['total']}개 중 {len(result['entities'])}개 반환",
                               total=result["total"],
@@ -1011,6 +1016,33 @@ async def close_drawing(ctx: Context, save: bool = False) -> ToolResult:
     if ok:
         cad_service.drawing_state["entities"] = []
     return ToolResult(success=ok, message="문서를 닫았습니다" if ok else "문서 닫기 실패")
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def list_drawings(ctx: Context) -> ListDrawingsResult:
+    """CAD에 열린 도면을 모두 나열한다(이름, 전체 경로, 활성 여부, 저장 여부)
+
+    모든 도구는 CAD의 활성 도면에 작업한다. 작업 전에 is_active인 도면이 맞는지 확인한다.
+    """
+    if not await _ensure_running(ctx):
+        return ListDrawingsResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    drawings = await com(cad_service.controller.list_drawings)
+    return ListDrawingsResult(success=True, message=f"열린 도면 {len(drawings)}개", drawings=drawings)
+
+
+@mcp.tool()
+async def switch_drawing(ctx: Context, name_or_path: str) -> ToolResult:
+    """열린 도면 중 하나를 활성 도면으로 바꾼다(전체 경로 또는 도면 이름으로 지정)
+
+    이후 모든 도구는 이 도면에 작업한다. 열려 있지 않은 파일은 open_drawing으로 연다.
+    """
+    if not await _ensure_running(ctx):
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    name = await com(cad_service.controller.switch_drawing, name_or_path)
+    if name is None:
+        return ToolResult(success=False, message=f"열린 도면 중에 없습니다: {name_or_path}. list_drawings로 확인하세요")
+    cad_service.drawing_state["entities"] = []
+    return ToolResult(success=True, message=f"활성 도면을 {name}(으)로 바꿨습니다")
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))

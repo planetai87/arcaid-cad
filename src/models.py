@@ -96,6 +96,22 @@ class LispResult(BaseModel):
     error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
 
 
+class DrawingInfo(BaseModel):
+    """열린 도면 정보"""
+    index: int = Field(description="Documents 컬렉션 안의 순서")
+    name: str = Field(description="도면 이름(파일 이름)")
+    full_name: str = Field(default="", description="전체 경로(한 번도 저장하지 않은 도면은 빈 문자열)")
+    is_active: bool = Field(default=False, description="CAD의 활성 도면인지(도구는 활성 도면에 작업한다)")
+    saved: Optional[bool] = Field(default=None, description="마지막 저장 이후 수정이 없는지. None이면 읽지 못함")
+
+
+class ListDrawingsResult(BaseModel):
+    """열린 도면 목록 조회 결과"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    drawings: List[DrawingInfo] = Field(default_factory=list, description="열린 도면 목록")
+
+
 class BlockInfo(BaseModel):
     """블록 정보"""
     name: str = Field(description="블록 이름")
