@@ -72,6 +72,30 @@ class EntityPropertiesResult(BaseModel):
     error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
 
 
+class CommandResult(BaseModel):
+    """명령행 작업(send_command, cancel_command) 결과"""
+    success: bool = Field(description="명령을 보냈는지(cancel_command는 명령이 없는 상태가 됐는지)")
+    message: str = Field(description="결과 설명")
+    still_active: Optional[bool] = Field(
+        default=None,
+        description="명령이 아직 진행 중이거나 입력을 기다리는지. None이면 상태를 읽지 못함"
+    )
+    cmdactive: int = Field(
+        default=-1,
+        description="CMDACTIVE 값(0 없음, 1 명령, 2 투명 명령, 4 스크립트, 8 대화상자, 32 LISP, -1 읽지 못함)"
+    )
+    error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
+
+
+class LispResult(BaseModel):
+    """run_lisp 결과"""
+    success: bool = Field(description="식을 실행하고 결과를 받았는지")
+    message: str = Field(description="결과 설명")
+    value: Optional[str] = Field(default=None, description="식의 결과를 prin1으로 쓴 문자열(문자열은 따옴표 포함)")
+    cmdactive: int = Field(default=-1, description="실행 뒤 CMDACTIVE 값(-1 읽지 못함)")
+    error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
+
+
 class BlockInfo(BaseModel):
     """블록 정보"""
     name: str = Field(description="블록 이름")

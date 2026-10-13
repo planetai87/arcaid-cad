@@ -16,15 +16,15 @@ sys.dont_write_bytecode = True
 if __package__:
     from .cad_controller import CADController
     from .config import get_config
-    from .models import (ToolResult, ListEntitiesResult,
-                         ListLayersResult, EntityPropertiesResult, ListBlocksResult)
+    from .models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
+                         ListBlocksResult, CommandResult, LispResult)
     from .nlp_processor import NLPProcessor
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
     from config import get_config
-    from models import (ToolResult, ListEntitiesResult,
-                        ListLayersResult, EntityPropertiesResult, ListBlocksResult)
+    from models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
+                        ListBlocksResult, CommandResult, LispResult)
     from nlp_processor import NLPProcessor
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -1028,16 +1028,68 @@ async def save_drawing(ctx: Context, file_path: str) -> ToolResult:
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
-async def send_command(ctx: Context, command: str) -> ToolResult:
+async def send_command(ctx: Context, command: str) -> CommandResult:
     """CAD 명령행에 임의의 명령을 그대로 보낸다(도구로 없는 기능을 쓰는 비상구)
 
     예: "_.ZOOM E"(전체 줌), "_.ERASE"와 선택 세트 등.
     명령 앞에 "_."를 붙여 영문 명령 이름을 강제하면 현지화된 CAD에서도 동작한다.
+    명령이 끝나거나 입력을 기다리는 상태가 될 때까지 기다린 뒤 돌아온다.
+    still_active=true면 명령이 아직 입력(점, 옵션)을 기다리는 중이다. 이어서 입력을 보내거나 cancel_command로 취소한다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.send_command, command)
-    return ToolResult(success=ok, message=f"명령을 보냈습니다: {command}" if ok else "명령 실행 실패")
+        return CommandResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    result = await com(cad_service.controller.send_command, command)
+    cmd = result["cmdactive"]
+    still_active = None if cmd < 0 else cmd != 0
+    if not result["ok"]:
+        return CommandResult(success=False, message="명령 실행 실패", still_active=still_active, cmdactive=cmd,
+                             error="자세한 내용은 cad_mcp.log 참고")
+    if still_active:
+        message = f"명령을 보냈습니다. 명령이 아직 입력을 기다리는 중입니다(CMDACTIVE={cmd})"
+    elif still_active is None:
+        message = "명령을 보냈습니다. 명령 상태는 읽지 못했습니다"
+    else:
+        message = "명령을 보냈고 명령이 끝났습니다"
+    return CommandResult(success=True, message=message, still_active=still_active, cmdactive=cmd)
+
+
+@mcp.tool()
+async def cancel_command(ctx: Context) -> CommandResult:
+    """진행 중인 CAD 명령을 취소한다(ESC와 같음)
+
+    먼저 명령행에 Ctrl+C를 보내고, 끝나지 않거나 CAD가 COM에 응답하지 않으면
+    (대화상자·문자 편집기가 열린 경우) CAD 창을 앞으로 가져와 키보드 ESC를 보낸다.
+    명령이 입력을 기다리며 멈췄을 때, 또는 run_lisp가 진행 중인 명령 때문에 거부됐을 때 쓴다.
+    """
+    if cad_service.controller.app is None and not await _ensure_running(ctx):
+        return CommandResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    # COM이 막혀 있어도 빨리 끝나야 하므로 활성 도면 동기화(재시도 포함)를 거치지 않고 바로 실행한다
+    result = await cad_service.controller.executor.run(cad_service.controller.cancel_command)
+    cmd = result["cmdactive"]
+    still_active = None if cmd < 0 else cmd != 0
+    method = result["method"] or "없음"
+    if result["ok"]:
+        message = "진행 중인 명령이 없습니다" if method == "none" else f"명령을 취소했습니다(방법: {method})"
+        return CommandResult(success=True, message=message, still_active=False, cmdactive=cmd)
+    return CommandResult(success=False, message=f"명령을 취소하지 못했습니다(시도: {method}). 사용자에게 CAD 창에서 ESC를 눌러 달라고 요청하세요",
+                         still_active=still_active, cmdactive=cmd)
+
+
+@mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
+async def run_lisp(ctx: Context, expression: str, timeout_seconds: Optional[PosFloat] = None) -> LispResult:
+    """AutoLISP 식 하나를 실행하고 결과 값을 돌려받는다
+
+    결과는 prin1 표기 문자열로 돌아온다(예: 3, "A-WALL", (1.0 2.0 0.0), nil).
+    여러 식은 (progn ...)으로 묶는다. 식 안의 줄바꿈은 공백으로 바뀐다.
+    진행 중인 명령이 있으면 실행하지 않는다(먼저 cancel_command).
+    예: (getvar "CLAYER"), (sslength (ssget "_X" '((8 . "A-WALL")))), (tblsearch "LAYER" "0")
+    """
+    if not await _ensure_running(ctx):
+        return LispResult(success=False, message="CAD 미연결, 자동 시작 실패")
+    result = await com(cad_service.controller.run_lisp, expression, timeout_seconds)
+    if result["ok"]:
+        return LispResult(success=True, message="LISP 실행 완료", value=result["value"], cmdactive=result["cmdactive"])
+    return LispResult(success=False, message="LISP 실행 실패", cmdactive=result["cmdactive"], error=result["error"])
 
 
 # ---------- 블록 작업 ----------

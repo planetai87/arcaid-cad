@@ -6,6 +6,8 @@ import io
 import json
 import threading
 import queue
+import tempfile
+import uuid
 import concurrent.futures
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -157,6 +159,10 @@ class CADController:
         # 설정 파일에서 값을 불러온다
         self.startup_wait_time = config["cad"]["startup_wait_time"]
         self.command_delay = config["cad"]["command_delay"]
+        # 명령 완료를 기다리는 최대 시간(초)
+        self.command_timeout = float(config["cad"].get("command_timeout", 10))
+        # CAD 메인 창 핸들. COM이 막혀도(대화상자·문자 편집기) ESC를 보낼 수 있게 미리 저장한다
+        self._hwnd = None
         # CAD 종류
         self.cad_type = config["cad"]["type"]
         # 유효한 선굵기 값 목록
@@ -252,6 +258,7 @@ class CADController:
                 logger.error(f"문서 이름을 읽을 수 없음: {str(name_ex)}")
                 raise Exception("문서 객체가 유효하지 않습니다")
 
+            self._hwnd = self._safe_attr(self.app, "HWND")
             logger.info("CAD 시작 및 준비 완료")
             return True
 
@@ -1106,6 +1113,7 @@ class CADController:
 
         # CAD 메인 창 핸들(속성 읽기가 바쁜 CAD에 거부될 수 있어 재시도)
         hwnd = self._call(getattr, self.app, "HWND")
+        self._hwnd = hwnd
         # 창이 최소화돼 있으면 GetWindowRect가 무효 좌표(-32000 근처)를 돌려주고,
         # 그대로 찍으면 쓰레기 이미지가 나오므로 먼저 창을 복원한다
         if win32gui.IsIconic(hwnd):
@@ -1279,7 +1287,7 @@ class CADController:
             # 순수 영문 명령 이름 "UNDO 1"이 안정적이다(현지화된 CAD도 영문 명령 이름을 그대로 지원)
             self._call_attr(self.doc, "SendCommand", "UNDO 1\n")
             # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아가야 이후 호출이 취소 결과를 본다
-            time.sleep(self.command_delay)
+            self._wait_cmd_idle()
             return True
         except Exception as e:
             logger.error(f"실행 취소 실패: {str(e)}")
@@ -1292,7 +1300,7 @@ class CADController:
         try:
             self._call_attr(self.doc, "SendCommand", "_.REDO\n")
             # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아간다
-            time.sleep(self.command_delay)
+            self._wait_cmd_idle()
             return True
         except Exception as e:
             logger.error(f"다시 실행 실패: {str(e)}")
@@ -1441,23 +1449,210 @@ class CADController:
 
     # ==================== 명령 직접 실행 ====================
 
-    def send_command(self, command: str) -> bool:
+    def _read_cmdactive(self, retry: bool = True) -> int:
+        """시스템 변수 CMDACTIVE를 읽는다. 읽지 못하면 -1
+
+        retry=False면 CAD가 COM 호출을 거부할 때 기다리지 않고 바로 -1을 돌려준다
+        (대화상자나 문자 편집기가 열려 COM이 막혔는지 빨리 알아볼 때 쓴다).
+        """
+        if self.doc is None:
+            return -1
+        try:
+            if retry:
+                return int(self._call_attr(self.doc, "GetVariable", "CMDACTIVE"))
+            return int(self.doc.GetVariable("CMDACTIVE"))
+        except Exception:
+            return -1
+
+    def _wait_cmd_idle(self, timeout: Optional[float] = None, retry: bool = True) -> int:
+        """명령이 끝날 때까지 기다리고 마지막 CMDACTIVE 값을 돌려준다
+
+        CMDACTIVE 비트: 1 명령, 2 투명 명령, 4 스크립트, 8 대화상자, 32 LISP.
+        - SendCommand는 비동기라 돌아온 직후에는 명령이 아직 시작되지 않았을 수 있다.
+          그래서 0이 연속 두 번 읽혀야 끝난 것으로 본다.
+        - 명령이 사용자 입력(점, 옵션)을 기다리는 동안 CAD는 COM에 응답하면서 같은 값을 유지한다.
+          같은 0 아닌 값이 0.5초 동안 이어지면 "입력 대기 중"으로 보고 바로 돌려준다.
+          그러지 않으면 명령을 나눠 보낼 때마다 제한 시간만큼 멈춘다.
+        - 제한 시간이 지나면 그때 값을 돌려준다. -1은 읽지 못했다는 뜻이다.
+        """
+        if timeout is None:
+            timeout = self.command_timeout
+        deadline = time.monotonic() + timeout
+        idle_reads = 0
+        same_reads = 0
+        last = None
+        time.sleep(0.05)
+        while True:
+            value = self._read_cmdactive(retry)
+            idle_reads = idle_reads + 1 if value == 0 else 0
+            same_reads = same_reads + 1 if (value > 0 and value == last) else 0
+            last = value
+            if idle_reads >= 2 or same_reads >= 5 or time.monotonic() >= deadline:
+                return value
+            time.sleep(0.1)
+
+    def send_command(self, command: str) -> Dict[str, Any]:
         """CAD 명령행에 임의의 명령을 그대로 보낸다(예: "_.ZOOM E")
 
         도구로 없는 기능을 쓰는 비상구다: 도구로 만들어지지 않은 어떤 CAD 명령도 이것으로 실행할 수 있다.
+        돌려주는 값: {"ok": 보냈는지, "cmdactive": 보낸 뒤 CMDACTIVE 값(0이면 끝남, -1이면 읽지 못함)}
         """
         if not self.is_running():
-            return False
+            return {"ok": False, "cmdactive": -1}
         try:
             # 명령이 Enter/공백으로 끝나지 않으면 Enter를 하나 붙여 명령이 제출되게 한다
             if not command.endswith(("\n", "\r", " ")):
                 command += "\n"
             # SendCommand 자체가 바쁜 CAD에 거부될 수 있어, 호출 단위 재시도로 명령이 대기열에 들어가게 한다
             self._call_attr(self.doc, "SendCommand", command)
-            # SendCommand는 비동기다: 명령이 실행되기를 기다린다(ZOOM이나 저장 같은 명령이 진행 중이면
-            # 이어지는 SaveAs 등이 오류를 낸다). 대기 시간은 설정 command_delay로 정한다
-            time.sleep(self.command_delay)
-            return True
+            # SendCommand는 비동기다: 명령이 끝나거나 입력을 기다리는 상태가 될 때까지 기다린다
+            # (ZOOM이나 저장 같은 명령이 진행 중이면 이어지는 SaveAs 등이 오류를 낸다)
+            return {"ok": True, "cmdactive": self._wait_cmd_idle()}
         except Exception as e:
             logger.error(f"명령 실행 실패: {str(e)}")
+            return {"ok": False, "cmdactive": self._read_cmdactive(retry=False)}
+
+    def _send_escape_keys(self, count: int = 2) -> bool:
+        """CAD 창을 앞으로 가져와 키보드로 ESC를 보낸다(COM이 막혔을 때 쓰는 수단)
+
+        포그라운드 창이 CAD 프로세스의 창(메인 창, CAD의 대화상자나 문자 편집기)일 때만 키를 보낸다.
+        다른 프로그램에 ESC가 들어가는 것을 막기 위해서다.
+        """
+        import win32api
+        import win32con
+        import win32gui
+        import win32process
+
+        hwnd = self._hwnd or self._safe_attr(self.app, "HWND")
+        if not hwnd:
+            logger.warning("CAD 창 핸들이 없어 ESC를 보낼 수 없음")
             return False
+        try:
+            cad_pid = win32process.GetWindowThreadProcessId(hwnd)[1]
+        except Exception as e:
+            logger.warning(f"CAD 창 프로세스를 확인할 수 없음: {str(e)}")
+            return False
+
+        def cad_is_foreground() -> bool:
+            fg = win32gui.GetForegroundWindow()
+            return bool(fg) and win32process.GetWindowThreadProcessId(fg)[1] == cad_pid
+
+        if win32gui.IsIconic(hwnd):
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            time.sleep(0.3)
+        if not cad_is_foreground():
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                # Windows의 포그라운드 잠금 때문에 실패하면 Alt 키를 한 번 눌렀다 떼고 다시 시도한다(널리 쓰는 우회법)
+                try:
+                    win32api.keybd_event(win32con.VK_MENU, 0, 0, 0)
+                    win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+                    win32gui.SetForegroundWindow(hwnd)
+                except Exception as e:
+                    logger.warning(f"CAD 창을 앞으로 가져오지 못함: {str(e)}")
+            time.sleep(0.3)
+        if not cad_is_foreground():
+            logger.warning("CAD 창이 앞에 있지 않아 ESC를 보내지 않음")
+            return False
+        for _ in range(count):
+            win32api.keybd_event(win32con.VK_ESCAPE, 0, 0, 0)
+            win32api.keybd_event(win32con.VK_ESCAPE, 0, win32con.KEYEVENTF_KEYUP, 0)
+            time.sleep(0.1)
+        return True
+
+    def cancel_command(self) -> Dict[str, Any]:
+        """진행 중인 명령을 취소한다(ESC와 같음)
+
+        1) CAD가 COM에 응답하면 SendCommand로 Ctrl+C 문자(chr(3))를 두 번 보낸다.
+        2) 그래도 끝나지 않거나 COM이 막혀 있으면(대화상자·문자 편집기) CAD 창에 키보드 ESC를 보낸다.
+        돌려주는 값: {"ok": 명령이 없는 상태가 됐는지, "method": 쓴 방법, "cmdactive": 마지막 CMDACTIVE}
+        이 메서드는 COM이 막혀 있어도 빨리 끝나도록 재시도 없이 읽는다.
+        """
+        if self.app is None or self.doc is None:
+            return {"ok": False, "method": None, "cmdactive": -1}
+        before = self._read_cmdactive(retry=False)
+        if before == 0:
+            return {"ok": True, "method": "none", "cmdactive": 0}
+        methods = []
+        cmd = before
+        if before != -1:
+            try:
+                self.doc.SendCommand(chr(3) + chr(3))
+                methods.append("ctrl_c")
+            except Exception as e:
+                logger.info(f"Ctrl+C 보내기 실패, 키보드 ESC로 넘어감: {str(e)}")
+            cmd = self._wait_cmd_idle(timeout=2, retry=False)
+        if cmd != 0:
+            if self._send_escape_keys():
+                methods.append("esc_key")
+                cmd = self._wait_cmd_idle(timeout=3, retry=False)
+            else:
+                cmd = self._read_cmdactive(retry=False)
+        return {"ok": cmd == 0, "method": "+".join(methods) or None, "cmdactive": cmd}
+
+    @staticmethod
+    def _lisp_result_path() -> str:
+        """LISP 결과를 받을 임시 파일 경로를 만든다
+
+        LISP의 open이 경로의 한글을 제대로 다루지 못할 수 있으므로, 임시 폴더 경로에
+        ASCII가 아닌 문자가 있으면(한글 사용자 이름 등) 공용 폴더(%PUBLIC%)를 쓴다.
+        """
+        base = tempfile.gettempdir()
+        if not base.isascii():
+            base = os.environ.get("PUBLIC") or "C:\\Users\\Public"
+        return os.path.join(base, f"arcaid_lisp_{uuid.uuid4().hex}.txt")
+
+    def run_lisp(self, expression: str, timeout: Optional[float] = None) -> Dict[str, Any]:
+        """AutoLISP 식 하나를 실행하고 그 결과를 문자열(prin1 표기)로 돌려준다
+
+        식을 progn으로 감싸 결과를 임시 파일에 prin1로 쓰게 한 뒤, 실행이 끝나면 파일을 읽고 지운다.
+        여러 식을 실행하려면 (progn ...)으로 묶는다. 식 안의 줄바꿈은 공백으로 바꿔 보낸다.
+        진행 중인 명령이 있으면 LISP가 그 명령의 입력값으로 들어가므로 실행하지 않는다.
+        돌려주는 값: {"ok", "value", "cmdactive", "error"}
+        """
+        if not self.is_running():
+            return {"ok": False, "value": None, "cmdactive": -1, "error": "CAD 미연결"}
+        cmd = self._read_cmdactive()
+        if cmd != 0:
+            return {"ok": False, "value": None, "cmdactive": cmd,
+                    "error": f"진행 중인 명령이 있어 실행하지 않음(CMDACTIVE={cmd}). cancel_command로 먼저 취소하세요"}
+
+        path = self._lisp_result_path()
+        lisp_path = path.replace("\\", "/")
+        body = " ".join(expression.splitlines())
+        wrapped = (f'(progn (setq mcp-r {body}) (setq mcp-f (open "{lisp_path}" "w")) '
+                   f'(prin1 mcp-r mcp-f) (close mcp-f) (setq mcp-r nil mcp-f nil) (princ))\n')
+        try:
+            self._call_attr(self.doc, "SendCommand", wrapped)
+        except Exception as e:
+            return {"ok": False, "value": None, "cmdactive": self._read_cmdactive(retry=False),
+                    "error": f"LISP 보내기 실패: {str(e)}"}
+        cmd = self._wait_cmd_idle(timeout)
+
+        # 파일이 닫히고 보이기까지 잠깐 걸릴 수 있다
+        for _ in range(5):
+            if os.path.exists(path):
+                break
+            time.sleep(0.1)
+        if not os.path.exists(path):
+            return {"ok": False, "value": None, "cmdactive": cmd,
+                    "error": "결과 파일이 만들어지지 않았습니다. LISP 식에 오류가 있거나 아직 실행 중일 수 있습니다"}
+
+        with open(path, "rb") as f:
+            raw = f.read()
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        # CAD마다 LISP 파일 인코딩이 다를 수 있다(UTF-8 또는 시스템 ANSI 코드 페이지)
+        value = None
+        for encoding in ("utf-8-sig", "mbcs"):
+            try:
+                value = raw.decode(encoding)
+                break
+            except (UnicodeDecodeError, LookupError):
+                continue
+        if value is None:
+            value = raw.decode("utf-8", errors="replace")
+        return {"ok": True, "value": value.rstrip("\r\n"), "cmdactive": cmd, "error": None}

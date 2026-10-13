@@ -28,7 +28,8 @@ _DEFAULT_CONFIG = {
     "cad": {
         "type": "AUTOCAD",
         "startup_wait_time": 20,
-        "command_delay": 0.5
+        "command_delay": 0.5,
+        "command_timeout": 10
     },
     "output": {
         "directory": "./output",

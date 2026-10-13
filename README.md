@@ -48,6 +48,7 @@ uv pip install -r requirements.txt
 - `cad.type`: 위 표의 CAD 종류
 - `cad.startup_wait_time`: CAD를 새로 띄울 때 기다리는 시간(초)
 - `cad.command_delay`: 일부 명령 뒤에 기다리는 시간(초)
+- `cad.command_timeout`: `send_command`, `run_lisp`가 명령 완료를 기다리는 최대 시간(초, 기본 10)
 - `output.directory`: 도면 저장 기본 폴더. 상대 경로는 MCP를 실행한 위치 기준이라, 절대 경로로 적는 것을 권장합니다.
 - `server.transport`: `stdio`(기본) 또는 `streamable-http`
 
