@@ -603,9 +603,25 @@ class CADService:
 cad_service = CADService()
 
 
+def _run_on_active_doc(fn, args, kwargs):
+    """COM 스레드에서 활성 도면을 먼저 따라간 뒤 fn을 실행한다"""
+    if cad_service.controller._sync_active_doc():
+        # 세션 그리기 기록은 이전 도면 것이므로 도면이 바뀌면 비운다
+        cad_service.drawing_state["entities"] = []
+    return fn(*args, **kwargs)
+
+
 async def com(fn, *args, **kwargs):
-    """전용 COM 스레드에서 호출을 실행한다(이벤트 루프를 막지 않고, 스레드 안전)"""
-    return await cad_service.controller.executor.run(fn, *args, **kwargs)
+    """전용 COM 스레드에서 호출을 실행한다(이벤트 루프를 막지 않고, 스레드 안전)
+
+    실행 전에 CAD의 활성 도면을 따라가므로, 사용자가 CAD에서 탭을 바꾸면 그 도면에 작업한다.
+    """
+    return await cad_service.controller.executor.run(_run_on_active_doc, fn, args, kwargs)
+
+
+def _noop() -> None:
+    """활성 도면 동기화만 하려고 com()에 넘기는 빈 함수"""
+    return None
 
 
 def _resolve_color(color) -> Optional[int]:
@@ -645,6 +661,9 @@ async def _ensure_running(ctx: Context) -> bool:
     실제로 시작까지 해야 한다. 예전에는 알림만 보내고 시작하지 않아서,
     screenshot처럼 자동 시작 로직이 없는 도구가 CAD 미실행 시 바로 예외를 냈다.
     """
+    if cad_service.controller.app is not None:
+        # 이미 연결돼 있으면 활성 도면부터 맞춘다(사용자가 도면을 모두 닫았으면 여기서 doc이 None이 된다)
+        await com(_noop)
     if cad_service.controller.is_running():
         return True
     await ctx.info("CAD가 연결되지 않아 CAD를 시작하는 중입니다(처음에는 20초쯤 걸릴 수 있음)...")

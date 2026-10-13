@@ -268,6 +268,34 @@ class CADController:
         """CAD가 실행 중(연결됨)인지 확인한다"""
         return self.app is not None and self.doc is not None
 
+    def _sync_active_doc(self) -> bool:
+        """CAD에서 지금 활성화된 도면을 작업 대상으로 삼는다(COM 스레드에서 호출)
+
+        연결할 때 잡은 도면에 계속 붙어 있으면, 사용자가 CAD에서 다른 도면 탭으로 옮긴 뒤에도
+        그리기가 이전 도면에 들어간다. 그래서 도구를 호출할 때마다 활성 도면을 따라간다.
+        도면이 바뀌었으면 True를 돌려준다. 열린 도면이 하나도 없으면 self.doc을 None으로 둔다.
+        CAD가 바빠 활성 도면을 읽지 못하면 지금 대상을 그대로 둔다.
+        """
+        if self.app is None:
+            return False
+        try:
+            docs = self._call(getattr, self.app, "Documents")
+            if self._call(getattr, docs, "Count") == 0:
+                changed = self.doc is not None
+                self.doc = None
+                return changed
+            active = self._call(getattr, self.app, "ActiveDocument")
+        except Exception as e:
+            logger.debug(f"활성 도면 확인 실패, 현재 대상 유지: {str(e)}")
+            return False
+        if active is None:
+            return False
+        if self.doc is not None and self._safe_attr(self.doc, "Name") == self._safe_attr(active, "Name"):
+            return False
+        logger.info(f"활성 도면으로 대상 변경: {self._safe_attr(active, 'Name')}")
+        self.doc = active
+        return True
+
     def _pt(self, point) -> "win32com.client.VARIANT":
         """좌표점을 COM이 받는 VARIANT double 배열로 감싼다
 
