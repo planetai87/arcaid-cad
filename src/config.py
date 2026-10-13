@@ -1,7 +1,7 @@
-"""配置加载模块：全局单例
+"""설정 불러오기 모듈: 프로세스 전체 싱글턴
 
-此前 config.json 在 server.py / cad_controller.py / nlp_processor.py 三处被重复读取，
-现统一收敛到本模块，整个进程只加载一次配置。
+예전에는 config.json을 server.py / cad_controller.py / nlp_processor.py 세 곳에서 따로 읽었다.
+지금은 이 모듈로 모아서 프로세스 전체에서 한 번만 읽는다.
 """
 
 import json
@@ -11,16 +11,16 @@ from functools import lru_cache
 
 logger = logging.getLogger('cad_mcp_config')
 
-# 配置文件与本模块位于同一目录
+# 설정 파일은 이 모듈과 같은 폴더에 있다
 _CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.json')
 # PC별 설정 파일: git에 올리지 않으며, config.json 위에 덮어쓴다
 _LOCAL_CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'config.local.json')
 
-# 默认配置（配置文件缺失或损坏时的兜底，与旧版 __init__.py 行为一致）
+# 기본 설정(설정 파일이 없거나 깨졌을 때의 대체값, 옛 __init__.py 동작과 같다)
 _DEFAULT_CONFIG = {
     "server": {
-        "name": "CAD MCP Server",
-        "version": "2.0.0",
+        "name": "arcaid-cad",
+        "version": "3.0.0",
         "transport": "stdio",
         "host": "127.0.0.1",
         "port": 8000
@@ -67,12 +67,12 @@ def _load_local_override(config: dict) -> dict:
 
 @lru_cache(maxsize=1)
 def get_config() -> dict:
-    """加载并缓存配置文件（进程内单例）"""
+    """설정 파일을 읽어 캐시한다(프로세스 내 싱글턴)"""
     try:
         with open(_CONFIG_PATH, 'r', encoding='utf-8') as f:
             config = json.load(f)
-        logger.info("配置文件加载成功")
+        logger.info("설정 파일 불러옴")
     except Exception as e:
-        logger.error(f"加载配置文件失败: {str(e)}，使用默认配置")
+        logger.error(f"설정 파일 불러오기 실패: {str(e)}, 기본 설정 사용")
         config = _DEFAULT_CONFIG
     return _load_local_override(config)

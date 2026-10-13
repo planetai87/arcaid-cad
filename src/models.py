@@ -1,8 +1,8 @@
-"""工具结构化输出模型（MCP Structured Output，2025-06-18 规范）
+"""도구 구조화 출력 모델(MCP Structured Output, 2025-06-18 규격)
 
-所有工具统一返回 Pydantic 模型，FastMCP 会据此自动生成 outputSchema，
-客户端（Claude / Cursor 等）可直接获得结构化的 structuredContent，
-而不是此前难以解析的 COM 对象字符串。
+모든 도구는 Pydantic 모델을 반환한다. FastMCP가 이것으로 outputSchema를 자동 생성하므로,
+클라이언트(Claude, Cursor 등)는 예전처럼 해석하기 어려운 COM 객체 문자열이 아니라
+구조화된 structuredContent를 바로 받는다.
 """
 
 from typing import Any, Dict, List, Optional
@@ -11,75 +11,75 @@ from pydantic import BaseModel, Field
 
 
 class ToolResult(BaseModel):
-    """通用工具执行结果"""
-    success: bool = Field(description="执行是否成功")
-    message: str = Field(description="人类可读的结果说明")
+    """공통 도구 실행 결과"""
+    success: bool = Field(description="실행 성공 여부")
+    message: str = Field(description="사람이 읽을 수 있는 결과 설명")
     entity_handles: List[str] = Field(
         default_factory=list,
-        description="本次操作涉及/产生的实体句柄列表，可用于后续编辑或查询"
+        description="이번 작업으로 생기거나 영향을 받은 객체 핸들 목록. 이후 편집·조회에 쓴다"
     )
-    error: Optional[str] = Field(default=None, description="失败时的错误信息")
+    error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
 
 
 class EntityInfo(BaseModel):
-    """实体概要信息"""
-    handle: str = Field(description="实体句柄（CAD内唯一标识）")
-    entity_type: str = Field(description="实体类型（line/circle/arc等）")
-    layer: Optional[str] = Field(default=None, description="所在图层名称")
-    color: Optional[int] = Field(default=None, description="颜色索引（ACI）")
+    """객체 요약 정보"""
+    handle: str = Field(description="객체 핸들(CAD 안에서 고유한 식별자)")
+    entity_type: str = Field(description="객체 종류(line/circle/arc 등)")
+    layer: Optional[str] = Field(default=None, description="레이어 이름")
+    color: Optional[int] = Field(default=None, description="색상 인덱스(ACI)")
 
 
 class ListEntitiesResult(BaseModel):
-    """实体列表查询结果"""
-    success: bool = Field(description="查询是否成功")
-    message: str = Field(description="结果说明")
-    total: int = Field(default=0, description="模型空间实体总数")
-    returned: int = Field(default=0, description="本次实际返回的实体数量（受limit限制）")
-    entities: List[EntityInfo] = Field(default_factory=list, description="实体列表")
+    """객체 목록 조회 결과"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    total: int = Field(default=0, description="모형 공간 객체 총수")
+    returned: int = Field(default=0, description="이번에 실제로 돌려준 객체 수(limit 제한)")
+    entities: List[EntityInfo] = Field(default_factory=list, description="객체 목록")
 
 
 class LayerInfo(BaseModel):
-    """图层信息"""
-    name: str = Field(description="图层名称")
-    color: Optional[int] = Field(default=None, description="图层颜色索引（ACI）")
-    is_current: bool = Field(default=False, description="是否为当前图层")
-    is_frozen: bool = Field(default=False, description="是否冻结")
-    is_locked: bool = Field(default=False, description="是否锁定")
-    is_on: bool = Field(default=True, description="是否打开（可见）")
+    """레이어 정보"""
+    name: str = Field(description="레이어 이름")
+    color: Optional[int] = Field(default=None, description="레이어 색상 인덱스(ACI)")
+    is_current: bool = Field(default=False, description="현재 레이어 여부")
+    is_frozen: bool = Field(default=False, description="동결 여부")
+    is_locked: bool = Field(default=False, description="잠금 여부")
+    is_on: bool = Field(default=True, description="켜짐(보임) 여부")
 
 
 class ListLayersResult(BaseModel):
-    """图层列表查询结果"""
-    success: bool = Field(description="查询是否成功")
-    message: str = Field(description="结果说明")
-    layers: List[LayerInfo] = Field(default_factory=list, description="图层列表")
+    """레이어 목록 조회 결과"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    layers: List[LayerInfo] = Field(default_factory=list, description="레이어 목록")
 
 
 class EntityPropertiesResult(BaseModel):
-    """实体详细属性查询结果"""
-    success: bool = Field(description="查询是否成功")
-    message: str = Field(description="结果说明")
-    handle: str = Field(default="", description="实体句柄")
-    entity_type: str = Field(default="", description="实体类型")
-    layer: Optional[str] = Field(default=None, description="所在图层")
-    color: Optional[int] = Field(default=None, description="颜色索引（ACI）")
-    linetype: Optional[str] = Field(default=None, description="线型名称")
-    lineweight: Optional[int] = Field(default=None, description="线宽")
+    """객체 상세 속성 조회 결과"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    handle: str = Field(default="", description="객체 핸들")
+    entity_type: str = Field(default="", description="객체 종류")
+    layer: Optional[str] = Field(default=None, description="레이어")
+    color: Optional[int] = Field(default=None, description="색상 인덱스(ACI)")
+    linetype: Optional[str] = Field(default=None, description="선종류 이름")
+    lineweight: Optional[int] = Field(default=None, description="선굵기")
     properties: Dict[str, Any] = Field(
         default_factory=dict,
-        description="按实体类型而异的几何属性（坐标/半径/文本内容等）"
+        description="객체 종류에 따라 다른 기하 속성(좌표, 반지름, 문자 내용 등)"
     )
-    error: Optional[str] = Field(default=None, description="失败时的错误信息")
+    error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
 
 
 class BlockInfo(BaseModel):
-    """图块信息"""
-    name: str = Field(description="图块名称")
-    entity_count: int = Field(default=0, description="图块内实体数量")
+    """블록 정보"""
+    name: str = Field(description="블록 이름")
+    entity_count: int = Field(default=0, description="블록 안의 객체 수")
 
 
 class ListBlocksResult(BaseModel):
-    """图块列表查询结果"""
-    success: bool = Field(description="查询是否成功")
-    message: str = Field(description="结果说明")
-    blocks: List[BlockInfo] = Field(default_factory=list, description="图块列表")
+    """블록 목록 조회 결과"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    blocks: List[BlockInfo] = Field(default_factory=list, description="블록 목록")

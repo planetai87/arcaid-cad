@@ -1,6 +1,6 @@
 {
     "server": {
-        "name": "CAD MCP 服务器",
+        "name": "arcaid-cad",
         "version": "3.0.0",
         "transport": "stdio",
         "host": "127.0.0.1",

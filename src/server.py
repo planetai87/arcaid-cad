@@ -10,9 +10,9 @@ from pydantic import Field
 
 sys.dont_write_bytecode = True
 
-# 兼容两种运行方式：
-# 1. 作为包导入（pip install 后，模块名为 src.server）
-# 2. 直接运行 src/server.py（保持旧的 Claude/Cursor 配置可用）
+# 두 가지 실행 방식을 모두 지원한다:
+# 1. 패키지로 import(pip install 후 모듈 이름은 src.server)
+# 2. src/server.py를 직접 실행(기존 Claude/Cursor 설정을 그대로 쓸 수 있게)
 if __package__:
     from .cad_controller import CADController
     from .config import get_config
@@ -31,7 +31,7 @@ from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations, ImageContent, TextContent
 from logging.handlers import RotatingFileHandler
 
-# 配置Windows环境下的UTF-8编码
+# Windows에서 표준 입출력을 UTF-8로 맞춘다
 if sys.platform == "win32" and os.environ.get('PYTHONIOENCODING') is None:
     sys.stdin.reconfigure(encoding="utf-8")
     sys.stdout.reconfigure(encoding="utf-8")
@@ -40,13 +40,13 @@ if sys.platform == "win32" and os.environ.get('PYTHONIOENCODING') is None:
 config = get_config()
 
 def _build_log_handlers() -> list:
-    """构建日志handler：控制台 + 滚动文件
+    """로그 handler를 만든다: 콘솔 + 순환 파일
 
-    日志文件优先写源码目录（开发期就近查看、路径不随启动目录漂移）；
-    pip安装到site-packages等无写权限的位置时回退到用户目录，
-    避免FileHandler构造即抛PermissionError导致服务器启动失败。
-    使用滚动文件（单文件5MB、保留2个备份）防止长期运行日志无限增长。
-    StreamHandler默认输出到stderr，stdio传输模式下不会污染协议数据。
+    로그 파일은 우선 소스 폴더에 쓴다(개발 중 바로 볼 수 있고, 실행 위치에 따라 경로가 바뀌지 않는다).
+    pip으로 site-packages처럼 쓰기 권한이 없는 곳에 설치됐으면 사용자 폴더로 대체한다.
+    그래야 FileHandler 생성 시 PermissionError로 서버가 시작에 실패하지 않는다.
+    순환 파일(파일당 5MB, 백업 2개)로 오래 실행해도 로그가 끝없이 커지지 않게 한다.
+    StreamHandler는 기본으로 stderr에 쓰므로 stdio 전송 모드에서 프로토콜 데이터를 오염시키지 않는다.
     """
     handlers = [logging.StreamHandler()]
     candidates = [
@@ -64,8 +64,8 @@ def _build_log_handlers() -> list:
     return handlers
 
 
-# 配置日志（必须在模块导入早期完成，且全进程只能有这一处basicConfig：
-# root已有handler时basicConfig会被静默忽略，详见src/__init__.py的说明）
+# 로그 설정(모듈 import 초기에 해야 하며, 프로세스 전체에서 basicConfig는 이 한 곳뿐이어야 한다.
+# root에 이미 handler가 있으면 basicConfig는 조용히 무시된다. 자세한 내용은 src/__init__.py 설명 참고)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -73,96 +73,96 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger('mcp_cad_server')
-logger.info("启动 CAD MCP 服务器")
+logger.info("arcaid-cad 서버 시작")
 
 SERVER_NAME = config["server"]["name"]
-SERVER_VERSION = config["server"].get("version", "2.0.0")
+SERVER_VERSION = config["server"].get("version", "3.0.0")
 
 PROMPT_TEMPLATE = """
-助手的目标是演示如何使用CAD MCP服务。通过这个服务，您可以直接在对话中控制CAD软件，创建和修改图形。
+어시스턴트의 목표는 arcaid-cad 서비스 사용법을 보여 주는 것이다. 이 서비스를 쓰면 대화 안에서 CAD 프로그램을 직접 조작해 도형을 만들고 고칠 수 있다.
 
-<cad-mcp>
+<arcaid-cad>
 
-提示：
-这个服务器提供了一个名为"cad-assistant"的预设提示，帮助用户通过自然语言指令控制CAD。用户可以要求绘制各种形状、修改图形元素或保存图纸。
+프롬프트:
+이 서버는 "cad-assistant"라는 미리 정의된 프롬프트를 제공한다. 사용자가 자연어 지시로 CAD를 조작하도록 돕는다. 사용자는 여러 도형을 그리거나, 도형 요소를 고치거나, 도면을 저장해 달라고 요청할 수 있다.
 
-资源：
-此服务器提供"drawing://current"资源，表示当前的CAD图纸状态（会话记录 + 来自CAD文档的实时统计）。
+리소스:
+이 서버는 "drawing://current" 리소스를 제공한다. 현재 CAD 도면 상태(세션 기록 + CAD 문서의 실시간 통계)를 나타낸다.
 
-工具：
+도구:
 
-此服务器提供以下几类工具：
+이 서버는 다음 종류의 도구를 제공한다.
 
-基本绘图工具：
-"draw_line": 在CAD中绘制直线
-"draw_circle": 在CAD中绘制圆
-"draw_arc": 在CAD中绘制弧
-"draw_ellipse": 在CAD中绘制椭圆
-"draw_polyline": 在CAD中绘制多段线
-"draw_rectangle": 在CAD中绘制矩形
-"draw_text": 在CAD中添加文本
-"draw_hatch": 在CAD中绘制填充
-"add_dimension": 在CAD中添加线性标注
+기본 그리기 도구:
+"draw_line": CAD에 선을 그린다
+"draw_circle": CAD에 원을 그린다
+"draw_arc": CAD에 호를 그린다
+"draw_ellipse": CAD에 타원을 그린다
+"draw_polyline": CAD에 폴리선을 그린다
+"draw_rectangle": CAD에 사각형을 그린다
+"draw_text": CAD에 문자를 넣는다
+"draw_hatch": CAD에 해치를 그린다
+"add_dimension": CAD에 선형 치수를 넣는다
 
-查询工具（了解图纸实际内容）：
-"list_layers": 列出所有图层
-"list_entities": 列出模型空间中的实体（返回可编辑的句柄）
-"get_entity_properties": 按句柄查询实体详细属性
-"screenshot": 截取CAD窗口画面确认绘图效果
+조회 도구(도면의 실제 내용 파악):
+"list_layers": 모든 레이어 목록
+"list_entities": 모형 공간 객체 목록(편집에 쓰는 핸들 포함)
+"get_entity_properties": 핸들로 객체 상세 속성 조회
+"screenshot": CAD 창을 캡처해 결과 확인
 
-编辑工具（通过句柄操作已有实体）：
-"erase_entity": 删除实体
-"move_entity": 移动实体
-"rotate_entity": 旋转实体
-"scale_entity": 缩放实体
-"copy_entity": 复制实体
-"mirror_entity": 镜像实体
-"offset_entity": 偏移实体
-"array_linear_entity" / "array_polar_entity": 阵列
-"undo" / "redo": 撤销/重做
+편집 도구(핸들로 기존 객체 조작):
+"erase_entity": 객체 지우기
+"move_entity": 객체 이동
+"rotate_entity": 객체 회전
+"scale_entity": 객체 크기 조정
+"copy_entity": 객체 복사
+"mirror_entity": 객체 대칭
+"offset_entity": 객체 간격 띄우기
+"array_linear_entity" / "array_polar_entity": 배열
+"undo" / "redo": 실행 취소 / 다시 실행
 
-图层与图纸管理：
-"create_layer" / "set_current_layer": 图层管理
-"new_drawing" / "open_drawing" / "close_drawing" / "save_drawing": 图纸管理
-"create_block" / "insert_block" / "list_blocks": 图块操作
-"send_command": 直通CAD命令行执行任意命令
+레이어·도면 관리:
+"create_layer" / "set_current_layer": 레이어 관리
+"new_drawing" / "open_drawing" / "close_drawing" / "save_drawing": 도면 관리
+"create_block" / "insert_block" / "list_blocks": 블록 작업
+"send_command": CAD 명령행에 임의의 명령을 그대로 보낸다
 
-遗留接口：
-"process_command": 处理自然语言命令并转换为CAD操作（推荐优先使用上述结构化工具）
+옛 인터페이스:
+"process_command": 자연어 명령을 CAD 작업으로 바꿔 실행한다(위의 구조화 도구를 먼저 쓰는 것을 권장)
 
-</cad-mcp>
+</arcaid-cad>
 
-请以友好的方式开始演示，例如："嗨！今天我将向您展示如何使用CAD MCP服务。通过这个服务，您可以直接在我们的对话中控制CAD软件，无需手动操作界面。让我们开始吧！"
+친근하게 시연을 시작한다. 예: "안녕하세요! 오늘은 arcaid-cad 사용법을 보여 드릴게요. 이 서비스를 쓰면 화면을 직접 조작하지 않고 대화 안에서 CAD를 다룰 수 있습니다. 시작해 볼까요?"
 """
 
-# 服务器级使用说明（随 initialize 响应下发给客户端）
-SERVER_INSTRUCTIONS = """CAD MCP 服务器：通过 MCP 工具控制 Windows 上的 AutoCAD / 浩辰CAD / 中望CAD。
+# 서버 수준 사용 안내(initialize 응답과 함께 클라이언트에 전달된다)
+SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCAD / AutoCAD / ZWCAD를 조작한다.
 
-使用要点：
-- 首次调用工具时若 CAD 未运行会自动启动（可能需要约20秒），期间会有进度提示
-- 绘图/编辑工具返回 entity_handles（实体句柄），可用于后续编辑与查询
-- 颜色参数支持 ACI 索引(1-256)或中英文颜色名称，不指定则保持随层(ByLayer)
-- 绘图后建议用 screenshot 截图确认效果，用 list_entities 查询图纸实际内容
-- send_command 可直通 CAD 命令行，执行任何未封装为工具的 CAD 命令
+사용 요점:
+- 도구를 처음 호출할 때 CAD가 실행 중이 아니면 자동으로 띄운다(약 20초 걸릴 수 있음). 그동안 진행 알림이 간다
+- 그리기·편집 도구는 entity_handles(객체 핸들)를 돌려준다. 이후 편집과 조회에 쓴다
+- 색상 인자는 ACI 인덱스(1-256) 또는 중국어·영어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다
+- 그린 뒤에는 screenshot으로 결과를 확인하고, list_entities로 도면의 실제 내용을 조회하는 것을 권장한다
+- send_command는 CAD 명령행에 그대로 보내므로, 도구로 만들어지지 않은 어떤 CAD 명령도 실행할 수 있다
 """
 
-# ==================== 参数类型（保留原版 schema 的坐标约束） ====================
+# ==================== 인자 타입(원본 schema의 좌표 제약 유지) ====================
 
-# 坐标点：2~3个数字 [x, y] 或 [x, y, z]
-Point = Annotated[List[float], Field(min_length=2, max_length=3, description="坐标 [x, y] 或 [x, y, z]")]
-# 点集：至少2个坐标点
-Points = Annotated[List[Point], Field(min_length=2, description="点集 [[x1,y1], [x2,y2], ...]（每个点2~3个分量）")]
-# 填充边界点集：至少3个坐标点
-HatchPoints = Annotated[List[Point], Field(min_length=3, description="填充边界点集（至少3个点）")]
-# 正数参数（半径/字高/缩放系数等：CAD对0和负值会直接报错，在schema层提前拦截）
-PosFloat = Annotated[float, Field(gt=0, description="正数")]
-# 阵列数量（含原实体）：下限2（<2没有阵列意义），上限防止误操作生成海量实体卡死图纸
-ArrayCount = Annotated[int, Field(ge=2, le=10000, description="阵列总数（含原实体，2~10000）")]
+# 좌표점: 숫자 2~3개 [x, y] 또는 [x, y, z]
+Point = Annotated[List[float], Field(min_length=2, max_length=3, description="좌표 [x, y] 또는 [x, y, z]")]
+# 점 목록: 좌표점 2개 이상
+Points = Annotated[List[Point], Field(min_length=2, description="점 목록 [[x1,y1], [x2,y2], ...](점마다 성분 2~3개)")]
+# 해치 경계 점 목록: 좌표점 3개 이상
+HatchPoints = Annotated[List[Point], Field(min_length=3, description="해치 경계 점 목록(3개 이상)")]
+# 양수 인자(반지름/문자 높이/배율 등: CAD는 0이나 음수에 바로 오류를 내므로 schema 단계에서 미리 막는다)
+PosFloat = Annotated[float, Field(gt=0, description="양수")]
+# 배열 개수(원본 객체 포함): 하한 2(2 미만은 배열 의미가 없음), 상한은 실수로 객체를 대량 생성해 도면이 멈추는 것을 막기 위함
+ArrayCount = Annotated[int, Field(ge=2, le=10000, description="배열 총 개수(원본 포함, 2~10000)")]
 
 
 class CADService:
     def __init__(self):
-        """初始化CAD服务"""
+        """CAD 서비스를 초기화한다"""
         self.controller = CADController()
         self.nlp_processor = NLPProcessor()
         self.drawing_state = {
@@ -171,23 +171,23 @@ class CADService:
             "last_command": "",
             "last_result": ""
         }
-        logger.info("CAD服务已初始化")
+        logger.info("CAD 서비스 초기화 완료")
 
     @staticmethod
     def _handle(entity) -> Optional[str]:
-        """安全读取实体句柄"""
+        """객체 핸들을 안전하게 읽는다"""
         return CADController._safe_attr(entity, "Handle")
 
     def start_cad(self):
-        """启动CAD"""
+        """CAD를 시작한다"""
         return self.controller.start_cad()
 
     def draw_line(self, start_point, end_point, layer=None, color=None, lineweight=None):
-        """绘制直线"""
+        """선을 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_line(start_point, end_point, current_layer, color, lineweight)
@@ -201,19 +201,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制直线从{start_point}到{end_point}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"선 그리기: {start_point}에서 {end_point}까지"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_circle(self, center, radius, layer=None, color=None, lineweight=None):
-        """绘制圆"""
+        """원을 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_circle(center, radius, current_layer, color, lineweight)
@@ -227,19 +227,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制圆，中心点{center}，半径{radius}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"원 그리기: 중심 {center}, 반지름 {radius}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_arc(self, center, radius, start_angle, end_angle, layer=None, color=None, lineweight=None):
-        """绘制弧"""
+        """호를 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_arc(center, radius, start_angle, end_angle, current_layer, color, lineweight)
@@ -256,19 +256,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制弧，中心点{center}，半径{radius}，起始角度{start_angle}，结束角度{end_angle}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"호 그리기: 중심 {center}, 반지름 {radius}, 시작 각도 {start_angle}, 끝 각도 {end_angle}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_ellipse(self, center, major_axis, minor_axis, rotation=0, layer=None, color=None, lineweight=None):
-        """绘制椭圆"""
+        """타원을 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_ellipse(center, major_axis, minor_axis, rotation, current_layer, color, lineweight)
@@ -285,19 +285,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制椭圆，中心点{center}，长轴{major_axis}，短轴{minor_axis}，旋转角度{rotation}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"타원 그리기: 중심 {center}, 장축 {major_axis}, 단축 {minor_axis}, 회전 각도 {rotation}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_polyline(self, points, closed=False, layer=None, color=None, lineweight=None):
-        """绘制多段线"""
+        """폴리선을 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_polyline(points, closed, current_layer, color, lineweight)
@@ -311,19 +311,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制多段线，点集{points}，{'闭合' if closed else '不闭合'}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"폴리선 그리기: 점 {points}, {'닫힘' if closed else '열림'}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_rectangle(self, corner1, corner2, layer=None, color=None, lineweight=None):
-        """绘制矩形"""
+        """사각형을 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_rectangle(corner1, corner2, current_layer, color, lineweight)
@@ -337,19 +337,19 @@ class CADService:
                 "color": color,
                 "lineweight": lineweight
             })
-            self.drawing_state["last_command"] = f"绘制矩形，对角点{corner1}和{corner2}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"사각형 그리기: 대각점 {corner1}, {corner2}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_text(self, position, text, height=2.5, rotation=0, layer=None, color=None):
-        """添加文本"""
+        """문자를 넣는다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_text(position, text, height, rotation, current_layer, color)
@@ -364,19 +364,19 @@ class CADService:
                 "layer": current_layer,
                 "color": color
             })
-            self.drawing_state["last_command"] = f"添加文本'{text}'，位置{position}，高度{height}，旋转{rotation}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"문자 넣기: '{text}', 위치 {position}, 높이 {height}, 회전 {rotation}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def draw_hatch(self, points, pattern_name="SOLID", scale=1.0, layer=None, color=None):
-        """绘制填充"""
+        """해치를 그린다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.draw_hatch(points, pattern_name, scale, current_layer, color)
@@ -390,19 +390,19 @@ class CADService:
                 "layer": current_layer,
                 "color": color
             })
-            self.drawing_state["last_command"] = f"绘制填充，点集{points}，图案{pattern_name}，比例{scale}，图层{current_layer}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"해치 그리기: 점 {points}, 패턴 {pattern_name}, 축척 {scale}, 레이어 {current_layer}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def add_dimension(self, start_point, end_point, text_position=None, textheight=5, layer=None, color=None):
-        """添加线性标注"""
+        """선형 치수를 넣는다"""
         if not self.controller.is_running():
             self.start_cad()
 
-        # 使用当前图层或指定图层
+        # 지정한 레이어가 없으면 현재 레이어를 쓴다
         current_layer = layer or self.drawing_state["current_layer"]
 
         result = self.controller.add_dimension(start_point, end_point, text_position, textheight, current_layer, color)
@@ -417,56 +417,56 @@ class CADService:
                 "layer": current_layer,
                 "color": color
             })
-            self.drawing_state["last_command"] = f"添加标注从{start_point}到{end_point}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"치수 넣기: {start_point}에서 {end_point}까지"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def save_drawing(self, file_path):
-        """保存图纸"""
+        """도면을 저장한다"""
         if not self.controller.is_running():
             return False
 
         result = self.controller.save_drawing(file_path)
         if result:
-            self.drawing_state["last_command"] = f"保存图纸到{file_path}"
-            self.drawing_state["last_result"] = "成功"
+            self.drawing_state["last_command"] = f"도면 저장: {file_path}"
+            self.drawing_state["last_result"] = "성공"
         else:
-            self.drawing_state["last_result"] = "失败"
+            self.drawing_state["last_result"] = "실패"
 
         return result
 
     def process_command(self, command: str) -> Dict[str, Any]:
-        """处理自然语言命令（遗留接口，推荐客户端直接调用结构化绘图工具）"""
+        """자연어 명령을 처리한다(옛 인터페이스. 클라이언트는 구조화 그리기 도구를 직접 쓰는 것을 권장)"""
         if not self.controller.is_running():
             self.start_cad()
-        # 使用NLP处理器解析命令
+        # NLP 처리기로 명령을 해석한다
         parsed_command = self.nlp_processor.process_command(command)
         command_type = parsed_command.get("type")
         try:
-            # 未识别的命令明确返回失败（此前会静默返回None）
+            # 알아듣지 못한 명령은 명확히 실패로 돌려준다(예전에는 조용히 None을 돌려줬다)
             if command_type in (None, "unknown", "error"):
                 return {
                     "success": False,
-                    "message": parsed_command.get("error") or "无法识别的命令",
+                    "message": parsed_command.get("error") or "알 수 없는 명령",
                     "original_command": command
                 }
 
-            # 统一解析颜色：命令文本中提取的颜色优先于解析结果中的颜色参数
+            # 색상을 통일해서 해석한다: 명령 문자열에서 뽑은 색이 해석 결과의 색 인자보다 우선한다
             color = parsed_command.get("color")
             color_rgb = self.nlp_processor.extract_color_from_command(command)
             if color_rgb is not None:
                 color = color_rgb
-            # 获取线宽参数
+            # 선굵기 인자
             lineweight = parsed_command.get("lineweight")
 
             if command_type == "draw_line":
                 result = self.draw_line(parsed_command.get("start_point"), parsed_command.get("end_point"), None, color, lineweight)
                 return {
                     "success": result is not None,
-                    "message": "直线已绘制" if result else "绘制直线失败",
+                    "message": "선을 그렸습니다" if result else "선 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -474,7 +474,7 @@ class CADService:
                 result = self.draw_circle(parsed_command.get("center"), parsed_command.get("radius"), None, color, lineweight)
                 return {
                     "success": result is not None,
-                    "message": "圆已绘制" if result else "绘制圆失败",
+                    "message": "원을 그렸습니다" if result else "원 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -483,17 +483,17 @@ class CADService:
                 radius = parsed_command.get("radius")
                 start_angle = parsed_command.get("start_angle")
                 end_angle = parsed_command.get("end_angle")
-                # 确保所有必要参数都存在且有效
+                # 필요한 인자가 모두 있고 유효한지 확인한다
                 if center is None or radius is None or start_angle is None or end_angle is None:
                     return {
                         "success": False,
-                        "message": "绘制圆弧失败：缺少必要参数",
-                        "error": "缺少必要参数：中心点、半径、起始角度或结束角度"
+                        "message": "호 그리기 실패: 필요한 인자가 없습니다",
+                        "error": "필요한 인자 없음: 중심, 반지름, 시작 각도 또는 끝 각도"
                     }
                 result = self.draw_arc(center, radius, start_angle, end_angle, None, color, lineweight)
                 return {
                     "success": result is not None,
-                    "message": "圆弧已绘制" if result else "绘制圆弧失败",
+                    "message": "호를 그렸습니다" if result else "호 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -501,18 +501,18 @@ class CADService:
                 center = parsed_command.get("center")
                 major_axis = parsed_command.get("major_axis")
                 minor_axis = parsed_command.get("minor_axis")
-                rotation = parsed_command.get("rotation", 0)  # 默认旋转角度为0
-                # 确保所有必要参数都存在且有效
+                rotation = parsed_command.get("rotation", 0)  # 회전 각도 기본값 0
+                # 필요한 인자가 모두 있고 유효한지 확인한다
                 if center is None or major_axis is None or minor_axis is None:
                     return {
                         "success": False,
-                        "message": "绘制椭圆失败：缺少必要参数",
-                        "error": "缺少必要参数：中心点、长轴或短轴"
+                        "message": "타원 그리기 실패: 필요한 인자가 없습니다",
+                        "error": "필요한 인자 없음: 중심, 장축 또는 단축"
                     }
                 result = self.draw_ellipse(center, major_axis, minor_axis, rotation, None, color, lineweight)
                 return {
                     "success": result is not None,
-                    "message": "椭圆已绘制" if result else "绘制椭圆失败",
+                    "message": "타원을 그렸습니다" if result else "타원 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -520,7 +520,7 @@ class CADService:
                 result = self.draw_rectangle(parsed_command.get("corner1"), parsed_command.get("corner2"), None, color, lineweight)
                 return {
                     "success": result is not None,
-                    "message": "矩形已绘制" if result else "绘制矩形失败",
+                    "message": "사각형을 그렸습니다" if result else "사각형 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -530,7 +530,7 @@ class CADService:
                 result = self.draw_text(parsed_command.get("position"), parsed_command.get("text"), height, rotation, None, color)
                 return {
                     "success": result is not None,
-                    "message": "文本已添加" if result else "添加文本失败",
+                    "message": "문자를 넣었습니다" if result else "문자 넣기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -538,26 +538,26 @@ class CADService:
                 points = parsed_command.get("points")
                 pattern_name = parsed_command.get("pattern_name", "SOLID")
                 scale = parsed_command.get("scale", 1.0)
-                # 确保所有必要参数都存在且有效
+                # 필요한 인자가 모두 있고 유효한지 확인한다
                 if points is None or len(points) < 3:
                     return {
                         "success": False,
-                        "message": "绘制填充失败：缺少必要参数或点数不足",
-                        "error": "填充边界至少需要3个点"
+                        "message": "해치 그리기 실패: 필요한 인자가 없거나 점이 부족합니다",
+                        "error": "해치 경계에는 점이 3개 이상 필요합니다"
                     }
                 result = self.draw_hatch(points, pattern_name, scale, None, color)
                 return {
                     "success": result is not None,
-                    "message": "填充已绘制" if result else "绘制填充失败",
+                    "message": "해치를 그렸습니다" if result else "해치 그리기 실패",
                     "entity_id": self._handle(result)
                 }
 
             elif command_type == "add_dimension":
-                # 统一经由服务层（同时更新会话状态）
+                # 서비스 계층을 거친다(세션 상태도 함께 갱신)
                 result = self.add_dimension(parsed_command.get("start_point"), parsed_command.get("end_point"), parsed_command.get("text_position"))
                 return {
                     "success": result is not None,
-                    "message": "标注已添加" if result else "添加标注失败",
+                    "message": "치수를 넣었습니다" if result else "치수 넣기 실패",
                     "entity_id": self._handle(result)
                 }
 
@@ -566,73 +566,73 @@ class CADService:
                 result = self.save_drawing(file_path)
                 return {
                     "success": result,
-                    "message": f"图纸已保存到 {file_path}" if result else f"保存图纸到 {file_path} 失败"
+                    "message": f"도면을 저장했습니다: {file_path}" if result else f"도면 저장 실패: {file_path}"
                 }
 
-            # 处理图层操作
+            # 레이어 작업 처리
             elif command_type == "create_layer":
                 layer_name = parsed_command.get("layer_name")
                 if not layer_name:
                     return {
                         "success": False,
-                        "message": "创建图层失败：未指定图层名称"
+                        "message": "레이어 만들기 실패: 레이어 이름이 없습니다"
                     }
                 result = self.controller.create_layer(layer_name)  # , color
                 if result:
                     self.drawing_state["current_layer"] = layer_name
                 return {
                     "success": result,
-                    "message": f"图层 {layer_name} 已创建" if result else f"创建图层 {layer_name} 失败"
+                    "message": f"레이어 {layer_name}을(를) 만들었습니다" if result else f"레이어 {layer_name} 만들기 실패"
                 }
 
-            # 其他已知但暂不支持的命令类型
+            # 알고는 있지만 아직 지원하지 않는 명령 종류
             return {
                 "success": False,
-                "message": f"暂不支持的命令类型: {command_type}"
+                "message": f"아직 지원하지 않는 명령 종류: {command_type}"
             }
 
         except Exception as e:
             return {
                 "success": False,
-                "message": f"处理命令时出错: {str(e)}"
+                "message": f"명령 처리 중 오류: {str(e)}"
             }
 
 
-# ==================== 服务实例与通用工具函数 ====================
+# ==================== 서비스 인스턴스와 공통 도우미 ====================
 
 cad_service = CADService()
 
 
 async def com(fn, *args, **kwargs):
-    """在专用COM线程上执行调用（避免阻塞事件循环，且线程安全）"""
+    """전용 COM 스레드에서 호출을 실행한다(이벤트 루프를 막지 않고, 스레드 안전)"""
     return await cad_service.controller.executor.run(fn, *args, **kwargs)
 
 
 def _resolve_color(color) -> Optional[int]:
-    """解析颜色参数为ACI索引：None=随层(ByLayer)；支持索引和中英文颜色名称"""
+    """색상 인자를 ACI 인덱스로 바꾼다: None=ByLayer. 인덱스와 중국어·영어 색 이름을 받는다"""
     return cad_service.nlp_processor.color_to_index(color)
 
 
 async def _entity_result(entity, ok_message: str, fail_message: str) -> ToolResult:
-    """将单个COM实体包装为统一的工具结果
+    """COM 객체 하나를 공통 도구 결과로 감싼다
 
-    句柄必须在COM线程上读取——实体由COM线程创建，
-    主线程直接访问未封送的COM接口指针属于跨套间调用，会失败甚至崩溃。
+    핸들은 반드시 COM 스레드에서 읽어야 한다. 객체는 COM 스레드가 만들었으므로,
+    메인 스레드에서 마샬링되지 않은 COM 인터페이스 포인터에 직접 접근하면 아파트 간 호출이 되어 실패하거나 프로세스가 죽을 수 있다.
     """
     if entity is None:
-        return ToolResult(success=False, message=fail_message, error="CAD操作失败，详情见 cad_mcp.log")
+        return ToolResult(success=False, message=fail_message, error="CAD 작업 실패, 자세한 내용은 cad_mcp.log 참고")
     handle = await com(CADController._safe_attr, entity, "Handle")
     return ToolResult(success=True, message=ok_message,
                       entity_handles=[str(handle)] if handle else [])
 
 
 def _extract_handles_sync(entities: List[Any]) -> List[str]:
-    """在COM线程上批量提取实体句柄"""
+    """COM 스레드에서 객체 핸들을 한꺼번에 뽑는다"""
     return [str(h) for h in (CADController._safe_attr(e, "Handle") for e in entities) if h]
 
 
 async def _entities_result(entities: List[Any], ok_message: str, fail_message: str) -> ToolResult:
-    """将COM实体列表包装为统一的工具结果（句柄在COM线程上读取）"""
+    """COM 객체 목록을 공통 도구 결과로 감싼다(핸들은 COM 스레드에서 읽는다)"""
     if not entities:
         return ToolResult(success=False, message=fail_message)
     handles = await com(_extract_handles_sync, entities)
@@ -640,53 +640,53 @@ async def _entities_result(entities: List[Any], ok_message: str, fail_message: s
 
 
 async def _ensure_running(ctx: Context) -> bool:
-    """确保CAD已运行：未运行时先给进度提示再自动启动（首次启动可能较慢）
+    """CAD가 실행 중인지 보장한다: 연결이 없으면 진행 알림을 먼저 보내고 자동으로 시작한다(첫 시작은 느릴 수 있음)
 
-    注意必须真正发起启动——此前只发提示不启动，导致screenshot等
-    不带自动启动逻辑的工具在CAD未运行时直接抛异常。
+    실제로 시작까지 해야 한다. 예전에는 알림만 보내고 시작하지 않아서,
+    screenshot처럼 자동 시작 로직이 없는 도구가 CAD 미실행 시 바로 예외를 냈다.
     """
     if cad_service.controller.is_running():
         return True
-    await ctx.info("CAD未运行，正在启动CAD（首次启动可能需要约20秒）...")
+    await ctx.info("CAD가 연결되지 않아 CAD를 시작하는 중입니다(처음에는 20초쯤 걸릴 수 있음)...")
     if await com(cad_service.start_cad):
         return True
-    await ctx.info("CAD自动启动失败，请检查CAD软件是否已安装并能正常启动")
+    await ctx.info("CAD 자동 시작 실패. CAD가 설치돼 있고 정상적으로 실행되는지 확인하세요")
     return False
 
 
-# ==================== MCP 服务器与工具注册 ====================
+# ==================== MCP 서버와 도구 등록 ====================
 
 mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
 
 
-# ---------- 基本绘图工具 ----------
+# ---------- 기본 그리기 도구 ----------
 
 @mcp.tool()
 async def draw_line(ctx: Context, start_point: Point, end_point: Point,
                     layer: Optional[str] = None, color: Union[int, str, None] = None,
                     lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制直线
+    """CAD에 선을 그린다
 
-    color 支持CAD颜色索引(1-256)或中英文颜色名称（如"红色"、"red"），不指定则保持随层颜色。
+    color는 CAD 색상 인덱스(1-256) 또는 중국어·영어 색 이름(예: "红色", "red")을 받는다. 지정하지 않으면 ByLayer를 유지한다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_line, start_point, end_point, layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "直线已绘制", "绘制直线失败")
+    return await _entity_result(entity, "선을 그렸습니다", "선 그리기 실패")
 
 
 @mcp.tool()
 async def draw_circle(ctx: Context, center: Point, radius: PosFloat,
                       layer: Optional[str] = None, color: Union[int, str, None] = None,
                       lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制圆
+    """CAD에 원을 그린다
 
-    color 支持CAD颜色索引(1-256)或中英文颜色名称，不指定则保持随层颜色。
+    color는 CAD 색상 인덱스(1-256) 또는 중국어·영어 색 이름을 받는다. 지정하지 않으면 ByLayer를 유지한다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_circle, center, radius, layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "圆已绘制", "绘制圆失败")
+    return await _entity_result(entity, "원을 그렸습니다", "원 그리기 실패")
 
 
 @mcp.tool()
@@ -694,12 +694,12 @@ async def draw_arc(ctx: Context, center: Point, radius: PosFloat,
                    start_angle: float, end_angle: float,
                    layer: Optional[str] = None, color: Union[int, str, None] = None,
                    lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制弧（角度单位：度）"""
+    """CAD에 호를 그린다(각도 단위: 도)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_arc, center, radius, start_angle, end_angle,
                        layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "圆弧已绘制", "绘制圆弧失败")
+    return await _entity_result(entity, "호를 그렸습니다", "호 그리기 실패")
 
 
 @mcp.tool()
@@ -707,97 +707,97 @@ async def draw_ellipse(ctx: Context, center: Point, major_axis: PosFloat, minor_
                        rotation: float = 0, layer: Optional[str] = None,
                        color: Union[int, str, None] = None,
                        lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制椭圆（rotation 为旋转角度，单位：度）"""
+    """CAD에 타원을 그린다(rotation은 회전 각도, 단위: 도)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_ellipse, center, major_axis, minor_axis, rotation,
                        layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "椭圆已绘制", "绘制椭圆失败")
+    return await _entity_result(entity, "타원을 그렸습니다", "타원 그리기 실패")
 
 
 @mcp.tool()
 async def draw_polyline(ctx: Context, points: Points, closed: bool = False,
                         layer: Optional[str] = None, color: Union[int, str, None] = None,
                         lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制多段线（closed=True 时闭合）"""
+    """CAD에 폴리선을 그린다(closed=True면 닫는다)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_polyline, points, closed, layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "多段线已绘制", "绘制多段线失败")
+    return await _entity_result(entity, "폴리선을 그렸습니다", "폴리선 그리기 실패")
 
 
 @mcp.tool()
 async def draw_rectangle(ctx: Context, corner1: Point, corner2: Point,
                          layer: Optional[str] = None, color: Union[int, str, None] = None,
                          lineweight: Optional[float] = None) -> ToolResult:
-    """在CAD中绘制矩形（由两个对角点确定）"""
+    """CAD에 사각형을 그린다(대각점 두 개로 정한다)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_rectangle, corner1, corner2, layer, _resolve_color(color), lineweight)
-    return await _entity_result(entity, "矩形已绘制", "绘制矩形失败")
+    return await _entity_result(entity, "사각형을 그렸습니다", "사각형 그리기 실패")
 
 
 @mcp.tool()
 async def draw_text(ctx: Context, position: Point, text: str, height: PosFloat = 2.5,
                     rotation: float = 0, layer: Optional[str] = None,
                     color: Union[int, str, None] = None) -> ToolResult:
-    """在CAD中添加单行文本"""
+    """CAD에 한 줄 문자를 넣는다"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_text, position, text, height, rotation, layer, _resolve_color(color))
-    return await _entity_result(entity, "文本已添加", "添加文本失败")
+    return await _entity_result(entity, "문자를 넣었습니다", "문자 넣기 실패")
 
 
 @mcp.tool()
 async def draw_hatch(ctx: Context, points: HatchPoints, pattern_name: str = "SOLID",
                      scale: PosFloat = 1.0, layer: Optional[str] = None,
                      color: Union[int, str, None] = None) -> ToolResult:
-    """在CAD中绘制填充（points 为闭合边界点集，至少3个点）
+    """CAD에 해치를 그린다(points는 닫힌 경계 점 목록, 3개 이상)
 
-    pattern_name 为填充图案名称，默认 SOLID（实体填充）。
+    pattern_name은 해치 패턴 이름이고 기본값은 SOLID(솔리드 채우기)다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.draw_hatch, points, pattern_name, scale, layer, _resolve_color(color))
-    return await _entity_result(entity, "填充已绘制", "绘制填充失败")
+    return await _entity_result(entity, "해치를 그렸습니다", "해치 그리기 실패")
 
 
 @mcp.tool()
 async def add_dimension(ctx: Context, start_point: Point, end_point: Point,
                         text_position: Optional[Point] = None, textheight: PosFloat = 5,
                         layer: Optional[str] = None, color: Union[int, str, None] = None) -> ToolResult:
-    """在CAD中添加线性标注（text_position 不指定时自动放在中点上方）"""
+    """CAD에 선형 치수를 넣는다(text_position을 주지 않으면 중점 위에 자동으로 놓는다)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.add_dimension, start_point, end_point, text_position, textheight,
                        layer, _resolve_color(color))
-    return await _entity_result(entity, "标注已添加", "添加标注失败")
+    return await _entity_result(entity, "치수를 넣었습니다", "치수 넣기 실패")
 
 
-# ---------- 查询工具（闭合AI反馈回路：AI能看到图纸实际内容） ----------
+# ---------- 조회 도구(AI가 도면의 실제 내용을 볼 수 있게 피드백 고리를 닫는다) ----------
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_layers(ctx: Context) -> ListLayersResult:
-    """列出当前图纸的所有图层（名称、颜色、冻结/锁定/开关状态、是否当前层）"""
+    """현재 도면의 모든 레이어를 나열한다(이름, 색, 동결/잠금/켜짐 상태, 현재 레이어 여부)"""
     if not cad_service.controller.is_running():
-        return ListLayersResult(success=False, message="CAD未运行")
+        return ListLayersResult(success=False, message="CAD 미연결")
     layers = await com(cad_service.controller.list_layers)
-    return ListLayersResult(success=True, message=f"共{len(layers)}个图层", layers=layers)
+    return ListLayersResult(success=True, message=f"레이어 {len(layers)}개", layers=layers)
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_entities(ctx: Context, entity_type: Optional[str] = None,
                         limit: int = 50) -> ListEntitiesResult:
-    """列出模型空间中的实体（实时查询，与CAD文档保持同步）
+    """모형 공간의 객체를 나열한다(실시간 조회, CAD 문서와 항상 일치)
 
-    返回实体的句柄(handle)，可用于编辑类工具与 get_entity_properties。
-    entity_type 可按类型过滤（如 line/circle/arc/text）；limit 控制返回数量。
+    객체 핸들(handle)을 돌려주며, 편집 도구와 get_entity_properties에 쓸 수 있다.
+    entity_type으로 종류를 거를 수 있고(예: line/circle/arc/text), limit으로 돌려줄 개수를 정한다.
     """
     if not cad_service.controller.is_running():
-        return ListEntitiesResult(success=False, message="CAD未运行")
+        return ListEntitiesResult(success=False, message="CAD 미연결")
     result = await com(cad_service.controller.list_entities, entity_type, limit)
     return ListEntitiesResult(success=True,
-                              message=f"模型空间共{result['total']}个实体，返回{len(result['entities'])}个",
+                              message=f"모형 공간 객체 {result['total']}개 중 {len(result['entities'])}개 반환",
                               total=result["total"],
                               returned=len(result["entities"]),
                               entities=result["entities"])
@@ -805,270 +805,270 @@ async def list_entities(ctx: Context, entity_type: Optional[str] = None,
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def get_entity_properties(ctx: Context, handle: str) -> EntityPropertiesResult:
-    """按句柄查询实体详细属性（几何信息随实体类型而异：坐标/半径/文本内容等）"""
+    """핸들로 객체 상세 속성을 조회한다(기하 정보는 객체 종류마다 다르다: 좌표, 반지름, 문자 내용 등)"""
     if not cad_service.controller.is_running():
-        return EntityPropertiesResult(success=False, message="CAD未运行")
+        return EntityPropertiesResult(success=False, message="CAD 미연결")
     try:
         props = await com(cad_service.controller.get_entity_properties, handle)
-        return EntityPropertiesResult(success=True, message="查询成功", **props)
+        return EntityPropertiesResult(success=True, message="조회 성공", **props)
     except Exception as e:
-        return EntityPropertiesResult(success=False, message=f"查询句柄 {handle} 失败", error=str(e))
+        return EntityPropertiesResult(success=False, message=f"핸들 {handle} 조회 실패", error=str(e))
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def screenshot(ctx: Context):
-    """截取CAD主窗口画面并返回PNG预览图（用于确认绘图效果）"""
+    """CAD 메인 창을 캡처해 PNG 미리보기를 돌려준다(그린 결과 확인용)"""
     if not await _ensure_running(ctx):
-        return [TextContent(type="text", text="CAD未运行且自动启动失败，无法截图")]
+        return [TextContent(type="text", text="CAD 미연결, 자동 시작 실패. 캡처할 수 없습니다")]
     png_bytes = await com(cad_service.controller.screenshot)
-    # 编码为base64返回图片内容块
+    # base64로 인코딩해 이미지 콘텐츠 블록으로 돌려준다
     b64 = base64.b64encode(png_bytes).decode("utf-8")
     return [
         ImageContent(type="image", data=b64, mimeType="image/png"),
-        TextContent(type="text", text="CAD窗口截图（PNG）"),
+        TextContent(type="text", text="CAD 창 캡처(PNG)"),
     ]
 
 
-# ---------- 编辑工具（通过句柄操作已有实体） ----------
+# ---------- 편집 도구(핸들로 기존 객체 조작) ----------
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def erase_entity(ctx: Context, handle: str) -> ToolResult:
-    """删除指定句柄的实体"""
+    """지정한 핸들의 객체를 지운다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.erase_entity, handle)
-    return ToolResult(success=ok, message="实体已删除" if ok else f"删除句柄 {handle} 失败")
+    return ToolResult(success=ok, message="객체를 지웠습니다" if ok else f"핸들 {handle} 지우기 실패")
 
 
 @mcp.tool()
 async def move_entity(ctx: Context, handle: str, displacement: Point) -> ToolResult:
-    """移动实体（displacement 为位移向量 [dx, dy, dz]）"""
+    """객체를 이동한다(displacement는 이동 벡터 [dx, dy, dz])"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.move_entity, handle, displacement)
-    return ToolResult(success=ok, message="实体已移动" if ok else f"移动句柄 {handle} 失败")
+    return ToolResult(success=ok, message="객체를 이동했습니다" if ok else f"핸들 {handle} 이동 실패")
 
 
 @mcp.tool()
 async def rotate_entity(ctx: Context, handle: str, base_point: Point, angle_degrees: float) -> ToolResult:
-    """绕基点旋转实体（角度单位：度，逆时针为正）"""
+    """기준점을 중심으로 객체를 회전한다(각도 단위: 도, 반시계 방향이 양수)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.rotate_entity, handle, base_point, angle_degrees)
-    return ToolResult(success=ok, message="实体已旋转" if ok else f"旋转句柄 {handle} 失败")
+    return ToolResult(success=ok, message="객체를 회전했습니다" if ok else f"핸들 {handle} 회전 실패")
 
 
 @mcp.tool()
 async def scale_entity(ctx: Context, handle: str, base_point: Point, scale_factor: PosFloat) -> ToolResult:
-    """绕基点缩放实体（scale_factor>1 放大，<1 缩小）"""
+    """기준점을 중심으로 객체 크기를 바꾼다(scale_factor>1이면 확대, <1이면 축소)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.scale_entity, handle, base_point, scale_factor)
-    return ToolResult(success=ok, message="实体已缩放" if ok else f"缩放句柄 {handle} 失败")
+    return ToolResult(success=ok, message="객체 크기를 바꿨습니다" if ok else f"핸들 {handle} 크기 조정 실패")
 
 
 @mcp.tool()
 async def copy_entity(ctx: Context, handle: str, displacement: Point) -> ToolResult:
-    """复制实体并平移指定位移，返回新实体句柄"""
+    """객체를 복사해 지정한 만큼 옮기고, 새 객체 핸들을 돌려준다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     copy = await com(cad_service.controller.copy_entity, handle, displacement)
-    return await _entity_result(copy, "实体已复制", f"复制句柄 {handle} 失败")
+    return await _entity_result(copy, "객체를 복사했습니다", f"핸들 {handle} 복사 실패")
 
 
 @mcp.tool()
 async def mirror_entity(ctx: Context, handle: str, point1: Point, point2: Point) -> ToolResult:
-    """沿两点确定的镜像轴镜像实体（保留原实体），返回新实体句柄"""
+    """두 점으로 정한 대칭축을 기준으로 객체를 대칭 복사하고(원본 유지), 새 객체 핸들을 돌려준다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     mirrored = await com(cad_service.controller.mirror_entity, handle, point1, point2)
-    return await _entity_result(mirrored, "实体已镜像", f"镜像句柄 {handle} 失败")
+    return await _entity_result(mirrored, "객체를 대칭 복사했습니다", f"핸들 {handle} 대칭 실패")
 
 
 @mcp.tool()
 async def offset_entity(ctx: Context, handle: str, distance: float) -> ToolResult:
-    """偏移实体（正负值决定偏移方向），返回新实体句柄"""
+    """객체를 간격 띄우기 하고(양수/음수로 방향 결정), 새 객체 핸들을 돌려준다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     entities = await com(cad_service.controller.offset_entity, handle, distance)
-    return await _entities_result(entities, "实体已偏移", f"偏移句柄 {handle} 失败")
+    return await _entities_result(entities, "객체를 간격 띄우기 했습니다", f"핸들 {handle} 간격 띄우기 실패")
 
 
 @mcp.tool()
 async def array_linear_entity(ctx: Context, handle: str, count: ArrayCount, displacement: Point) -> ToolResult:
-    """矩形阵列：沿位移向量方向复制 count-1 份（含原实体共 count 个）"""
+    """직선 배열: 이동 벡터 방향으로 count-1개를 복사한다(원본 포함 총 count개)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     entities = await com(cad_service.controller.array_linear_entity, handle, count, displacement)
-    return await _entities_result(entities, f"已完成{count}个的线性阵列", f"阵列句柄 {handle} 失败")
+    return await _entities_result(entities, f"{count}개 직선 배열 완료", f"핸들 {handle} 배열 실패")
 
 
 @mcp.tool()
 async def array_polar_entity(ctx: Context, handle: str, count: ArrayCount, center: Point,
                              total_angle_degrees: float = 360.0) -> ToolResult:
-    """环形阵列：绕中心点在 total_angle 角度范围内复制 count-1 份"""
+    """원형 배열: 중심점을 기준으로 total_angle 범위 안에 count-1개를 복사한다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     entities = await com(cad_service.controller.array_polar_entity, handle, count, center, total_angle_degrees)
-    return await _entities_result(entities, f"已完成{count}个的环形阵列", f"阵列句柄 {handle} 失败")
+    return await _entities_result(entities, f"{count}개 원형 배열 완료", f"핸들 {handle} 배열 실패")
 
 
 @mcp.tool()
 async def undo(ctx: Context) -> ToolResult:
-    """撤销上一步操作"""
+    """직전 작업을 실행 취소한다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.undo)
-    return ToolResult(success=ok, message="已撤销" if ok else "撤销失败")
+    return ToolResult(success=ok, message="실행 취소했습니다" if ok else "실행 취소 실패")
 
 
 @mcp.tool()
 async def redo(ctx: Context) -> ToolResult:
-    """重做被撤销的操作"""
+    """실행 취소한 작업을 다시 실행한다"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.redo)
-    return ToolResult(success=ok, message="已重做" if ok else "重做失败")
+    return ToolResult(success=ok, message="다시 실행했습니다" if ok else "다시 실행 실패")
 
 
-# ---------- 图层管理 ----------
+# ---------- 레이어 관리 ----------
 
 @mcp.tool()
 async def create_layer(ctx: Context, layer_name: str) -> ToolResult:
-    """创建新图层并设为当前图层（若已存在则直接激活）"""
+    """새 레이어를 만들고 현재 레이어로 지정한다(이미 있으면 그 레이어를 현재로 지정)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.create_layer, layer_name)
     if ok:
         cad_service.drawing_state["current_layer"] = layer_name
-    return ToolResult(success=ok, message=f"图层 {layer_name} 已创建并设为当前层" if ok else f"创建图层 {layer_name} 失败")
+    return ToolResult(success=ok, message=f"레이어 {layer_name}을(를) 만들고 현재 레이어로 지정했습니다" if ok else f"레이어 {layer_name} 만들기 실패")
 
 
 @mcp.tool()
 async def set_current_layer(ctx: Context, layer_name: str) -> ToolResult:
-    """切换当前图层（图层必须已存在）"""
+    """현재 레이어를 바꾼다(레이어가 이미 있어야 한다)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.set_current_layer, layer_name)
     if ok:
         cad_service.drawing_state["current_layer"] = layer_name
-    return ToolResult(success=ok, message=f"当前图层已切换为 {layer_name}" if ok else f"图层 {layer_name} 不存在或切换失败")
+    return ToolResult(success=ok, message=f"현재 레이어를 {layer_name}(으)로 바꿨습니다" if ok else f"레이어 {layer_name}이(가) 없거나 바꾸기 실패")
 
 
-# ---------- 图纸管理 ----------
+# ---------- 도면 관리 ----------
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def new_drawing(ctx: Context) -> ToolResult:
-    """新建图纸文档"""
+    """새 도면 문서를 만든다"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.new_drawing)
     if ok:
-        # 会话绘图记录归属于旧文档，切换文档后清空
+        # 세션 그리기 기록은 이전 문서 것이므로 문서를 바꾸면 비운다
         cad_service.drawing_state["entities"] = []
-    return ToolResult(success=ok, message="新文档已创建" if ok else "新建文档失败")
+    return ToolResult(success=ok, message="새 문서를 만들었습니다" if ok else "새 문서 만들기 실패")
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def open_drawing(ctx: Context, file_path: str) -> ToolResult:
-    """打开已有图纸文件（DWG/DXF等）"""
+    """기존 도면 파일(DWG/DXF 등)을 연다"""
     if cad_service.controller.app is None and not await com(cad_service.controller.start_cad):
-        return ToolResult(success=False, message="CAD未运行且启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 시작 실패")
     try:
         ok = await com(cad_service.controller.open_drawing, file_path)
     except FileNotFoundError as e:
         return ToolResult(success=False, message=str(e))
     if ok:
         cad_service.drawing_state["entities"] = []
-    return ToolResult(success=ok, message=f"文档已打开: {file_path}" if ok else f"打开文档失败: {file_path}")
+    return ToolResult(success=ok, message=f"문서를 열었습니다: {file_path}" if ok else f"문서 열기 실패: {file_path}")
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def close_drawing(ctx: Context, save: bool = False) -> ToolResult:
-    """关闭当前文档（save=False 时不保存直接关闭）"""
+    """현재 문서를 닫는다(save=False면 저장하지 않고 바로 닫는다)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
+        return ToolResult(success=False, message="CAD 미연결")
     ok = await com(cad_service.controller.close_drawing, save)
     if ok:
         cad_service.drawing_state["entities"] = []
-    return ToolResult(success=ok, message="文档已关闭" if ok else "关闭文档失败")
+    return ToolResult(success=ok, message="문서를 닫았습니다" if ok else "문서 닫기 실패")
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def save_drawing(ctx: Context, file_path: str) -> ToolResult:
-    """保存当前图纸（按扩展名自动选择 DWG/DXF 格式；已存在的文件将被覆盖）"""
+    """현재 도면을 저장한다(확장자에 따라 DWG/DXF 형식을 자동 선택. 같은 이름의 파일은 덮어쓴다)"""
     if not cad_service.controller.is_running():
-        return ToolResult(success=False, message="CAD未运行")
-    await ctx.info(f"正在保存图纸到 {file_path} ...")
+        return ToolResult(success=False, message="CAD 미연결")
+    await ctx.info(f"도면을 저장하는 중: {file_path} ...")
     try:
         ok = await com(cad_service.save_drawing, file_path)
     except ValueError as e:
-        # 目标路径被其他打开的图纸占用：提前快速失败并给出可操作的提示
-        return ToolResult(success=False, message=f"保存失败: {e}", error=str(e))
-    return ToolResult(success=ok, message=f"图纸已保存到 {file_path}" if ok else f"保存图纸到 {file_path} 失败")
+        # 대상 경로를 다른 열린 도면이 쓰고 있음: 일찍 실패하고 조치할 수 있는 안내를 준다
+        return ToolResult(success=False, message=f"저장 실패: {e}", error=str(e))
+    return ToolResult(success=ok, message=f"도면을 저장했습니다: {file_path}" if ok else f"도면 저장 실패: {file_path}")
 
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def send_command(ctx: Context, command: str) -> ToolResult:
-    """直通CAD命令行执行任意命令（功能逃生舱）
+    """CAD 명령행에 임의의 명령을 그대로 보낸다(도구로 없는 기능을 쓰는 비상구)
 
-    示例："_.ZOOM E"（缩放全图）、"_.ERASE" 配合选择集等。
-    建议命令以 "_." 前缀强制英文命令名以兼容中文版CAD。
+    예: "_.ZOOM E"(전체 줌), "_.ERASE"와 선택 세트 등.
+    명령 앞에 "_."를 붙여 영문 명령 이름을 강제하면 현지화된 CAD에서도 동작한다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     ok = await com(cad_service.controller.send_command, command)
-    return ToolResult(success=ok, message=f"命令已提交: {command}" if ok else "命令执行失败")
+    return ToolResult(success=ok, message=f"명령을 보냈습니다: {command}" if ok else "명령 실행 실패")
 
 
-# ---------- 图块操作 ----------
+# ---------- 블록 작업 ----------
 
 @mcp.tool()
 async def create_block(ctx: Context, block_name: str, base_point: Optional[Point] = None) -> ToolResult:
-    """创建图块定义（若同名图块已存在则直接返回）
+    """블록 정의를 만든다(같은 이름의 블록이 있으면 그대로 돌려준다)
 
-    注意：图块内部实体可通过 send_command 执行 BEDIT 等命令编辑。
+    참고: 블록 안의 객체는 send_command로 BEDIT 같은 명령을 실행해 편집할 수 있다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     block = await com(cad_service.controller.create_block, block_name, base_point)
-    return await _entity_result(block, f"图块 {block_name} 已就绪", f"创建图块 {block_name} 失败")
+    return await _entity_result(block, f"블록 {block_name} 준비 완료", f"블록 {block_name} 만들기 실패")
 
 
 @mcp.tool()
 async def insert_block(ctx: Context, block_name: str, position: Point,
                        x_scale: float = 1.0, y_scale: float = 1.0, z_scale: float = 1.0,
                        rotation_degrees: float = 0.0) -> ToolResult:
-    """在模型空间插入图块引用（返回图块引用实体的句柄）"""
+    """모형 공간에 블록 참조를 넣는다(블록 참조 객체의 핸들을 돌려준다)"""
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     block_ref = await com(cad_service.controller.insert_block, block_name, position,
                           x_scale, y_scale, z_scale, rotation_degrees)
-    return await _entity_result(block_ref, f"图块 {block_name} 已插入", f"插入图块 {block_name} 失败（请确认图块已定义）")
+    return await _entity_result(block_ref, f"블록 {block_name}을(를) 넣었습니다", f"블록 {block_name} 넣기 실패(블록이 정의돼 있는지 확인)")
 
 
 @mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
 async def list_blocks(ctx: Context) -> ListBlocksResult:
-    """列出当前图纸中的用户图块定义"""
+    """현재 도면의 사용자 블록 정의를 나열한다"""
     if not cad_service.controller.is_running():
-        return ListBlocksResult(success=False, message="CAD未运行")
+        return ListBlocksResult(success=False, message="CAD 미연결")
     blocks = await com(cad_service.controller.list_blocks)
-    return ListBlocksResult(success=True, message=f"共{len(blocks)}个图块", blocks=blocks)
+    return ListBlocksResult(success=True, message=f"블록 {len(blocks)}개", blocks=blocks)
 
 
-# ---------- 遗留接口 ----------
+# ---------- 옛 인터페이스 ----------
 
 @mcp.tool()
 async def process_command(ctx: Context, command: str) -> ToolResult:
-    """处理自然语言命令并转换为CAD操作（遗留接口）
+    """자연어 명령을 해석해 CAD 작업으로 실행한다(옛 인터페이스)
 
-    推荐优先直接调用结构化绘图工具（draw_line/draw_circle等），
-    仅在用户明确要求自然语言入口时使用本工具。
+    구조화 그리기 도구(draw_line/draw_circle 등)를 직접 쓰는 것을 권장한다.
+    사용자가 자연어 입력을 명시적으로 원할 때만 이 도구를 쓴다.
     """
     if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD未运行且自动启动失败", error="CAD未运行且自动启动失败")
+        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패", error="CAD 미연결, 자동 시작 실패")
     result = await com(cad_service.process_command, command)
-    # 兼容旧返回结构（entity_id）并映射到统一结果
+    # 옛 반환 구조(entity_id)를 공통 결과로 옮긴다
     handles = []
     if result.get("entity_id"):
         handles = [str(result["entity_id"])]
@@ -1080,14 +1080,14 @@ async def process_command(ctx: Context, command: str) -> ToolResult:
     )
 
 
-# ---------- 资源与提示词 ----------
+# ---------- 리소스와 프롬프트 ----------
 
-@mcp.resource("drawing://current", name="当前CAD图纸",
-              description="当前CAD图纸的状态（会话绘图记录 + 来自CAD文档的实时统计）",
+@mcp.resource("drawing://current", name="현재 CAD 도면",
+              description="현재 CAD 도면 상태(세션 그리기 기록 + CAD 문서의 실시간 통계)",
               mime_type="application/json")
 async def current_drawing() -> str:
-    """当前CAD图纸状态资源"""
-    # 会话记录 + 实时统计，让客户端既看到本会话画了什么，也看到文档真实状态
+    """현재 CAD 도면 상태 리소스"""
+    # 세션 기록 + 실시간 통계: 이번 세션에 무엇을 그렸는지와 문서의 실제 상태를 함께 보여 준다
     stats = await com(cad_service.controller.get_drawing_stats)
     payload = {
         "session": cad_service.drawing_state,
@@ -1096,21 +1096,21 @@ async def current_drawing() -> str:
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
-@mcp.prompt(name="cad-assistant", description="一个用于通过自然语言控制CAD的助手")
+@mcp.prompt(name="cad-assistant", description="자연어로 CAD를 조작하는 어시스턴트")
 def cad_assistant() -> str:
-    """CAD助手提示模板"""
+    """CAD 어시스턴트 프롬프트 템플릿"""
     return PROMPT_TEMPLATE.strip()
 
 
-# ==================== 主入口 ====================
+# ==================== 진입점 ====================
 
 def main():
-    """主入口：支持 stdio（默认）与 streamable-http 两种传输方式"""
-    parser = argparse.ArgumentParser(description="CAD MCP 服务器")
+    """진입점: stdio(기본)와 streamable-http 두 가지 전송 방식을 지원한다"""
+    parser = argparse.ArgumentParser(description="arcaid-cad 서버")
     parser.add_argument("--transport", choices=["stdio", "streamable-http"], default=None,
-                        help="传输方式（默认读取config.json，未配置则为stdio）")
-    parser.add_argument("--host", default=None, help="Streamable HTTP 监听地址")
-    parser.add_argument("--port", type=int, default=None, help="Streamable HTTP 监听端口")
+                        help="전송 방식(기본은 config.json 값, 없으면 stdio)")
+    parser.add_argument("--host", default=None, help="Streamable HTTP 수신 주소")
+    parser.add_argument("--port", type=int, default=None, help="Streamable HTTP 수신 포트")
     args = parser.parse_args()
 
     server_cfg = config.get("server", {})
@@ -1119,14 +1119,14 @@ def main():
     port = args.port or int(server_cfg.get("port", 8000))
 
     if transport == "streamable-http":
-        # Streamable HTTP 传输：支持远程/多客户端共享同一CAD实例
+        # Streamable HTTP 전송: 원격/여러 클라이언트가 같은 CAD 인스턴스를 함께 쓸 수 있다
         mcp.settings.host = host
         mcp.settings.port = port
-        logger.info(f"服务器以 Streamable HTTP 传输运行: http://{host}:{port}/mcp")
+        logger.info(f"서버를 Streamable HTTP 전송으로 실행: http://{host}:{port}/mcp")
         mcp.run(transport="streamable-http")
     else:
-        logger.info("服务器以 stdio 传输运行")
-        mcp.run()  # 默认 stdio
+        logger.info("서버를 stdio 전송으로 실행")
+        mcp.run()  # 기본 stdio
 
 
 if __name__ == "__main__":

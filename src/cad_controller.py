@@ -10,7 +10,7 @@ import concurrent.futures
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-# 统一使用配置单例（替代此前各模块重复读取 config.json）
+# 설정 싱글턴을 공통으로 쓴다(예전처럼 모듈마다 config.json을 다시 읽지 않는다)
 try:
     from .config import get_config
 except ImportError:
@@ -20,53 +20,53 @@ config = get_config()
 
 try:
     import win32com.client
-    # pythoncom是pywin32的一部分，不需要单独安装
+    # pythoncom은 pywin32에 포함돼 있어 따로 설치할 필요가 없다
     import pythoncom
 except ImportError:
-    logging.error("无法导入win32com.client或pythoncom，请确保已安装pywin32库")
+    logging.error("win32com.client 또는 pythoncom을 불러올 수 없습니다. pywin32가 설치돼 있는지 확인하세요")
     raise
 
 try:
     import anyio
 except ImportError:
-    # anyio 是 mcp SDK 的依赖，正常情况下随 mcp 一起安装
+    # anyio는 mcp SDK의 의존성이라 보통 mcp와 함께 설치된다
     anyio = None
 
 logger = logging.getLogger('cad_controller')
 
-# COM 瞬态错误：调用被忙碌的CAD拒绝（RPC_E_CALL_REJECTED）——
-# CAD正在执行命令/弹窗/重生成时会短暂拒绝COM调用，稍后重试即可恢复
+# COM 일시 오류: 바쁜 CAD가 호출을 거부함(RPC_E_CALL_REJECTED).
+# CAD가 명령 실행/대화상자/재생성 중일 때 잠깐 COM 호출을 거부하며, 잠시 뒤 재시도하면 회복된다
 _RPC_E_CALL_REJECTED = -2147418111
 
-# AutoCAD 瞬态保存错误（"保存文档时出错"）——
-# 保存/打开/关闭等操作进行中再调用SaveAs会报此错，稍后重试即可恢复
+# AutoCAD 일시 저장 오류("문서 저장 중 오류").
+# 저장/열기/닫기 진행 중에 SaveAs를 부르면 이 오류가 나며, 잠시 뒤 재시도하면 회복된다
 _ACAD_SAVE_TRANSIENT = -2145320861
 
-# COM 死引用错误：CAD进程已被用户关闭/崩溃，持有的接口指针失效
-# RPC_E_DISCONNECTED(-2147417848)：对象已与客户端断开连接
-# RPC_S_SERVER_UNAVAILABLE(-2147023174)：RPC服务器不可用
-# 与瞬态错误不同，这类错误重试无意义，应重置连接状态让后续操作重连
+# COM 죽은 참조 오류: 사용자가 CAD를 닫았거나 CAD가 죽어서 들고 있던 인터페이스 포인터가 무효가 됨
+# RPC_E_DISCONNECTED(-2147417848): 객체가 클라이언트와 연결이 끊김
+# RPC_S_SERVER_UNAVAILABLE(-2147023174): RPC 서버를 쓸 수 없음
+# 일시 오류와 달리 재시도해도 소용없으므로, 연결 상태를 초기화해 다음 작업이 다시 연결하게 한다
 _DEAD_COM_HRESULTS = (-2147417848, -2147023174)
 
 
 def _is_retryable_com_error(e) -> bool:
-    """判断是否为可重试的COM瞬态错误（忙碌被拒或保存冲突）"""
+    """재시도할 수 있는 COM 일시 오류인지 판단한다(바쁨으로 거부 또는 저장 충돌)"""
     if getattr(e, "hresult", None) == _RPC_E_CALL_REJECTED:
         return True
-    # 瞬态保存错误藏在com_error的excepinfo元组里
+    # 일시 저장 오류는 com_error의 excepinfo 튜플 안에 들어 있다
     info = tuple(getattr(e, "excepinfo", None) or ())
     return _ACAD_SAVE_TRANSIENT in info
 
 
 def _is_retryable_attr_error(e, retry_attr) -> bool:
-    """判断是否为pywin32动态派发把"成员查找被拒"转换成的AttributeError
+    """pywin32 동적 디스패치가 "멤버 조회 거부"를 바꿔 낸 AttributeError인지 판단한다
 
-    动态派发下成员查找(GetIDsOfNames)被忙碌的CAD拒绝时，pywin32会吞掉
-    com_error并抛出AttributeError，hresult随之丢失（曾导致打开文档后立即
-    关闭报"Open.Close"且调用级重试完全失效）。已知两种消息格式：
-    dynamic.py抛出"Open.Close"；client/__init__.py抛出
-    "'<COMObject Open>' object has no attribute 'Close'"。
-    未指定成员名时一律不重试。
+    동적 디스패치에서 멤버 조회(GetIDsOfNames)가 바쁜 CAD에 거부되면, pywin32는
+    com_error를 삼키고 AttributeError를 던지며 hresult도 사라진다(문서를 연 직후 닫을 때
+    "Open.Close" 오류가 나고 호출 단위 재시도가 전혀 동작하지 않은 적이 있다).
+    알려진 메시지 형식은 두 가지다: dynamic.py는 "Open.Close"를,
+    client/__init__.py는 "'<COMObject Open>' object has no attribute 'Close'"를 던진다.
+    멤버 이름을 지정하지 않으면 재시도하지 않는다.
     """
     if not retry_attr or not isinstance(e, AttributeError):
         return False
@@ -75,34 +75,34 @@ def _is_retryable_attr_error(e, retry_attr) -> bool:
 
 
 def _call_with_com_retry(fn, args, kwargs, retries: int = 20, delay: float = 0.5, retry_attr: str = None):
-    """执行COM调用，忙碌(RPC_E_CALL_REJECTED)或瞬态保存冲突时自动重试
+    """COM 호출을 실행하고, 바쁨(RPC_E_CALL_REJECTED)이나 일시 저장 충돌이면 자동으로 재시도한다
 
-    总等待时间上限约 retries*delay 秒，超过后抛出原始异常。
-    retry_attr 见 _is_retryable_attr_error 的说明。
+    총 대기 시간은 최대 약 retries*delay초이며, 넘으면 원래 예외를 던진다.
+    retry_attr은 _is_retryable_attr_error 설명을 참고한다.
     """
     for attempt in range(retries):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            # 仅对瞬态错误重试（COM忙碌/保存冲突/成员查找被拒），其他异常直接抛出
+            # 일시 오류(COM 바쁨/저장 충돌/멤버 조회 거부)만 재시도하고, 나머지 예외는 바로 던진다
             if (_is_retryable_com_error(e) or _is_retryable_attr_error(e, retry_attr)) \
                     and attempt < retries - 1:
-                logger.debug(f"CAD忙碌或保存冲突，COM调用被拒，第{attempt + 1}次重试...")
+                logger.debug(f"CAD가 바쁘거나 저장 충돌로 COM 호출이 거부됨, {attempt + 1}번째 재시도...")
                 time.sleep(delay)
                 continue
             raise
-    raise RuntimeError("unreachable")  # 逻辑上不可达，仅为类型完整
+    raise RuntimeError("unreachable")  # 논리상 도달하지 않음, 타입 완결성용
 
 
 class COMExecutor:
-    """专用COM线程执行器
+    """전용 COM 스레드 실행기
 
-    Windows COM 的套间(Apartment)模型要求：同一接口指针应在创建它的线程上使用，
-    跨线程直接访问会导致调用失败甚至进程崩溃。本执行器将所有 COM 调用串行化到
-    单一 STA 线程上执行，带来两个好处：
-    1. 线程安全——多个工具并发调用也不会出现跨套间访问；
-    2. 不阻塞 asyncio 事件循环——COM 的阻塞调用（如等待 CAD 启动20秒）
-       全部发生在专用线程上，服务器仍能响应其他请求。
+    Windows COM의 아파트(Apartment) 모델은 인터페이스 포인터를 만든 스레드에서 쓰도록 요구한다.
+    다른 스레드에서 바로 접근하면 호출이 실패하거나 프로세스가 죽을 수 있다. 이 실행기는 모든 COM 호출을
+    하나의 STA 스레드로 직렬화해 두 가지 이점을 준다:
+    1. 스레드 안전: 여러 도구가 동시에 호출해도 아파트를 넘나드는 접근이 생기지 않는다
+    2. asyncio 이벤트 루프를 막지 않는다: COM의 블로킹 호출(예: CAD 시작을 20초 기다림)이
+       모두 전용 스레드에서 일어나므로 서버는 다른 요청에 계속 응답할 수 있다
     """
 
     def __init__(self):
@@ -111,13 +111,13 @@ class COMExecutor:
         self._thread.start()
 
     def _worker(self) -> None:
-        """COM 线程主循环：初始化 COM 后不断从队列取任务执行"""
-        # 整个进程生命周期内只初始化一次，不调用 CoUninitialize（保持套间存活）
+        """COM 스레드 메인 루프: COM을 초기화한 뒤 큐에서 작업을 꺼내 계속 실행한다"""
+        # 프로세스 수명 동안 한 번만 초기화하고 CoUninitialize는 부르지 않는다(아파트 유지)
         pythoncom.CoInitialize()
         while True:
             fn, args, kwargs, future = self._queue.get()
             if fn is None:
-                # 停止信号
+                # 정지 신호
                 future.set_result(True)
                 break
             try:
@@ -128,60 +128,60 @@ class COMExecutor:
                 self._queue.task_done()
 
     def submit(self, fn, *args, **kwargs):
-        """在COM线程上同步执行 fn 并返回其结果（阻塞当前调用线程）"""
+        """COM 스레드에서 fn을 동기 실행하고 결과를 돌려준다(호출한 스레드는 기다린다)"""
         if threading.current_thread() is self._thread:
-            # 已在COM线程上（内部嵌套调用），直接执行避免死锁
+            # 이미 COM 스레드 위(내부 중첩 호출)면 교착을 피하려고 바로 실행한다
             return fn(*args, **kwargs)
         future = concurrent.futures.Future()
         self._queue.put((fn, args, kwargs, future))
         return future.result()
 
     async def run(self, fn, *args, **kwargs):
-        """异步执行 COM 调用：把阻塞的 submit 放到线程池，避免阻塞事件循环"""
+        """COM 호출을 비동기로 실행한다: 블로킹 submit을 스레드 풀로 보내 이벤트 루프를 막지 않는다"""
         if anyio is None:
-            # 无 anyio 时退化为同步执行（不应发生）
+            # anyio가 없으면 동기 실행으로 대체한다(일어나면 안 되는 경우)
             return self.submit(fn, *args, **kwargs)
         return await anyio.to_thread.run_sync(lambda: self.submit(fn, *args, **kwargs))
 
 
 class CADController:
-    """CAD控制器类，负责与CAD应用程序交互"""
+    """CAD 프로그램과 상호작용하는 CAD 컨트롤러"""
 
     def __init__(self):
-        """初始化CAD控制器"""
+        """CAD 컨트롤러를 초기화한다"""
         self.app = None
         self.doc = None
-        self.entities = {}  # 存储已创建图形的实体引用，用于后续修改
-        # 专用COM线程执行器：所有COM调用经由它串行执行
+        self.entities = {}  # 만든 도형의 객체 참조를 저장해 나중에 수정할 때 쓴다
+        # 전용 COM 스레드 실행기: 모든 COM 호출은 이것을 거쳐 순서대로 실행된다
         self.executor = COMExecutor()
-        # 从配置文件加载参数
+        # 설정 파일에서 값을 불러온다
         self.startup_wait_time = config["cad"]["startup_wait_time"]
         self.command_delay = config["cad"]["command_delay"]
-        # 获取CAD类型
+        # CAD 종류
         self.cad_type = config["cad"]["type"]
-        # 有效的线宽值列表
+        # 유효한 선굵기 값 목록
         self.valid_lineweights = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211]
-        logger.info("CAD控制器已初始化")
+        logger.info("CAD 컨트롤러 초기화 완료")
 
     def _get_app_info(self) -> Tuple[List[str], str]:
-        """根据配置的CAD类型返回 (候选COM ProgID列表, 显示名称)
+        """설정된 CAD 종류에 따라 (후보 COM ProgID 목록, 표시 이름)을 돌려준다
 
-        注意：COM 的 ProgID 查找不区分大小写，GCAD.Application 与 Gcad.Application 等价。
-        同一CAD不同年代版本注册的ProgID可能不同（如浩辰有GCAD/GstarCAD两种），
-        返回候选列表由 start_cad 依次尝试，避免目标机器只注册了另一种时连不上。
+        참고: COM ProgID 조회는 대소문자를 구분하지 않는다. GCAD.Application과 Gcad.Application은 같다.
+        같은 CAD라도 버전에 따라 등록하는 ProgID가 다를 수 있다(GstarCAD는 GCAD/GstarCAD 두 가지).
+        그래서 후보 목록을 돌려주고 start_cad가 차례로 시도하게 해, 대상 PC에 다른 쪽만 등록돼 있어도 연결되게 한다.
         """
-        # 各CAD软件的COM ProgID映射（未匹配的类型回退到AutoCAD）
+        # CAD별 COM ProgID 대응표(일치하지 않는 종류는 AutoCAD로 대체)
         app_map = {
             "autocad": (["AutoCAD.Application"], "AutoCAD"),
-            "gcad": (["GCAD.Application", "GstarCAD.Application"], "浩辰CAD"),
-            "gstarcad": (["GCAD.Application", "GstarCAD.Application"], "浩辰CAD"),
-            "zwcad": (["ZWCAD.Application"], "中望CAD"),
+            "gcad": (["GCAD.Application", "GstarCAD.Application"], "GstarCAD"),
+            "gstarcad": (["GCAD.Application", "GstarCAD.Application"], "GstarCAD"),
+            "zwcad": (["ZWCAD.Application"], "ZWCAD"),
         }
         return app_map.get(self.cad_type.lower(), (["AutoCAD.Application"], "AutoCAD"))
 
     def start_cad(self) -> bool:
-        """启动CAD并创建或打开一个文档"""
-        # 存储旧实例引用（如果有）以便后续清理
+        """CAD를 시작하고 문서를 만들거나 연다"""
+        # 이전 인스턴스 참조가 있으면 저장해 두었다가 나중에 정리한다
         old_app = None
         if self.app is not None:
             old_app = self.app
@@ -189,75 +189,75 @@ class CADController:
             self.doc = None
 
         try:
-            # 初始化COM（若已在COM线程上则幂等）
+            # COM 초기화(이미 COM 스레드면 여러 번 불러도 같은 결과)
             pythoncom.CoInitialize()
 
             app_ids, app_name = self._get_app_info()
 
-            # 第一步：尝试连接已运行的实例（遍历候选ProgID）
+            # 1단계: 이미 실행 중인 인스턴스에 연결을 시도한다(후보 ProgID를 차례로)
             for app_id in app_ids:
                 try:
-                    logger.info(f"尝试连接现有{app_name}实例（{app_id}）...")
+                    logger.info(f"실행 중인 {app_name} 인스턴스에 연결 시도({app_id})...")
                     self.app = win32com.client.GetActiveObject(app_id)
-                    logger.info(f"成功连接到已运行的{app_name}实例")
+                    logger.info(f"실행 중인 {app_name} 인스턴스에 연결됨")
                     break
                 except Exception as e:
-                    logger.info(f"未找到运行中的{app_name}实例（{app_id}），继续尝试: {str(e)}")
+                    logger.info(f"실행 중인 {app_name} 인스턴스를 찾지 못함({app_id}), 다음 시도: {str(e)}")
 
-            # 第二步：连接失败则启动新实例（同样遍历候选ProgID）
+            # 2단계: 연결에 실패하면 새 인스턴스를 띄운다(마찬가지로 후보 ProgID를 차례로)
             if self.app is None:
                 for app_id in app_ids:
                     try:
-                        logger.info(f"正在启动{app_name}实例（{app_id}）...")
+                        logger.info(f"{app_name} 인스턴스를 시작하는 중({app_id})...")
                         self.app = win32com.client.Dispatch(app_id)
                         self._call(setattr, self.app, "Visible", True)
                         break
                     except Exception as e:
-                        logger.info(f"启动{app_name}实例失败（{app_id}），继续尝试: {str(e)}")
+                        logger.info(f"{app_name} 인스턴스 시작 실패({app_id}), 다음 시도: {str(e)}")
                 if self.app is None:
-                    raise Exception(f"无法连接或启动{app_name}（候选ProgID: {app_ids}）")
-                # 等待CAD启动
-                time.sleep(self.startup_wait_time)  # 使用配置的等待时间
+                    raise Exception(f"{app_name}에 연결하거나 시작할 수 없습니다(후보 ProgID: {app_ids})")
+                # CAD가 시작되기를 기다린다
+                time.sleep(self.startup_wait_time)  # 설정된 대기 시간 사용
 
-            # 第三步：获取或创建文档（集合与属性访问都可能被忙碌的CAD拒绝，逐调用重试）
+            # 3단계: 문서를 가져오거나 만든다(컬렉션과 속성 접근 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도)
             docs = self._call(getattr, self.app, "Documents")
             if self._call(getattr, docs, "Count") == 0:
-                logger.info("创建新文档...")
+                logger.info("새 문서를 만드는 중...")
                 self.doc = self._call_attr(docs, "Add")
             else:
                 try:
-                    logger.info("获取活动文档...")
+                    logger.info("활성 문서를 가져오는 중...")
                     self.doc = self._call(getattr, self.app, "ActiveDocument")
                 except Exception:
-                    # CAD配置为"启动不新建文档"时没有活动文档，回退到手动创建。
-                    # 注意：绝不能为"强制获取文档"去关闭用户已打开的图纸——
-                    # Close(False)会直接丢弃未保存的修改（旧版兜底逻辑曾这样做，
-                    # 属于数据丢失级缺陷），拿不到活动文档时新建一个才是安全做法
-                    logger.info("无活动文档，改为新建文档...")
+                    # CAD가 "시작 시 새 문서 만들지 않음"으로 설정돼 있으면 활성 문서가 없어 직접 만든다.
+                    # 주의: "문서를 억지로 얻으려고" 사용자가 연 도면을 닫으면 절대 안 된다.
+                    # Close(False)는 저장하지 않은 수정을 그냥 버린다(옛 대체 로직이 그렇게 했는데,
+                    # 데이터 손실급 결함이었다). 활성 문서를 못 얻으면 새로 만드는 것이 안전하다
+                    logger.info("활성 문서가 없어 새 문서를 만듭니다...")
                     self.doc = self._call_attr(docs, "Add")
 
-            # 额外安全检查和等待
-            time.sleep(2)  # 给CAD更多时间处理文档创建
+            # 추가 안전 확인과 대기
+            time.sleep(2)  # CAD가 문서 생성을 처리할 시간을 더 준다
 
             if self.doc is None:
-                raise Exception("无法获取有效的Document对象")
+                raise Exception("유효한 Document 객체를 얻지 못했습니다")
 
-            # 尝试读取文档属性以验证其有效性
+            # 문서 속성을 읽어 유효한지 확인한다
             try:
                 name = self._call(getattr, self.doc, "Name")
-                logger.info(f"文档名称: {name}")
+                logger.info(f"문서 이름: {name}")
             except Exception as name_ex:
-                logger.error(f"无法读取文档名称: {str(name_ex)}")
-                raise Exception("文档对象无效")
+                logger.error(f"문서 이름을 읽을 수 없음: {str(name_ex)}")
+                raise Exception("문서 객체가 유효하지 않습니다")
 
-            logger.info("CAD已成功启动和准备")
+            logger.info("CAD 시작 및 준비 완료")
             return True
 
         except Exception as e:
-            logger.error(f"启动CAD失败: {str(e)}")
+            logger.error(f"CAD 시작 실패: {str(e)}")
             return False
         finally:
-            # 清理旧实例
+            # 이전 인스턴스 정리
             if old_app is not None:
                 try:
                     del old_app
@@ -265,23 +265,23 @@ class CADController:
                     pass
 
     def is_running(self) -> bool:
-        """检查CAD是否正在运行"""
+        """CAD가 실행 중(연결됨)인지 확인한다"""
         return self.app is not None and self.doc is not None
 
     def _pt(self, point) -> "win32com.client.VARIANT":
-        """将坐标点包装为COM可接受的VARIANT双精度数组
+        """좌표점을 COM이 받는 VARIANT double 배열로 감싼다
 
-        自动将二维坐标补齐为三维（Z=0），供 AddLine/AddCircle 等方法使用。
+        2차원 좌표는 자동으로 3차원(Z=0)으로 채워 AddLine/AddCircle 등에 쓸 수 있게 한다.
         """
         if point is None or len(point) < 2:
-            raise ValueError(f"坐标点至少需要两个分量: {point}")
+            raise ValueError(f"좌표점에는 성분이 2개 이상 필요합니다: {point}")
         x, y = float(point[0]), float(point[1])
         z = float(point[2]) if len(point) > 2 else 0.0
         return win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8, [x, y, z])
 
     @staticmethod
     def _safe_attr(obj, name: str, default=None):
-        """安全读取COM对象属性，实体类型不匹配时返回默认值"""
+        """COM 객체 속성을 안전하게 읽는다. 객체 종류에 없는 속성이면 기본값을 돌려준다"""
         try:
             return getattr(obj, name)
         except Exception:
@@ -289,13 +289,13 @@ class CADController:
 
     @classmethod
     def _read_color(cls, obj) -> Optional[int]:
-        """读取对象颜色为ACI索引整数（在COM线程上调用）
+        """객체 색을 ACI 인덱스 정수로 읽는다(COM 스레드에서 호출)
 
-        兼容多种COM包装差异：
-        1. gen_py静态包装（EnsureDispatch/makepy缓存）对属性名大小写敏感，
-           AutoCAD类型库中实体颜色属性为小写color；
-        2. 动态派发下IDispatch名字不区分大小写，Color可访问；
-        3. 值可能是整数（旧版Color/color属性）或AcadAcCmColor对象（TrueColor）。
+        여러 COM 래핑 차이를 모두 처리한다:
+        1. gen_py 정적 래핑(EnsureDispatch/makepy 캐시)은 속성 이름의 대소문자를 구분하며,
+           AutoCAD 타입 라이브러리의 객체 색 속성은 소문자 color다
+        2. 동적 디스패치에서는 IDispatch 이름이 대소문자를 구분하지 않아 Color로도 접근된다
+        3. 값은 정수(옛 Color/color 속성)일 수도, AcadAcCmColor 객체(TrueColor)일 수도 있다
         """
         for name in ("color", "Color", "ColorIndex"):
             raw = cls._safe_attr(obj, name)
@@ -303,7 +303,7 @@ class CADController:
                 continue
             if isinstance(raw, int):
                 return raw
-            # 新版CAD返回AcadAcCmColor对象，取其ColorIndex
+            # 새 버전 CAD는 AcadAcCmColor 객체를 돌려주므로 ColorIndex를 읽는다
             idx = cls._safe_attr(raw, "ColorIndex")
             if idx is not None:
                 return idx
@@ -311,57 +311,57 @@ class CADController:
 
     @staticmethod
     def _write_color(entity, color: int) -> None:
-        """设置实体颜色为ACI索引（兼容gen_py小写color与动态派发Color两种包装）"""
+        """객체 색을 ACI 인덱스로 설정한다(gen_py의 소문자 color와 동적 디스패치의 Color 두 래핑 모두 지원)"""
         try:
-            entity.color = color  # gen_py静态包装下的真实属性名
+            entity.color = color  # gen_py 정적 래핑에서의 실제 속성 이름
         except AttributeError:
-            entity.Color = color  # 动态派发下IDispatch不区分大小写
+            entity.Color = color  # 동적 디스패치에서는 IDispatch가 대소문자를 구분하지 않는다
 
     def _call(self, fn, *args, **kwargs):
-        """带重试执行单个COM调用（仅在COM线程上调用）
+        """COM 호출 하나를 재시도와 함께 실행한다(COM 스레드에서만 호출)
 
-        CAD忙碌(RPC_E_CALL_REJECTED)时调用被拒绝意味着该调用未执行，
-        对单个COM调用重试是安全的；对整个业务方法重试则可能重复绘制
-        （方法前半段已成功、后半段被拒的场合），因此重试粒度必须在调用级。
+        CAD가 바빠서(RPC_E_CALL_REJECTED) 호출이 거부됐다는 것은 그 호출이 실행되지 않았다는 뜻이므로,
+        COM 호출 하나를 재시도하는 것은 안전하다. 반면 업무 메서드 전체를 재시도하면 중복 그리기가 생길 수 있다
+        (메서드 앞부분은 성공하고 뒷부분이 거부된 경우). 그래서 재시도 단위는 반드시 호출 단위여야 한다.
         """
         try:
             return _call_with_com_retry(fn, args, kwargs)
         except Exception as e:
-            # CAD进程已被用户关闭时，持有的COM引用全部失效（重试无意义）：
-            # 重置连接状态，让下一次操作走 is_running()==False 分支自动重连，
-            # 否则所有工具会持续报"操作失败"且永远不会触发重启
+            # 사용자가 CAD 프로세스를 닫으면 들고 있던 COM 참조가 모두 무효가 된다(재시도 의미 없음).
+            # 연결 상태를 초기화해 다음 작업이 is_running()==False 분기로 가서 자동으로 다시 연결하게 한다.
+            # 그러지 않으면 모든 도구가 계속 "작업 실패"만 내고 재시작이 영영 일어나지 않는다
             if getattr(e, "hresult", None) in _DEAD_COM_HRESULTS:
-                logger.warning("检测到CAD进程已退出，重置连接状态（下一次操作将重新启动CAD）")
+                logger.warning("CAD 프로세스 종료 감지, 연결 상태 초기화(다음 작업에서 CAD를 다시 시작함)")
                 self.app = None
                 self.doc = None
             raise
 
     def _call_attr(self, obj, name: str, *args, **kwargs):
-        """带重试执行 obj.name(*args)：成员查找与调用均在重试保护内
+        """obj.name(*args)를 재시도와 함께 실행한다: 멤버 조회와 호출을 모두 재시도로 보호한다
 
-        动态派发（无gen_py缓存的机器，即最终用户的常态）下 obj.name 的
-        查找本身也是一次COM调用（GetIDsOfNames），同样可能被忙碌的CAD
-        拒绝，因此不能写成 self._call(obj.name, ...) ——查找发生在进入
-        _call之前。本方法将查找与调用合并为一个重试单元，
-        并把pywin32转换后的"查找被拒"AttributeError也纳入瞬态重试。
+        동적 디스패치(gen_py 캐시가 없는 PC, 즉 최종 사용자의 일반적인 환경)에서는 obj.name
+        조회 자체도 COM 호출(GetIDsOfNames)이라 바쁜 CAD에 거부될 수 있다.
+        그래서 self._call(obj.name, ...)처럼 쓰면 안 된다. 조회가 _call에 들어가기 전에 일어나기 때문이다.
+        이 메서드는 조회와 호출을 하나의 재시도 단위로 묶고,
+        pywin32가 바꿔 낸 "조회 거부" AttributeError도 일시 오류로 재시도한다.
         """
         return _call_with_com_retry(lambda: getattr(obj, name)(*args, **kwargs),
                                     (), {}, retry_attr=name)
 
     def _ms(self):
-        """获取模型空间（属性读取同样可能被忙碌的CAD拒绝，需带重试）"""
+        """모형 공간을 가져온다(속성 읽기도 바쁜 CAD에 거부될 수 있어 재시도)"""
         return self._call(getattr, self.doc, "ModelSpace")
 
     @contextmanager
     def _undo_group(self):
-        """将本次工具操作打包为独立撤销组（保证UNDO 1正好撤销一步）
+        """이번 도구 작업을 독립된 실행 취소 그룹으로 묶는다(UNDO 1이 정확히 한 단계를 취소하게)
 
-        AutoCAD会把命令行空闲期间的所有COM修改合并为同一个撤销组，
-        不加标记时一次UNDO可能把整批绘制全部撤销。
-        嵌套使用安全（如draw_rectangle→draw_polyline），内层组归入外层组。
+        AutoCAD는 명령행이 쉬는 동안의 모든 COM 수정을 하나의 실행 취소 그룹으로 합친다.
+        표시를 하지 않으면 UNDO 한 번에 그린 것 전체가 취소될 수 있다.
+        중첩해서 써도 안전하다(예: draw_rectangle→draw_polyline). 안쪽 그룹은 바깥 그룹에 들어간다.
         """
         doc = self.doc
-        # 标记调用同样可能被忙碌的CAD拒绝，需带重试
+        # 표시 호출도 바쁜 CAD에 거부될 수 있어 재시도
         self._call_attr(doc, "StartUndoMark")
         try:
             yield
@@ -369,15 +369,15 @@ class CADController:
             try:
                 self._call_attr(doc, "EndUndoMark")
             except Exception:
-                # 文档已切换等极端情况下无法收尾标记，忽略（标记随文档重置）
+                # 문서가 바뀌는 등 극단적인 경우에는 표시를 마무리할 수 없어 무시한다(표시는 문서와 함께 초기화된다)
                 pass
 
     def _check_target_not_occupied(self, file_path: str) -> None:
-        """检查目标保存路径是否被其他已打开的图纸占用
+        """저장할 경로를 다른 열린 도면이 쓰고 있는지 확인한다
 
-        AutoCAD会锁定已打开文档对应的DWG文件，向这些路径SaveAs会持续报
-        "保存文档时出错"(-2145320861)且重试无效（实测等待40秒仍失败），
-        故提前检测快速失败。当前文档占用同路径属于原地另存，放行。
+        AutoCAD는 열린 문서의 DWG 파일을 잠근다. 그런 경로로 SaveAs를 하면
+        "문서 저장 중 오류"(-2145320861)가 계속 나고 재시도도 소용없다(40초를 기다려도 실패함을 확인).
+        그래서 미리 검사해 빨리 실패한다. 현재 문서가 같은 경로를 쓰는 것은 제자리 저장이므로 허용한다.
         """
         try:
             norm = os.path.normcase(file_path)
@@ -387,106 +387,106 @@ class CADController:
                 doc = self._call_attr(docs, "Item", i)
                 full = self._safe_attr(doc, "FullName")
                 if full and os.path.normcase(str(full)) == norm:
-                    # 打开文档的名称在同一CAD会话内唯一，同名即当前文档
+                    # 열린 문서의 이름은 같은 CAD 세션 안에서 고유하므로, 이름이 같으면 현재 문서다
                     if self._safe_attr(doc, "Name") == current_name:
                         continue
                     raise ValueError(
-                        f"目标文件已被其他打开的图纸占用，无法覆盖保存: {file_path}（请先关闭占用该文件的图纸）"
+                        f"대상 파일을 다른 열린 도면이 쓰고 있어 덮어쓸 수 없습니다: {file_path}(그 도면을 먼저 닫으세요)"
                     )
         except ValueError:
             raise
         except Exception:
-            # 预检查本身失败（如CAD忙碌）不阻断保存，交由SaveAs及其调用级重试兜底
+            # 사전 검사 자체가 실패하면(예: CAD 바쁨) 저장을 막지 않고 SaveAs와 호출 단위 재시도에 맡긴다
             pass
 
     def save_drawing(self, file_path: str) -> bool:
-        """保存当前图纸到指定路径
+        """현재 도면을 지정한 경로에 저장한다
 
         Raises:
-            ValueError: 目标文件正被其他打开的图纸占用时
+            ValueError: 대상 파일을 다른 열린 도면이 쓰고 있을 때
         """
         if not self.is_running():
-            logger.error("CAD未运行，无法保存图纸")
+            logger.error("CAD 미연결, 도면을 저장할 수 없음")
             return False
 
         try:
-            # 相对路径必须先转为绝对路径：SaveAs在CAD进程内解析路径，
-            # 其工作目录与MCP服务器的工作目录通常不同（实测相对文件会存到别处）
+            # 상대 경로는 먼저 절대 경로로 바꿔야 한다: SaveAs는 CAD 프로세스 안에서 경로를 해석하는데,
+            # 그 작업 폴더는 보통 MCP 서버의 작업 폴더와 다르다(상대 경로 파일이 엉뚱한 곳에 저장되는 것을 확인)
             file_path = os.path.abspath(file_path)
 
-            # 确保目录存在（abspath后必有dirname；目录可能尚未创建）
+            # 폴더가 있는지 확인한다(abspath 뒤에는 dirname이 반드시 있다. 폴더가 아직 없을 수 있다)
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-            # 目标被占用时SaveAs会持续报错且重试无效，提前快速失败
+            # 대상이 사용 중이면 SaveAs가 계속 실패하고 재시도도 소용없으므로 미리 빨리 실패한다
             self._check_target_not_occupied(file_path)
 
-            # 保存文件（SaveAs返回后CAD仍可能短暂拒绝后续修改调用，
-            # 后续工具的COM调用会经由调用级重试自动等待恢复）
+            # 파일 저장(SaveAs가 돌아온 뒤에도 CAD가 잠깐 이후 수정 호출을 거부할 수 있는데,
+            # 이후 도구의 COM 호출은 호출 단위 재시도로 회복을 자동으로 기다린다)
             self._call_attr(self.doc, "SaveAs", file_path)
-            logger.info(f"图纸已保存到: {file_path}")
+            logger.info(f"도면 저장: {file_path}")
 
             return True
         except ValueError:
             raise
         except Exception as e:
-            logger.error(f"保存图纸失败: {str(e)}")
+            logger.error(f"도면 저장 실패: {str(e)}")
             return False
 
     def refresh_view(self) -> None:
-        """强制重生成视图（仅用于显式刷新场景，勿在绘图/编辑后调用）
+        """뷰를 강제로 재생성한다(명시적으로 새로 고칠 때만 쓰고, 그리기/편집 뒤에는 부르지 않는다)
 
-        注意：AutoCAD会把COM修改后的重生成(Regen)记录进撤销栈，导致
-        随后的UNDO变成不可见变化的空操作（实测无论是否加撤销标记）。
-        因此各绘图/编辑方法不再自动刷新——新增实体会自动显示，
-        需要全图刷新时用 zoom_extents 或 send_command 执行 ZOOM。
+        주의: AutoCAD는 COM 수정 뒤의 재생성(Regen)을 실행 취소 스택에 기록한다. 그러면
+        이어지는 UNDO가 눈에 보이지 않는 빈 작업이 된다(실행 취소 표시 여부와 상관없이 확인됨).
+        그래서 그리기/편집 메서드는 더 이상 자동으로 새로 고치지 않는다. 새 객체는 자동으로 보이고,
+        전체를 새로 고쳐야 하면 zoom_extents나 send_command로 ZOOM을 실행한다.
         """
         if self.is_running():
             try:
                 self._call_attr(self.doc, "Regen", 1)  # acAllViewports = 1
             except Exception as e:
-                logger.error(f"刷新视图失败: {str(e)}")
+                logger.error(f"뷰 새로 고침 실패: {str(e)}")
 
     def validate_lineweight(self, lineweight) -> int:
-        """验证并返回有效的线宽值
+        """유효한 선굵기 값인지 확인해 돌려준다
 
-        如果提供的线宽值不在有效值列表中，则返回默认值0
+        주어진 선굵기 값이 유효한 값 목록에 없으면 기본값 0을 돌려준다
 
         Args:
-            lineweight: 要验证的线宽值
+            lineweight: 확인할 선굵기 값
 
         Returns:
-            有效的线宽值
+            유효한 선굵기 값
         """
         if lineweight is None:
             return None
 
-        # 检查线宽是否在有效值列表中
+        # 선굵기가 유효한 값 목록에 있는지 확인한다
         if lineweight in self.valid_lineweights:
             return lineweight
         else:
-            logger.warning(f"线宽值 {lineweight} 无效，将使用默认值 0")
+            logger.warning(f"선굵기 값 {lineweight}이(가) 유효하지 않아 기본값 0을 씁니다")
             return 0
 
     def _apply_style(self, entity, layer=None, color=None, lineweight=None) -> None:
-        """为实体统一设置图层/颜色/线宽（各绘制方法的公共部分）
+        """객체에 레이어/색/선굵기를 한꺼번에 설정한다(그리기 메서드들의 공통 부분)
 
-        属性设置是幂等操作，逐个带重试执行：单个属性被CAD拒绝时重试，
-        不会影响已成功的部分。
+        속성 설정은 멱등 작업이라 하나씩 재시도와 함께 실행한다: 한 속성이 CAD에 거부돼 재시도해도
+        이미 성공한 부분에는 영향이 없다.
         """
-        # 如果指定了图层，设置图层
+        # 레이어를 지정했으면 레이어를 설정한다
         if layer:
-            # 确保图层存在（只创建不激活：避免把用户正在使用的当前图层悄悄切走）
+            # 레이어가 있도록 보장한다(만들기만 하고 현재로 지정하지 않는다: 사용자가 쓰던 현재 레이어를 몰래 바꾸지 않기 위해)
             target_layer = self._ensure_layer(layer)
-            # 设置实体的图层（使用CAD返回的真实图层名，避免传入名称大小写不匹配）
+            # 객체의 레이어를 설정한다(CAD가 돌려준 실제 레이어 이름을 써서 대소문자 불일치를 피한다)
             self._call(setattr, entity, "Layer", self._call(getattr, target_layer, "Name"))
 
-        # 如果指定了颜色，设置颜色
+        # 색을 지정했으면 색을 설정한다
         if color is not None:
             self._call(self._write_color, entity, color)
 
         if lineweight is not None:
             lw = self.validate_lineweight(lineweight)
-            # gen_py包装下属性名为Lineweight（与LineWeight的写法差异同Color/color）
+            # gen_py 래핑에서는 속성 이름이 Lineweight다(LineWeight와의 표기 차이는 Color/color와 같은 문제)
             try:
                 self._call(setattr, entity, "Lineweight", lw)
             except AttributeError:
@@ -494,139 +494,139 @@ class CADController:
 
     def draw_line(self, start_point: Tuple[float, float, float],
                  end_point: Tuple[float, float, float], layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制直线"""
+        """선을 그린다"""
         if not self.is_running():
             return None
 
         try:
-            # 使用VARIANT包装坐标点数据（_pt自动补齐Z轴）
+            # 좌표점 데이터를 VARIANT로 감싼다(_pt가 Z축을 자동으로 채운다)
             start_array = self._pt(start_point)
             end_array = self._pt(end_point)
 
-            # 添加直线（独立撤销组，忙碌时在调用级自动重试）
+            # 선 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 line = self._call_attr(self._ms(), "AddLine", start_array, end_array)
 
-                # 设置图层、颜色、线宽
+                # 레이어, 색, 선굵기 설정
                 self._apply_style(line, layer, color, lineweight)
 
-            logger.debug(f"已绘制直线: 起点{start_point}, 终点{end_point}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"선 그림: 시작 {start_point}, 끝 {end_point}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return line
 
         except Exception as e:
-            logger.error(f"绘制直线时出错: {str(e)}")
+            logger.error(f"선 그리기 오류: {str(e)}")
             return None
 
     def draw_circle(self, center: Tuple[float, float, float],
                    radius: float, layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制圆"""
+        """원을 그린다"""
         if not self.is_running():
             return None
 
-        # 半径必须为正（CAD拒绝0和负半径），提前失败并给出明确日志
+        # 반지름은 양수여야 한다(CAD는 0과 음수 반지름을 거부함). 미리 실패하고 분명한 로그를 남긴다
         if radius <= 0:
-            logger.error(f"绘制圆失败: 半径({radius})必须为正数")
+            logger.error(f"원 그리기 실패: 반지름({radius})은 양수여야 합니다")
             return None
 
         try:
-            # 使用VARIANT包装坐标点数据（_pt自动补齐Z轴）
+            # 좌표점 데이터를 VARIANT로 감싼다(_pt가 Z축을 자동으로 채운다)
             center_array = self._pt(center)
 
-            # 添加圆（独立撤销组，忙碌时在调用级自动重试）
+            # 원 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 circle = self._call_attr(self._ms(), "AddCircle", center_array, radius)
 
-                # 设置图层、颜色、线宽
+                # 레이어, 색, 선굵기 설정
                 self._apply_style(circle, layer, color, lineweight)
 
-            logger.debug(f"已绘制圆: 中心{center}, 半径{radius}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"원 그림: 중심 {center}, 반지름 {radius}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return circle
 
         except Exception as e:
-            logger.error(f"绘制圆时出错: {str(e)}")
+            logger.error(f"원 그리기 오류: {str(e)}")
             return None
 
     def draw_arc(self, center: Tuple[float, float, float],
                 radius: float, start_angle: float, end_angle: float, layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制圆弧"""
+        """호를 그린다"""
         if not self.is_running():
             return None
 
-        # 半径必须为正（CAD拒绝0和负半径），提前失败并给出明确日志
+        # 반지름은 양수여야 한다(CAD는 0과 음수 반지름을 거부함). 미리 실패하고 분명한 로그를 남긴다
         if radius <= 0:
-            logger.error(f"绘制圆弧失败: 半径({radius})必须为正数")
+            logger.error(f"호 그리기 실패: 반지름({radius})은 양수여야 합니다")
             return None
 
         try:
-            # 将角度转换为弧度
+            # 각도를 라디안으로 바꾼다
             start_rad = math.radians(start_angle)
             end_rad = math.radians(end_angle)
 
-            # 使用VARIANT包装坐标点数据
+            # 좌표점 데이터를 VARIANT로 감싼다
             center_array = self._pt(center)
 
-            # 添加圆弧（独立撤销组，忙碌时在调用级自动重试）
+            # 호 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 arc = self._call_attr(self._ms(), "AddArc", center_array, radius, start_rad, end_rad)
 
-                # 设置图层、颜色、线宽
+                # 레이어, 색, 선굵기 설정
                 self._apply_style(arc, layer, color, lineweight)
 
-            logger.debug(f"已绘制圆弧: 中心{center}, 半径{radius}, 起始角度{start_angle}, 结束角度{end_angle}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"호 그림: 중심 {center}, 반지름 {radius}, 시작 각도 {start_angle}, 끝 각도 {end_angle}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return arc
         except Exception as e:
-            logger.error(f"绘制圆弧失败: {str(e)}")
+            logger.error(f"호 그리기 실패: {str(e)}")
             return None
 
     def draw_ellipse(self, center: Tuple[float, float, float],
                     major_axis: float, minor_axis: float, rotation: float = 0,
                     layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制椭圆"""
+        """타원을 그린다"""
         if not self.is_running():
             return None
 
-        # 长轴/短轴必须为正，且长轴不小于短轴——AddEllipse的RadiusRatio参数
-        # 为短轴/长轴，必须落在(0,1]区间；长轴为0还会导致本地除零
+        # 장축/단축은 양수여야 하고 장축이 단축보다 작으면 안 된다. AddEllipse의 RadiusRatio 인자는
+        # 단축/장축이라 (0,1] 구간에 있어야 하며, 장축이 0이면 여기서 0으로 나누게 된다
         if major_axis <= 0 or minor_axis <= 0 or minor_axis > major_axis:
-            logger.error(f"绘制椭圆失败: 长轴({major_axis})必须为正且不小于短轴({minor_axis})")
+            logger.error(f"타원 그리기 실패: 장축({major_axis})은 양수이고 단축({minor_axis})보다 작지 않아야 합니다")
             return None
 
         try:
             if rotation is None:
                 rotation = 0
 
-            # 将旋转角度转换为弧度
+            # 회전 각도를 라디안으로 바꾼다
             rotation_rad = math.radians(rotation)
 
-            # 使用VARIANT包装坐标点数据
+            # 좌표점 데이터를 VARIANT로 감싼다
             center_array = self._pt(center)
 
-            # 计算椭圆的主轴向量
+            # 타원의 장축 벡터를 계산한다
             major_x = major_axis * math.cos(rotation_rad)
             major_y = major_axis * math.sin(rotation_rad)
             major_vector = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8,
                                                [major_x, major_y, 0])
 
-            # 添加椭圆（独立撤销组，忙碌时在调用级自动重试）
+            # 타원 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 ellipse = self._call_attr(self._ms(), "AddEllipse", center_array, major_vector, minor_axis / major_axis)
 
-                # 设置图层、颜色、线宽
+                # 레이어, 색, 선굵기 설정
                 self._apply_style(ellipse, layer, color, lineweight)
 
-            logger.debug(f"已绘制椭圆: 中心{center}, 长轴{major_axis}, 短轴{minor_axis}, 旋转角度{rotation}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"타원 그림: 중심 {center}, 장축 {major_axis}, 단축 {minor_axis}, 회전 각도 {rotation}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return ellipse
         except Exception as e:
-            logger.error(f"绘制椭圆失败: {str(e)}")
+            logger.error(f"타원 그리기 실패: {str(e)}")
             return None
 
     def draw_polyline(self, points: List[Tuple[float, float, float]], closed: bool = False, layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制多段线"""
+        """폴리선을 그린다"""
         if not self.is_running():
             return None
 
         try:
-            # 确保所有点都是三维的
+            # 모든 점을 3차원으로 맞춘다
             processed_points = []
             for point in points:
                 if len(point) == 2:
@@ -634,276 +634,276 @@ class CADController:
                 else:
                     processed_points.append(point)
 
-            # 创建点数组
+            # 점 배열을 만든다
             point_array = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_R8,
                                                 [coord for point in processed_points for coord in point])
 
-            # 添加多段线（独立撤销组，忙碌时在调用级自动重试）
+            # 폴리선 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 polyline = self._call_attr(self._ms(), "AddPolyline", point_array)
 
-                # 如果需要闭合
+                # 닫아야 하면 닫는다
                 if closed and len(processed_points) > 2:
                     self._call(setattr, polyline, "Closed", True)
 
-                # 设置图层、颜色、线宽
+                # 레이어, 색, 선굵기 설정
                 self._apply_style(polyline, layer, color, lineweight)
 
-            logger.debug(f"已绘制多段线: {len(points)}个点, {'闭合' if closed else '不闭合'}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"폴리선 그림: 점 {len(points)}개, {'닫힘' if closed else '열림'}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return polyline
         except Exception as e:
-            logger.error(f"绘制多段线时出错: {str(e)}")
+            logger.error(f"폴리선 그리기 오류: {str(e)}")
             return None
 
     def draw_rectangle(self, corner1: Tuple[float, float, float],
                       corner2: Tuple[float, float, float], layer: str = None, color: int = None, lineweight=None) -> Any:
-        """绘制矩形"""
+        """사각형을 그린다"""
         if not self.is_running():
             return None
 
         try:
-            # 确保点是三维的
+            # 점을 3차원으로 맞춘다
             if len(corner1) == 2:
                 corner1 = (corner1[0], corner1[1], 0)
             if len(corner2) == 2:
                 corner2 = (corner2[0], corner2[1], 0)
 
-            # 计算矩形的四个角点
+            # 사각형의 네 모서리를 계산한다
             x1, y1, z1 = corner1
             x2, y2, z2 = corner2
 
-            # 创建矩形的四个点
+            # 사각형의 네 점을 만든다
             points = [
                 (x1, y1, z1),
                 (x2, y1, z1),
                 (x2, y2, z1),
                 (x1, y2, z1),
-                (x1, y1, z1)  # 闭合矩形
+                (x1, y1, z1)  # 사각형을 닫는다
             ]
 
-            # 使用多段线绘制矩形
+            # 폴리선으로 사각형을 그린다
             return self.draw_polyline(points, True, layer, color, lineweight)
         except Exception as e:
-            logger.error(f"绘制矩形时出错: {str(e)}")
+            logger.error(f"사각형 그리기 오류: {str(e)}")
             return None
 
     def draw_text(self, position: Tuple[float, float, float],
                  text: str, height: float = 2.5, rotation: float = 0, layer: str = None, color: int = None) -> Any:
-        """添加文本"""
+        """문자를 넣는다"""
         if not self.is_running():
             return None
 
         try:
-            # 使用VARIANT包装坐标点数据（_pt自动补齐Z轴）
+            # 좌표점 데이터를 VARIANT로 감싼다(_pt가 Z축을 자동으로 채운다)
             position_array = self._pt(position)
 
-            # 添加文本（独立撤销组，忙碌时在调用级自动重试）
+            # 문자 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
             with self._undo_group():
                 text_obj = self._call_attr(self._ms(), "AddText", text, position_array, height)
 
-                # 设置旋转角度
+                # 회전 각도 설정
                 if rotation != 0:
                     self._call(setattr, text_obj, "Rotation", math.radians(rotation))
 
-                # 设置图层、颜色
+                # 레이어, 색 설정
                 self._apply_style(text_obj, layer, color)
 
-            logger.debug(f"已添加文本: '{text}', 位置{position}, 高度{height}, 旋转{rotation}度, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"문자 넣음: '{text}', 위치 {position}, 높이 {height}, 회전 {rotation}도, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return text_obj
         except Exception as e:
-            logger.error(f"添加文本时出错: {str(e)}")
+            logger.error(f"문자 넣기 오류: {str(e)}")
             return None
 
     def draw_hatch(self, points: List[Tuple[float, float, float]],
                   pattern_name: str = "SOLID", scale: float = 1.0, layer: str = None, color: int = None) -> Any:
-        """绘制填充图案
+        """해치를 그린다
 
         Args:
-            points: 填充边界的点集，每个点为二维或三维坐标元组
-            pattern_name: 填充图案名称，默认为"SOLID"(实体填充)
-            scale: 填充图案比例，默认为1.0
-            layer: 图层名称，如果为None则使用当前图层
-            color: 颜色索引，如果为None则使用默认颜色
+            points: 해치 경계 점 목록. 점마다 2차원 또는 3차원 좌표 튜플
+            pattern_name: 해치 패턴 이름. 기본값 "SOLID"(솔리드 채우기)
+            scale: 해치 패턴 축척. 기본값 1.0
+            layer: 레이어 이름. None이면 현재 레이어를 쓴다
+            color: 색상 인덱스. None이면 기본 색을 쓴다
 
         Returns:
-            成功返回填充对象，失败返回None
+            성공하면 해치 객체, 실패하면 None
         """
         if not self.is_running():
             return None
 
         closed_polyline = None
         try:
-            # 确保所有点都是有效的
+            # 점이 모두 유효한지 확인한다
             if not points or len(points) < 3:
-                logger.error("创建填充失败: 至少需要3个点来定义填充边界")
+                logger.error("해치 만들기 실패: 해치 경계를 정하려면 점이 3개 이상 필요합니다")
                 return None
 
-            # 创建边界多段线（内部已有独立撤销组，此处外层组使填充+边界成为一个撤销步骤）
+            # 경계 폴리선을 만든다(안쪽에 이미 독립 실행 취소 그룹이 있고, 바깥 그룹이 해치+경계를 한 단계로 묶는다)
             with self._undo_group():
                 closed_polyline = self.draw_polyline(points, closed=True, layer=layer)
                 if not closed_polyline:
-                    logger.error("创建填充失败: 无法创建边界多段线")
+                    logger.error("해치 만들기 실패: 경계 폴리선을 만들 수 없음")
                     return None
 
-                # 创建填充对象 (0表示正常填充，True表示关联边界)
+                # 해치 객체를 만든다(0은 일반 해치, True는 경계와 연관)
                 hatch = self._call_attr(self._ms(), "AddHatch", 0, pattern_name, True)
 
-                # 添加外部边界循环
-                # 使用VARIANT包装对象数组
+                # 바깥 경계 루프 추가
+                # 객체 배열을 VARIANT로 감싼다
                 object_ids = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_DISPATCH, [closed_polyline])
                 self._call_attr(hatch, "AppendOuterLoop", object_ids)
 
-                # 设置填充图案比例
+                # 해치 패턴 축척 설정
                 self._call(setattr, hatch, "PatternScale", scale)
 
-                # 设置图层、颜色
+                # 레이어, 색 설정
                 self._apply_style(hatch, layer, color)
 
-                # 更新填充 (计算填充区域)
+                # 해치 갱신(해치 영역 계산)
                 self._call_attr(hatch, "Evaluate")
 
-            logger.debug(f"已创建填充: 图案 {pattern_name}, 比例 {scale}, 图层{layer if layer else '默认'}, 颜色{color if color is not None else '默认'}")
+            logger.debug(f"해치 만듦: 패턴 {pattern_name}, 축척 {scale}, 레이어 {layer if layer else '기본'}, 색 {color if color is not None else '기본'}")
             return hatch
         except Exception as e:
-            # 失败时清理已创建的边界多段线，避免在图纸上留下孤儿实体
-            # （调用方看到的是"失败"，图纸上却不应多出一条闭合多段线）
+            # 실패하면 이미 만든 경계 폴리선을 지워 도면에 고아 객체가 남지 않게 한다
+            # (호출한 쪽은 "실패"를 봤는데 도면에 닫힌 폴리선이 하나 더 있으면 안 된다)
             if closed_polyline is not None:
                 try:
                     self._call_attr(closed_polyline, "Delete")
                 except Exception:
                     pass
-            logger.error(f"创建填充时出错: {str(e)}")
+            logger.error(f"해치 만들기 오류: {str(e)}")
             return None
 
     def zoom_extents(self) -> bool:
-        """缩放视图以显示所有对象"""
+        """모든 객체가 보이도록 뷰를 줌한다"""
         if not self.is_running():
             return False
 
         try:
-            # ZoomExtents 是 Application 对象的方法（非 ActiveViewport）
+            # ZoomExtents는 Application 객체의 메서드다(ActiveViewport가 아님)
             self._call_attr(self.app, "ZoomExtents")
-            logger.info("已缩放视图以显示所有对象")
+            logger.info("모든 객체가 보이도록 뷰를 줌함")
             return True
         except Exception as e:
-            logger.error(f"缩放视图时出错: {str(e)}")
+            logger.error(f"뷰 줌 오류: {str(e)}")
             return False
 
     def close(self) -> None:
-        """关闭CAD控制器
+        """CAD 컨트롤러를 닫는다
 
-        注意：COM 套间由 COMExecutor 线程持有，进程退出时由系统回收，
-        此处仅释放引用，不再跨线程调用 CoUninitialize。
+        참고: COM 아파트는 COMExecutor 스레드가 들고 있고 프로세스가 끝날 때 시스템이 회수한다.
+        여기서는 참조만 놓고, 스레드를 넘어 CoUninitialize를 부르지 않는다.
         """
         try:
-            # 释放COM资源
+            # COM 자원 해제
             if self.app is not None:
                 del self.app
         except:
             pass
 
     def _ensure_layer(self, layer_name: str):
-        """确保图层存在并返回图层对象（已存在则直接返回，不改动当前图层）
+        """레이어가 있도록 보장하고 레이어 객체를 돌려준다(이미 있으면 그대로 돌려주며 현재 레이어는 바꾸지 않는다)
 
-        绘图时指定图层走这里：只保证实体能落到目标图层，
-        不把用户正在使用的当前图层悄悄切走。
-        Layers集合与Name读取都可能被忙碌的CAD拒绝，逐调用重试。
+        그릴 때 레이어를 지정하면 여기를 거친다: 객체가 대상 레이어에 들어가게만 보장하고,
+        사용자가 쓰던 현재 레이어를 몰래 바꾸지 않는다.
+        Layers 컬렉션과 Name 읽기 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도한다.
         """
         layers = self._call(getattr, self.doc, "Layers")
         for i in range(self._call(getattr, layers, "Count")):
             layer = self._call_attr(layers, "Item", i)
-            # CAD图层名不区分大小写，比较时忽略大小写
-            # （否则"wall"会对已存在的"WALL"重复Add，被CAD拒绝）
+            # CAD 레이어 이름은 대소문자를 구분하지 않으므로 비교할 때 대소문자를 무시한다
+            # (그러지 않으면 "wall"이 이미 있는 "WALL"에 대해 다시 Add되어 CAD에 거부된다)
             if self._call(getattr, layer, "Name").casefold() == layer_name.casefold():
                 return layer
-        # 不存在则创建（独立撤销组）
+        # 없으면 만든다(독립 실행 취소 그룹)
         with self._undo_group():
             return self._call_attr(layers, "Add", layer_name)
 
     def create_layer(self, layer_name: str) -> bool:    # , color: Union[int, Tuple[int, int, int]] = 7
-        """创建新图层并设为当前图层（已存在则直接激活）
+        """새 레이어를 만들고 현재 레이어로 지정한다(이미 있으면 그 레이어를 현재로 지정)
 
         Args:
-            layer_name: 图层名称
-            color: 颜色值，可以是CAD颜色索引(int)或RGB颜色值(tuple)
+            layer_name: 레이어 이름
+            color: 색 값. CAD 색상 인덱스(int) 또는 RGB 값(tuple)
 
         Returns:
-            操作是否成功
+            작업 성공 여부
         """
         if not self.is_running():
             return False
 
         try:
-            # 确保图层存在（存在则复用，不存在则创建）
+            # 레이어가 있도록 보장한다(있으면 그대로 쓰고, 없으면 만든다)
             new_layer = self._ensure_layer(layer_name)
 
-            # 图层不设置颜色，设置里面的实体颜色
-            # # 设置颜色
+            # 레이어에는 색을 설정하지 않고, 그 안의 객체 색을 설정한다
+            # # 색 설정
             # if isinstance(color, int):
-            #     # 使用颜色索引
+            #     # 색상 인덱스 사용
             #     new_layer.Color = color
             # elif isinstance(color, tuple) and len(color) == 3:
-            #     # 使用RGB值
+            #     # RGB 값 사용
             #     r, g, b = color
-            #     # 设置TrueColor
+            #     # TrueColor 설정
             #     new_layer.TrueColor = self._create_true_color(r, g, b)
 
-            # 设置为当前图层
+            # 현재 레이어로 지정한다
             self._call(setattr, self.doc, "ActiveLayer", new_layer)
-            logger.info(f"已创建并设为当前图层: {layer_name}")  #, 颜色: {color}
+            logger.info(f"레이어를 만들고 현재 레이어로 지정함: {layer_name}")  #, 색: {color}
             return True
         except Exception as e:
-            logger.error(f"创建图层时出错: {str(e)}")
+            logger.error(f"레이어 만들기 오류: {str(e)}")
             return False
 
     def add_dimension(self, start_point: Tuple[float, float, float],
                      end_point: Tuple[float, float, float],
                      text_position: Tuple[float, float, float] = None, textheight: float = 5, layer: str = None, color: int=None) -> Any:
-            """添加线性标注"""
+            """선형 치수를 넣는다"""
             if not self.is_running():
                 return None
 
             try:
-                # 如果未提供文本位置，自动计算
+                # 문자 위치를 주지 않으면 자동으로 계산한다
                 if text_position is None:
-                    # 在起点和终点之间的中点上方
+                    # 시작점과 끝점 사이 중점의 위쪽
                     mid_x = (start_point[0] + end_point[0]) / 2
                     mid_y = (start_point[1] + end_point[1]) / 2
                     text_position = (mid_x, mid_y + 5, 0)
 
-                # 使用VARIANT包装坐标点数据（_pt自动补齐Z轴）
+                # 좌표점 데이터를 VARIANT로 감싼다(_pt가 Z축을 자동으로 채운다)
                 start_array = self._pt(start_point)
                 end_array = self._pt(end_point)
                 text_pos_array = self._pt(text_position)
 
-                # 添加对齐标注（独立撤销组，忙碌时在调用级自动重试）
+                # 정렬 치수 추가(독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도)
                 with self._undo_group():
                     dimension = self._call_attr(self._ms(), "AddDimAligned", start_array, end_array, text_pos_array)
 
-                    # 设置文字高度
+                    # 문자 높이 설정
                     if textheight is not None:
                         self._call(setattr, dimension, "TextHeight", textheight)
 
-                    # 设置图层、颜色
+                    # 레이어, 색 설정
                     self._apply_style(dimension, layer, color)
 
-                logger.info(f"已添加标注: 从 {start_point} 到 {end_point}, 图层{layer if layer else '默认'}")
+                logger.info(f"치수 넣음: {start_point}에서 {end_point}까지, 레이어 {layer if layer else '기본'}")
                 return dimension
             except Exception as e:
-                logger.error(f"添加标注时出错: {str(e)}")
+                logger.error(f"치수 넣기 오류: {str(e)}")
                 return None
 
-    # ==================== 查询类操作（实时读取CAD文档状态） ====================
+    # ==================== 조회 작업(CAD 문서 상태를 실시간으로 읽음) ====================
 
     @staticmethod
     def _friendly_type(object_name: str) -> str:
-        """将COM对象类型名（如AcDbLine）转换为友好类型名（如line）"""
+        """COM 객체 종류 이름(예: AcDbLine)을 알기 쉬운 이름(예: line)으로 바꾼다"""
         mapping = {
             "AcDbLine": "line",
             "AcDbCircle": "circle",
             "AcDbArc": "arc",
             "AcDbEllipse": "ellipse",
-            "AcDbPolyline": "polyline",       # 轻量多段线
+            "AcDbPolyline": "polyline",       # 경량 폴리선
             "AcDb2dPolyline": "polyline",
             "AcDb3dPolyline": "polyline",
             "AcDbText": "text",
@@ -917,7 +917,7 @@ class CADController:
         return mapping.get(object_name, object_name)
 
     def get_entity_info(self, entity) -> Dict[str, Any]:
-        """获取实体概要信息（句柄/类型/图层/颜色）"""
+        """객체 요약 정보를 얻는다(핸들/종류/레이어/색)"""
         return {
             "handle": str(self._safe_attr(entity, "Handle", "")),
             "entity_type": self._friendly_type(str(self._safe_attr(entity, "ObjectName", ""))),
@@ -926,12 +926,12 @@ class CADController:
         }
 
     def list_layers(self) -> List[Dict[str, Any]]:
-        """列出当前图纸的所有图层信息"""
+        """현재 도면의 모든 레이어 정보를 나열한다"""
         if not self.is_running():
             return []
 
         layers = []
-        # 集合与属性读取都可能被忙碌的CAD拒绝，逐调用重试
+        # 컬렉션과 속성 읽기 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도
         active_name = self._call(getattr, self._call(getattr, self.doc, "ActiveLayer"), "Name")
         layer_set = self._call(getattr, self.doc, "Layers")
         for i in range(self._call(getattr, layer_set, "Count")):
@@ -948,25 +948,25 @@ class CADController:
         return layers
 
     def list_entities(self, entity_type: str = None, limit: int = 50) -> Dict[str, Any]:
-        """列出模型空间中的实体（实时查询，与CAD文档保持同步）
+        """모형 공간의 객체를 나열한다(실시간 조회, CAD 문서와 항상 일치)
 
         Args:
-            entity_type: 按类型过滤（line/circle/arc等，不区分大小写），None为不过滤
-            limit: 最多返回的实体数量（大图纸时避免一次性返回过多数据）
+            entity_type: 종류로 거른다(line/circle/arc 등, 대소문자 무시). None이면 거르지 않는다
+            limit: 돌려줄 최대 객체 수(큰 도면에서 한 번에 너무 많이 돌려주지 않기 위해)
 
         Returns:
-            {"total": 模型空间实体总数, "entities": [实体信息]}
+            {"total": 모형 공간 객체 총수, "entities": [객체 정보]}
         """
         if not self.is_running():
             return {"total": 0, "entities": []}
 
         ms = self._ms()
-        # Count与Item访问都可能被忙碌的CAD拒绝，逐调用重试
+        # Count와 Item 접근 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도
         total = self._call(getattr, ms, "Count")
         entities = []
         for i in range(total):
             info = self.get_entity_info(self._call_attr(ms, "Item", i))
-            # 精确匹配类型名（子串匹配会让"line"把polyline也带出来）
+            # 종류 이름을 정확히 비교한다(부분 문자열 비교면 "line"에 polyline까지 걸린다)
             if entity_type and info["entity_type"].lower() != entity_type.lower():
                 continue
             entities.append(info)
@@ -975,9 +975,9 @@ class CADController:
         return {"total": total, "entities": entities}
 
     def get_entity_properties(self, handle: str) -> Dict[str, Any]:
-        """按句柄获取实体详细属性（几何信息随实体类型而异）"""
+        """핸들로 객체 상세 속성을 얻는다(기하 정보는 객체 종류마다 다르다)"""
         if not self.is_running():
-            raise RuntimeError("CAD未运行")
+            raise RuntimeError("CAD 미연결")
 
         entity = self._get_entity_by_handle(handle)
         object_name = str(self._safe_attr(entity, "ObjectName", ""))
@@ -990,7 +990,7 @@ class CADController:
             "lineweight": self._safe_attr(entity, "Lineweight"),
         }
 
-        # 按实体类型补充几何属性
+        # 객체 종류에 따라 기하 속성을 덧붙인다
         detail: Dict[str, Any] = {}
         if object_name == "AcDbLine":
             detail["start_point"] = list(self._safe_attr(entity, "StartPoint") or [])
@@ -1003,7 +1003,7 @@ class CADController:
         elif object_name == "AcDbArc":
             detail["center"] = list(self._safe_attr(entity, "Center") or [])
             detail["radius"] = self._safe_attr(entity, "Radius")
-            # StartAngle/EndAngle为弧度，转换为度便于理解
+            # StartAngle/EndAngle은 라디안이라 이해하기 쉽게 도로 바꾼다
             start_rad = self._safe_attr(entity, "StartAngle")
             end_rad = self._safe_attr(entity, "EndAngle")
             detail["start_angle"] = math.degrees(start_rad) if start_rad is not None else None
@@ -1023,10 +1023,10 @@ class CADController:
             detail["text"] = self._safe_attr(entity, "TextString")
             detail["insertion_point"] = list(self._safe_attr(entity, "InsertionPoint") or [])
         elif object_name in ("AcDbPolyline", "AcDb2dPolyline", "AcDb3dPolyline"):
-            # Coordinates为扁平坐标数组，按类型确定每点分量数切分：
-            # 轻量多段线(AcDbPolyline)为2分量[x,y,...]，
-            # 旧式2D/3D多段线(AcDb2dPolyline/AcDb3dPolyline)为3分量[x,y,z,...]，
-            # 统一按2切分会把z当下一点的x，坐标全部错位
+            # Coordinates는 평평한 좌표 배열이라, 종류에 따라 점당 성분 수를 정해 자른다:
+            # 경량 폴리선(AcDbPolyline)은 성분 2개 [x,y,...],
+            # 옛 2D/3D 폴리선(AcDb2dPolyline/AcDb3dPolyline)은 성분 3개 [x,y,z,...]다.
+            # 모두 2개씩 자르면 z를 다음 점의 x로 읽어 좌표가 전부 어긋난다
             coords = self._safe_attr(entity, "Coordinates") or []
             step = 2 if object_name == "AcDbPolyline" else 3
             detail["coordinates"] = [list(coords[i:i + step]) for i in range(0, len(coords), step)]
@@ -1047,92 +1047,92 @@ class CADController:
         return props
 
     def get_drawing_stats(self) -> Dict[str, Any]:
-        """获取当前文档的实时统计信息（实体数/图层数/文档名）"""
+        """현재 문서의 실시간 통계를 얻는다(객체 수/레이어 수/문서 이름)"""
         if not self.is_running():
             return {"running": False}
         return {
             "running": True,
-            # 各属性读取都可能被忙碌的CAD拒绝，逐调用重试
+            # 속성 읽기마다 바쁜 CAD에 거부될 수 있어 호출마다 재시도
             "entity_count": self._call(getattr, self._ms(), "Count"),
             "layer_count": self._call(getattr, self._call(getattr, self.doc, "Layers"), "Count"),
             "document_name": self._call(getattr, self.doc, "Name"),
         }
 
     def screenshot(self) -> bytes:
-        """截取CAD主窗口画面，返回PNG格式字节流"""
+        """CAD 메인 창을 캡처해 PNG 바이트를 돌려준다"""
         if not self.is_running():
-            raise RuntimeError("CAD未运行")
+            raise RuntimeError("CAD 미연결")
 
         import win32gui
         import win32con
         from PIL import ImageGrab
 
-        # 截图前强制全视口重生成：浩辰CAD经COM批量绘图后画布不会自动刷新，
-        # 不重生成会截到绘制前的旧画面（实体已入库，仅显示滞后）
+        # 캡처 전에 모든 뷰포트를 강제로 재생성한다: GstarCAD는 COM으로 한꺼번에 그린 뒤 화면을 자동으로 새로 고치지 않아,
+        # 재생성하지 않으면 그리기 전의 옛 화면이 찍힌다(객체는 이미 들어가 있고 표시만 늦음)
         try:
             self._call_attr(self.doc, "Regen", 1)  # 1 = acAllViewports
         except Exception as e:
-            logger.warning(f"截图前重生成失败（仍会尝试截图）: {str(e)}")
+            logger.warning(f"캡처 전 재생성 실패(그래도 캡처를 시도함): {str(e)}")
 
-        # CAD主窗口句柄（属性读取可能被忙碌的CAD拒绝，需带重试）
+        # CAD 메인 창 핸들(속성 읽기가 바쁜 CAD에 거부될 수 있어 재시도)
         hwnd = self._call(getattr, self.app, "HWND")
-        # 窗口最小化时GetWindowRect返回的是无效坐标（-32000附近），
-        # 直接截会得到垃圾图，先把窗口还原
+        # 창이 최소화돼 있으면 GetWindowRect가 무효 좌표(-32000 근처)를 돌려주고,
+        # 그대로 찍으면 쓰레기 이미지가 나오므로 먼저 창을 복원한다
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
             time.sleep(0.3)
-        # 尽量把CAD窗口带到前台，避免被其他窗口遮挡
+        # 가능하면 CAD 창을 앞으로 가져와 다른 창에 가려지지 않게 한다
         try:
             win32gui.SetForegroundWindow(hwnd)
             time.sleep(0.3)
         except Exception as e:
-            logger.warning(f"无法将CAD窗口置前（仍会尝试截图）: {str(e)}")
+            logger.warning(f"CAD 창을 앞으로 가져올 수 없음(그래도 캡처를 시도함): {str(e)}")
 
         left, top, right, bottom = win32gui.GetWindowRect(hwnd)
-        # all_screens=True 以支持多显示器/负坐标场景
+        # all_screens=True로 여러 모니터/음수 좌표 상황을 지원한다
         img = ImageGrab.grab(bbox=(left, top, right, bottom), all_screens=True)
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return buf.getvalue()
 
-    # ==================== 编辑类操作 ====================
+    # ==================== 편집 작업 ====================
 
     def _get_entity_by_handle(self, handle: str):
-        """按句柄查找实体对象（查找为只读操作，调用级重试安全）"""
+        """핸들로 객체를 찾는다(조회는 읽기 전용이라 호출 단위 재시도가 안전하다)"""
         entity = self._call_attr(self.doc, "HandleToObject", str(handle))
         if entity is None:
-            raise ValueError(f"未找到句柄为 {handle} 的实体")
+            raise ValueError(f"핸들 {handle}인 객체를 찾지 못함")
         return entity
 
     def erase_entity(self, handle: str) -> bool:
-        """删除指定实体"""
+        """지정한 객체를 지운다"""
         if not self.is_running():
             return False
         try:
-            # 独立撤销组：UNDO 1正好撤销本次删除
+            # 독립 실행 취소 그룹: UNDO 1이 이번 지우기만 정확히 취소한다
             with self._undo_group():
                 self._call_attr(self._get_entity_by_handle(handle), "Delete")
             return True
         except Exception as e:
-            logger.error(f"删除实体失败: {str(e)}")
+            logger.error(f"객체 지우기 실패: {str(e)}")
             return False
 
     def move_entity(self, handle: str, displacement: List[float]) -> bool:
-        """移动实体（按位移向量 [dx, dy, dz]）"""
+        """객체를 이동한다(이동 벡터 [dx, dy, dz])"""
         if not self.is_running():
             return False
         try:
             entity = self._get_entity_by_handle(handle)
-            # Move(基点, 第二点) 实现平移：基点取原点，第二点即位移向量
+            # Move(기준점, 두 번째 점)로 평행 이동한다: 기준점은 원점, 두 번째 점이 곧 이동 벡터
             with self._undo_group():
                 self._call_attr(entity, "Move", self._pt((0, 0, 0)), self._pt(displacement))
             return True
         except Exception as e:
-            logger.error(f"移动实体失败: {str(e)}")
+            logger.error(f"객체 이동 실패: {str(e)}")
             return False
 
     def rotate_entity(self, handle: str, base_point: List[float], angle_degrees: float) -> bool:
-        """绕基点旋转实体（角度单位：度，逆时针为正）"""
+        """기준점을 중심으로 객체를 회전한다(각도 단위: 도, 반시계 방향이 양수)"""
         if not self.is_running():
             return False
         try:
@@ -1141,11 +1141,11 @@ class CADController:
                 self._call_attr(entity, "Rotate", self._pt(base_point), math.radians(angle_degrees))
             return True
         except Exception as e:
-            logger.error(f"旋转实体失败: {str(e)}")
+            logger.error(f"객체 회전 실패: {str(e)}")
             return False
 
     def scale_entity(self, handle: str, base_point: List[float], scale_factor: float) -> bool:
-        """绕基点缩放实体"""
+        """기준점을 중심으로 객체 크기를 바꾼다"""
         if not self.is_running():
             return False
         try:
@@ -1154,27 +1154,27 @@ class CADController:
                 self._call_attr(entity, "ScaleEntity", self._pt(base_point), scale_factor)
             return True
         except Exception as e:
-            logger.error(f"缩放实体失败: {str(e)}")
+            logger.error(f"객체 크기 조정 실패: {str(e)}")
             return False
 
     def copy_entity(self, handle: str, displacement: List[float]):
-        """复制实体并平移指定位移，返回新实体"""
+        """객체를 복사해 지정한 만큼 옮기고, 새 객체를 돌려준다"""
         if not self.is_running():
             return None
         try:
             entity = self._get_entity_by_handle(handle)
-            # 复制+平移打包为一个撤销组（Copy与Move分开重试，均幂等安全）
+            # 복사+이동을 하나의 실행 취소 그룹으로 묶는다(Copy와 Move는 따로 재시도하며 둘 다 멱등이라 안전)
             with self._undo_group():
                 copy = self._call_attr(entity, "Copy")
                 if copy is not None and displacement:
                     self._call_attr(copy, "Move", self._pt((0, 0, 0)), self._pt(displacement))
             return copy
         except Exception as e:
-            logger.error(f"复制实体失败: {str(e)}")
+            logger.error(f"객체 복사 실패: {str(e)}")
             return None
 
     def mirror_entity(self, handle: str, point1: List[float], point2: List[float]):
-        """沿两点确定的镜像轴镜像实体，返回镜像产生的新实体（保留原实体）"""
+        """두 점으로 정한 대칭축을 기준으로 객체를 대칭 복사하고, 새로 생긴 객체를 돌려준다(원본 유지)"""
         if not self.is_running():
             return None
         try:
@@ -1183,25 +1183,25 @@ class CADController:
                 mirrored = self._call_attr(entity, "Mirror", self._pt(point1), self._pt(point2))
             return mirrored
         except Exception as e:
-            logger.error(f"镜像实体失败: {str(e)}")
+            logger.error(f"객체 대칭 실패: {str(e)}")
             return None
 
     def offset_entity(self, handle: str, distance: float) -> List[Any]:
-        """偏移实体（正负值决定偏移方向），返回新实体列表"""
+        """객체를 간격 띄우기 하고(양수/음수로 방향 결정), 새 객체 목록을 돌려준다"""
         if not self.is_running():
             return []
         try:
             entity = self._get_entity_by_handle(handle)
             with self._undo_group():
-                # Offset返回新实体数组（可能为空）
+                # Offset은 새 객체 배열을 돌려준다(비어 있을 수 있음)
                 result = self._call_attr(entity, "Offset", distance)
             return list(result) if result else []
         except Exception as e:
-            logger.error(f"偏移实体失败: {str(e)}")
+            logger.error(f"객체 간격 띄우기 실패: {str(e)}")
             return []
 
     def array_linear_entity(self, handle: str, count: int, displacement: List[float]) -> List[Any]:
-        """矩形阵列：沿位移向量方向复制 count-1 份（含原实体共 count 个）"""
+        """직선 배열: 이동 벡터 방향으로 count-1개를 복사한다(원본 포함 총 count개)"""
         if not self.is_running():
             return []
         try:
@@ -1209,7 +1209,7 @@ class CADController:
             dx, dy = float(displacement[0]), float(displacement[1])
             dz = float(displacement[2]) if len(displacement) > 2 else 0.0
             copies = []
-            # 整个阵列打包为一个撤销组；循环内逐调用重试避免部分完成后重复
+            # 배열 전체를 하나의 실행 취소 그룹으로 묶는다. 반복 안에서는 호출마다 재시도해 일부만 끝난 뒤 중복되는 것을 막는다
             with self._undo_group():
                 for i in range(1, count):
                     copy = self._call_attr(src, "Copy")
@@ -1217,11 +1217,11 @@ class CADController:
                     copies.append(copy)
             return copies
         except Exception as e:
-            logger.error(f"线性阵列失败: {str(e)}")
+            logger.error(f"직선 배열 실패: {str(e)}")
             return []
 
     def array_polar_entity(self, handle: str, count: int, center: List[float], total_angle_degrees: float = 360.0) -> List[Any]:
-        """环形阵列：绕中心点在 total_angle 角度范围内复制 count-1 份"""
+        """원형 배열: 중심점을 기준으로 total_angle 범위 안에 count-1개를 복사한다"""
         if not self.is_running():
             return []
         try:
@@ -1229,7 +1229,7 @@ class CADController:
             step = math.radians(total_angle_degrees / count)
             center_pt = self._pt(center)
             copies = []
-            # 整个阵列打包为一个撤销组；循环内逐调用重试避免部分完成后重复
+            # 배열 전체를 하나의 실행 취소 그룹으로 묶는다. 반복 안에서는 호출마다 재시도해 일부만 끝난 뒤 중복되는 것을 막는다
             with self._undo_group():
                 for i in range(1, count):
                     copy = self._call_attr(src, "Copy")
@@ -1237,146 +1237,146 @@ class CADController:
                     copies.append(copy)
             return copies
         except Exception as e:
-            logger.error(f"环形阵列失败: {str(e)}")
+            logger.error(f"원형 배열 실패: {str(e)}")
             return []
 
     def undo(self) -> bool:
-        """撤销上一步操作"""
+        """직전 작업을 실행 취소한다"""
         if not self.is_running():
             return False
         try:
-            # 注意：实测 AutoCAD 上 "_.UNDO 1" 带前缀+数字参数的组合不生效，
-            # 纯英文命令名 "UNDO 1" 可靠（中文版CAD原生支持英文命令名）
+            # 주의: AutoCAD에서 "_.UNDO 1"처럼 접두어와 숫자 인자를 함께 쓰면 동작하지 않음을 확인했다.
+            # 순수 영문 명령 이름 "UNDO 1"이 안정적이다(현지화된 CAD도 영문 명령 이름을 그대로 지원)
             self._call_attr(self.doc, "SendCommand", "UNDO 1\n")
-            # SendCommand是异步的：等待命令处理完再返回，确保后续调用能看到撤销结果
+            # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아가야 이후 호출이 취소 결과를 본다
             time.sleep(self.command_delay)
             return True
         except Exception as e:
-            logger.error(f"撤销失败: {str(e)}")
+            logger.error(f"실행 취소 실패: {str(e)}")
             return False
 
     def redo(self) -> bool:
-        """重做被撤销的操作"""
+        """실행 취소한 작업을 다시 실행한다"""
         if not self.is_running():
             return False
         try:
             self._call_attr(self.doc, "SendCommand", "_.REDO\n")
-            # SendCommand是异步的：等待命令处理完再返回
+            # SendCommand는 비동기다: 명령이 처리될 때까지 기다린 뒤 돌아간다
             time.sleep(self.command_delay)
             return True
         except Exception as e:
-            logger.error(f"重做失败: {str(e)}")
+            logger.error(f"다시 실행 실패: {str(e)}")
             return False
 
-    # ==================== 图层操作 ====================
+    # ==================== 레이어 작업 ====================
 
     def set_current_layer(self, layer_name: str) -> bool:
-        """切换当前图层（图层必须已存在）"""
+        """현재 레이어를 바꾼다(레이어가 이미 있어야 한다)"""
         if not self.is_running():
             return False
         try:
-            # Layers集合与Name读取都可能被忙碌的CAD拒绝，逐调用重试
+            # Layers 컬렉션과 Name 읽기 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도
             layers = self._call(getattr, self.doc, "Layers")
             for i in range(self._call(getattr, layers, "Count")):
                 layer = self._call_attr(layers, "Item", i)
-                # CAD图层名不区分大小写，比较时忽略大小写
+                # CAD 레이어 이름은 대소문자를 구분하지 않으므로 비교할 때 대소문자를 무시한다
                 if self._call(getattr, layer, "Name").casefold() == layer_name.casefold():
                     self._call(setattr, self.doc, "ActiveLayer", layer)
-                    logger.info(f"已切换当前图层: {layer_name}")
+                    logger.info(f"현재 레이어 바꿈: {layer_name}")
                     return True
-            logger.warning(f"图层 {layer_name} 不存在")
+            logger.warning(f"레이어 {layer_name}이(가) 없음")
             return False
         except Exception as e:
-            logger.error(f"切换图层失败: {str(e)}")
+            logger.error(f"레이어 바꾸기 실패: {str(e)}")
             return False
 
-    # ==================== 图纸管理 ====================
+    # ==================== 도면 관리 ====================
 
     def new_drawing(self) -> bool:
-        """新建图纸文档"""
+        """새 도면 문서를 만든다"""
         if self.app is None:
             return False
         try:
-            # Documents集合的获取与Add调用都可能被忙碌的CAD拒绝，逐调用重试
+            # Documents 컬렉션 얻기와 Add 호출 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도
             docs = self._call(getattr, self.app, "Documents")
             self.doc = self._call_attr(docs, "Add")
-            # Name读取可能被刚创建文档的CAD短暂拒绝，需带重试（否则日志误显示None）
-            logger.info(f"已新建文档: {self._call(getattr, self.doc, 'Name')}")
+            # 막 만든 문서의 Name 읽기를 CAD가 잠깐 거부할 수 있어 재시도(안 하면 로그에 None이 찍힘)
+            logger.info(f"새 문서 만듦: {self._call(getattr, self.doc, 'Name')}")
             return self.doc is not None
         except Exception as e:
-            logger.error(f"新建文档失败: {str(e)}")
+            logger.error(f"새 문서 만들기 실패: {str(e)}")
             return False
 
     def open_drawing(self, file_path: str) -> bool:
-        """打开已有图纸文件"""
+        """기존 도면 파일을 연다"""
         if self.app is None:
             return False
-        # 相对路径必须先转为绝对路径：Documents.Open在CAD进程内解析路径，
-        # 其工作目录与MCP服务器的工作目录通常不同（与save_drawing同理）
+        # 상대 경로는 먼저 절대 경로로 바꿔야 한다: Documents.Open은 CAD 프로세스 안에서 경로를 해석하는데,
+        # 그 작업 폴더는 보통 MCP 서버의 작업 폴더와 다르다(save_drawing과 같은 이유)
         file_path = os.path.abspath(file_path)
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"文件不存在: {file_path}")
+            raise FileNotFoundError(f"파일이 없습니다: {file_path}")
         try:
-            # 打开后CAD短暂忙碌，调用级重试确保Open本身成功
+            # 연 직후 CAD가 잠깐 바쁘므로, 호출 단위 재시도로 Open 자체가 성공하게 한다
             docs = self._call(getattr, self.app, "Documents")
             opened = self._call_attr(docs, "Open", file_path)
-            # 部分CAD的Documents.Open不返回文档对象，回退到取活动文档
+            # 일부 CAD는 Documents.Open이 문서 객체를 돌려주지 않아 활성 문서로 대체한다
             self.doc = opened if opened is not None else self._call(getattr, self.app, "ActiveDocument")
-            logger.info(f"已打开文档: {file_path}")
+            logger.info(f"문서 열음: {file_path}")
             return True
         except Exception as e:
-            logger.error(f"打开文档失败: {str(e)}")
+            logger.error(f"문서 열기 실패: {str(e)}")
             return False
 
     def close_drawing(self, save: bool = False) -> bool:
-        """关闭当前文档（save=False 时不保存直接关闭）"""
+        """현재 문서를 닫는다(save=False면 저장하지 않고 바로 닫는다)"""
         if not self.is_running():
             return False
         try:
-            # 关闭期间CAD忙碌会拒绝调用，调用级重试确保Close本身成功
+            # 닫는 동안 CAD가 바빠 호출을 거부하므로, 호출 단위 재시도로 Close 자체가 성공하게 한다
             self._call_attr(self.doc, "Close", save)
-            # 尝试切换到其他已打开的文档
+            # 다른 열린 문서로 바꾸어 본다
             try:
                 self.doc = self._call(getattr, self.app, "ActiveDocument")
             except Exception:
                 self.doc = None
-            logger.info(f"已关闭当前文档（保存: {save}）")
+            logger.info(f"현재 문서 닫음(저장: {save})")
             return True
         except Exception as e:
-            logger.error(f"关闭文档失败: {str(e)}")
+            logger.error(f"문서 닫기 실패: {str(e)}")
             return False
 
-    # ==================== 图块操作 ====================
+    # ==================== 블록 작업 ====================
 
     def create_block(self, name: str, base_point: List[float] = None):
-        """创建图块定义（若同名图块已存在则直接返回它）
+        """블록 정의를 만든다(같은 이름의 블록이 있으면 그것을 돌려준다)
 
-        注意：图块内部实体可通过 send_command 执行 BEDIT 等命令编辑。
+        참고: 블록 안의 객체는 send_command로 BEDIT 같은 명령을 실행해 편집할 수 있다.
         """
         if not self.is_running():
             return None
         try:
-            # 检查同名图块是否已存在（Blocks集合与Name读取都可能被忙碌的CAD拒绝，逐调用重试）
+            # 같은 이름의 블록이 있는지 확인한다(Blocks 컬렉션과 Name 읽기 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도)
             blocks = self._call(getattr, self.doc, "Blocks")
             for i in range(self._call(getattr, blocks, "Count")):
                 block = self._call_attr(blocks, "Item", i)
                 if self._call(getattr, block, "Name") == name:
                     return block
-            # 独立撤销组，忙碌时在调用级自动重试
+            # 독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도
             with self._undo_group():
                 return self._call_attr(blocks, "Add", self._pt(base_point or (0, 0, 0)), name)
         except Exception as e:
-            logger.error(f"创建图块失败: {str(e)}")
+            logger.error(f"블록 만들기 실패: {str(e)}")
             return None
 
     def insert_block(self, name: str, position: List[float],
                      x_scale: float = 1.0, y_scale: float = 1.0, z_scale: float = 1.0,
                      rotation_degrees: float = 0.0):
-        """在模型空间插入图块引用"""
+        """모형 공간에 블록 참조를 넣는다"""
         if not self.is_running():
             return None
         try:
-            # 独立撤销组，忙碌时在调用级自动重试
+            # 독립 실행 취소 그룹, 바쁘면 호출 단위로 자동 재시도
             with self._undo_group():
                 block_ref = self._call_attr(
                     self._ms(), "InsertBlock",
@@ -1385,49 +1385,49 @@ class CADController:
                 )
             return block_ref
         except Exception as e:
-            logger.error(f"插入图块失败: {str(e)}")
+            logger.error(f"블록 넣기 실패: {str(e)}")
             return None
 
     def list_blocks(self) -> List[Dict[str, Any]]:
-        """列出当前图纸中的用户图块定义"""
+        """현재 도면의 사용자 블록 정의를 나열한다"""
         if not self.is_running():
             return []
         blocks = []
         try:
-            # Blocks集合与Name读取都可能被忙碌的CAD拒绝，逐调用重试
+            # Blocks 컬렉션과 Name 읽기 모두 바쁜 CAD에 거부될 수 있어 호출마다 재시도
             block_set = self._call(getattr, self.doc, "Blocks")
             for i in range(self._call(getattr, block_set, "Count")):
                 block = self._call_attr(block_set, "Item", i)
                 name = str(self._call(getattr, block, "Name"))
-                # 跳过布局占位块（*Model_Space、*Paper_Space等匿名块）
+                # 배치 자리 블록(*Model_Space, *Paper_Space 같은 익명 블록)은 건너뛴다
                 if not name.startswith("*"):
                     blocks.append({
                         "name": name,
                         "entity_count": self._safe_attr(block, "Count", 0),
                     })
         except Exception as e:
-            logger.error(f"列出图块失败: {str(e)}")
+            logger.error(f"블록 목록 실패: {str(e)}")
         return blocks
 
-    # ==================== 命令直通 ====================
+    # ==================== 명령 직접 실행 ====================
 
     def send_command(self, command: str) -> bool:
-        """直通CAD命令行执行任意命令（如 "_.ZOOM E"）
+        """CAD 명령행에 임의의 명령을 그대로 보낸다(예: "_.ZOOM E")
 
-        这是功能逃生舱：任何未封装为工具的CAD命令都可以通过它执行。
+        도구로 없는 기능을 쓰는 비상구다: 도구로 만들어지지 않은 어떤 CAD 명령도 이것으로 실행할 수 있다.
         """
         if not self.is_running():
             return False
         try:
-            # 若命令未以回车/空格结尾则补一个回车，确保命令被提交执行
+            # 명령이 Enter/공백으로 끝나지 않으면 Enter를 하나 붙여 명령이 제출되게 한다
             if not command.endswith(("\n", "\r", " ")):
                 command += "\n"
-            # SendCommand本身可能被忙碌的CAD拒绝，调用级重试确保命令入队
+            # SendCommand 자체가 바쁜 CAD에 거부될 수 있어, 호출 단위 재시도로 명령이 대기열에 들어가게 한다
             self._call_attr(self.doc, "SendCommand", command)
-            # SendCommand是异步的：等待命令执行（如ZOOM/保存类命令执行中，
-            # 后续的SaveAs等操作会报错），时长由配置command_delay控制
+            # SendCommand는 비동기다: 명령이 실행되기를 기다린다(ZOOM이나 저장 같은 명령이 진행 중이면
+            # 이어지는 SaveAs 등이 오류를 낸다). 대기 시간은 설정 command_delay로 정한다
             time.sleep(self.command_delay)
             return True
         except Exception as e:
-            logger.error(f"执行命令失败: {str(e)}")
+            logger.error(f"명령 실행 실패: {str(e)}")
             return False
