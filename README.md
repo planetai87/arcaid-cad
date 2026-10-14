@@ -97,7 +97,6 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 - `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다. 명령이 끝나거나 입력을 기다릴 때까지 기다리고, 아직 입력을 기다리면 `still_active=true`를 돌려줍니다.
 - `cancel_command`: 진행 중인 명령을 ESC처럼 취소합니다. 대화상자나 문자 편집기가 열려 CAD가 응답하지 않을 때는 CAD 창에 키보드 ESC를 보냅니다.
 - `run_lisp`: AutoLISP 식을 실행하고 결과 값을 돌려받습니다(예: `(getvar "CLAYER")`).
-- `process_command`: 자연어 명령 해석(옛 인터페이스)
 
 ## 동작 원칙
 
@@ -108,20 +107,35 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 
 ```
 CAD-MCP/
+├── CLAUDE.md              # Claude Code 작업 안내(문서 위치, 규칙, 테스트)
 ├── pyproject.toml
 ├── requirements.txt
+├── docs/                  # 로드맵·구조 결정·0단계 실행 계획 사본(원본은 Claude Docs)
 ├── src/
 │   ├── server.py          # MCP 서버와 도구 정의 (FastMCP)
 │   ├── cad_controller.py  # COM 계층: 전용 COM 스레드, 재시도, 그리기·조회·편집
+│   ├── colors.py          # 색 인자 해석(한국어·영어·중국어 색 이름 → ACI)
 │   ├── config.py          # 설정 로더 (config.json + config.local.json)
 │   ├── config.json        # 공통 기본 설정
 │   ├── models.py          # 구조화 출력 모델
-│   └── nlp_processor.py   # 자연어 명령 해석(옛 인터페이스)
+│   └── engine/            # CAD 없이 도는 엔진(읽기·생성·검사). COM 모듈 금지
+├── tests/                 # engine(어디서나), mcp(Windows), cad(CAD 실행 중)
 ├── skills/
 │   └── cad-drawing-standard/  # 회사 도면 표준 스킬 (SKILL.md, references/, assets/회사표준_템플릿.dwg)
 └── tools/
     └── template/          # 표준매뉴얼 DWG에서 템플릿을 다시 만드는 스크립트
 ```
+
+## 개발
+
+```powershell
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+.venv\Scripts\python.exe -m pytest                       # 엔진·단위·MCP 툴 목록
+$env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 연동(GstarCAD 실행 중)
+```
+
+- `src/engine/`은 CAD 없이 돌아야 합니다(ezdxf·pydantic·PyYAML만 사용). GitHub Actions가 Linux에서 엔진 테스트를 돌립니다.
+- 진행 계획과 구조 결정은 `docs/`와 `CLAUDE.md`를 봅니다.
 
 ## 회사 도면 표준 스킬
 
