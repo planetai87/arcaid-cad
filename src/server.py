@@ -26,7 +26,9 @@ if __package__:
     from .engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from .engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
     from .engine.check import CheckResult, check_standard as engine_check_standard
-    from .engine.results import Checked, ResultIds, Scope, Status
+    from .engine.results import Checked, EngineResult, ResultIds, Scope, Status
+    from . import tools_service
+    from .tools_service import PlotResult, SelectionResult
     from .snapshot_service import snapshot_active, snapshot_file
     from . import apply_service, egress
     from .engine.apply import ApplyMeta, ApplyResult, CheckFixResult
@@ -41,7 +43,9 @@ else:
     from engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
     from engine.check import CheckResult, check_standard as engine_check_standard
-    from engine.results import Checked, ResultIds, Scope, Status
+    from engine.results import Checked, EngineResult, ResultIds, Scope, Status
+    import tools_service
+    from tools_service import PlotResult, SelectionResult
     from snapshot_service import snapshot_active, snapshot_file
     import apply_service
     import egress
@@ -180,6 +184,9 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - 표준 위반 중 레이어·색·선종류·선굵기는 check_standard(fix=true)로 고친다(보호된 경로). 사람이 고친 엔진 객체는
   overwrite_manual=true일 때만 고친다. status가 unverified면 사용자에게 도면 확인을 요청한다(이후 보호된 변경이 멈춤)
   결과의 fixes는 고칠 목록이고 check_standard는 도면을 고치지 않는다. status가 success이고 unchecked가 비어야 '완료'
+- 새 도면은 new_from_template(회사 템플릿 복사), 표준 레이어는 ensure_standard_layers(표준 색·선종류)로 만든다.
+  PDF 출력은 plot(도곽 또는 창 범위, 회사 CTB, A3, 1/k), 사용자가 CAD에서 고른 객체는 get_selection으로 읽는다
+- 저수준 그리기·편집·명령 툴은 보호되지 않는 경로다(설명문에 표시). 여러 객체는 draw_batch를 쓴다
 - get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
   scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
 """
@@ -1278,6 +1285,88 @@ async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
                            meta=ApplyMeta(op="?"))
     return await com(apply_service.draw_batch, cad_service.controller, _work_dir(), std, spec, None,
                      resume_after_unverified)
+
+
+# ---------- 새 도면·레이어·선택·출력(T7) ----------
+
+@mcp.tool()
+async def new_from_template(ctx: Context, file_path: str) -> EngineResult:
+    """회사 템플릿 DWG를 file_path로 복사해 새 도면으로 연다(.dwg 절대 경로, 이미 있으면 덮어쓰지 않음)
+
+    표준 레이어·문자 스타일·치수 스타일·블록이 모두 들어 있는 상태로 시작한다. 템플릿 파일 자체는 건드리지 않는다.
+    """
+    try:
+        std = _standard()
+    except StandardError as e:
+        return EngineResult(status=Status.FAILED, summary=str(e), scope=Scope(target=file_path))
+    refused = tools_service.template_refusal(std, file_path)
+    if refused is not None:
+        return refused
+    if cad_service.controller.app is None and not await com(cad_service.controller.start_cad):
+        return EngineResult(status=Status.FAILED, summary="CAD 미연결, 시작 실패", scope=Scope(target=file_path))
+    result = await com(tools_service.new_from_template, cad_service.controller, std, file_path)
+    if result.status is Status.SUCCESS:
+        cad_service.drawing_state["entities"] = []
+    return result
+
+
+@mcp.tool()
+async def ensure_standard_layers(ctx: Context, names: Optional[List[str]] = None,
+                                 resume_after_unverified: bool = False) -> ApplyResult:
+    """없는 표준 레이어를 표준 색·선종류·출력 여부로 만든다(보호된 경로)
+
+    names: 만들 표준 레이어 이름(대소문자 무시). 주지 않으면 그리는 표준 레이어 전부.
+    같은 이름 레이어가 표준과 다른 정의로 있으면 덮어쓰지 않고 conflict로 멈춘다(고칠지는 사람이 정함).
+    """
+    try:
+        std = _standard()
+    except StandardError as e:
+        return ApplyResult(status=Status.FAILED, summary=str(e), scope=Scope(target="활성 도면"), meta=ApplyMeta(op="layers"))
+    _, refused = apply_service.layer_refusal(std, names)
+    if refused is not None:
+        return refused
+    if not await _ensure_running(ctx):
+        return ApplyResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target="활성 도면"),
+                           meta=ApplyMeta(op="layers"))
+    return await com(apply_service.ensure_layers, cad_service.controller, _work_dir(), std, names, None,
+                     resume_after_unverified)
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_selection(ctx: Context, limit: Annotated[int, Field(ge=1, le=5000)] = 200) -> SelectionResult:
+    """사용자가 CAD에서 고른 객체를 읽는다: 핸들, 종류·레이어별 개수, 범위, 엔진이 넣은 객체의 oid
+
+    CAD에서 객체를 먼저 고른 상태(명령 없이 선택)에서 부른다. 핸들은 limit개까지 돌려준다.
+    """
+    if not await _ensure_running(ctx):
+        return SelectionResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target="활성 도면"))
+    return await com(tools_service.selection, cad_service.controller, _work_dir(), limit)
+
+
+@mcp.tool()
+async def plot(ctx: Context, sheet_handle: Optional[str] = None, window: Optional[List[Point]] = None,
+               scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None,
+               out_path: Optional[str] = None) -> PlotResult:
+    """활성 도면을 회사 CTB·A3·1/k로 PDF 출력한다(사용자 도면 설정은 바꾸지 않음)
+
+    범위: sheet_handle(도곽 블록 HEOarchitects_sheet 참조) 또는 window([[왼쪽 아래], [오른쪽 위]]).
+    둘 다 주지 않으면 도면에 도곽이 하나일 때 그 도곽을 쓴다. scale(k)을 주지 않으면 도곽 배율에서 구한다(창이면 100 가정).
+    out_path(.pdf 절대 경로)를 주지 않으면 작업 폴더 plots\에 쓴다. 이미 있는 파일은 덮어쓰지 않는다.
+    출력기는 정식 출력기(DWG To PDF.pc3)이고, 결과의 trial=true면 '시험 출력'(출력기 또는 용지 확인 실패)이다.
+    """
+    refused = tools_service.plot_refusal(sheet_handle, window, out_path)
+    if refused is not None:
+        return refused
+    try:
+        std = _standard()
+    except StandardError as e:
+        return PlotResult(status=Status.FAILED, summary=str(e), scope=Scope(target="활성 도면"))
+    if not await _ensure_running(ctx):
+        return PlotResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target="활성 도면"))
+    cfg = config.get("plot", {})
+    official = cfg.get("official_device", "DWG To PDF.pc3")
+    return await com(tools_service.plot, cad_service.controller, _work_dir(), std, sheet_handle, window, scale, out_path,
+                     cfg.get("device", official), cfg.get("ctb", "HEO(2020)_A3.ctb"), cfg.get("media", "A3"), official)
 
 
 # ---------- 보호되지 않는 경로 표시 ----------

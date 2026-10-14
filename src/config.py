@@ -42,6 +42,13 @@ _DEFAULT_CONFIG = {
     # 외부 반환 필터 정책 파일(D8). 상대 경로는 저장소 루트 기준. 환경 변수 ARCAID_EGRESS_FILE이 우선
     "egress": {
         "file": "config/egress.yaml"
+    },
+    # PDF 출력(plot). 정식 출력기는 DWG To PDF.pc3(2026-10-14 사용자 결정, E9)
+    "plot": {
+        "device": "DWG To PDF.pc3",
+        "official_device": "DWG To PDF.pc3",
+        "ctb": "HEO(2020)_A3.ctb",
+        "media": "A3"
     }
 }
 
