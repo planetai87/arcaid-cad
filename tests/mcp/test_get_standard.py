@@ -8,9 +8,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def call_tool(name, arguments):
+def call_tool(name, arguments, work=None):
     # server.py는 불러올 때 표준 입출력을 다시 설정하므로 pytest 밖의 하위 프로세스에서 부른다
-    code = ("import asyncio, json, sys; sys.path.insert(0, 'src'); import server; "
+    # work: 작업 폴더(config work.directory)를 바꿔 부른다
+    setup = f"server.config['work'] = {{'directory': {str(work)!r}}}; " if work is not None else ""
+    code = ("import asyncio, json, sys; sys.path.insert(0, 'src'); import server; " + setup +
             f"r = asyncio.run(server.mcp.call_tool({name!r}, {arguments!r})); "
             "r = r[1] if isinstance(r, tuple) else r; "
             "print(json.dumps(r if isinstance(r, dict) else [c.model_dump() for c in r], ensure_ascii=False))")

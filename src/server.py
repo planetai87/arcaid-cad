@@ -25,6 +25,7 @@ if __package__:
     from .engine.standards import StandardError, get_standard as engine_get_standard, load_standard
     from .engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from .engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
+    from .engine.check import CheckResult, check_standard as engine_check_standard
     from .engine.results import Checked, ResultIds, Scope, Status
     from .snapshot_service import snapshot_active, snapshot_file
 else:
@@ -37,6 +38,7 @@ else:
     from engine.standards import StandardError, get_standard as engine_get_standard, load_standard
     from engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
+    from engine.check import CheckResult, check_standard as engine_check_standard
     from engine.results import Checked, ResultIds, Scope, Status
     from snapshot_service import snapshot_active, snapshot_file
 
@@ -167,6 +169,8 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - run_lisp는 AutoLISP 식의 결과 값을 돌려받는다(예: (getvar "CLAYER")). 진행 중인 명령이 있으면 거부된다
 - undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
 - 도면 읽기는 export_snapshot(DXF 사본) → read_drawing(구조화 요약) 순서로 한다. DXF가 필요할 때 save_drawing을 쓰지 않는다
+- 마무리 표준 검사는 check_standard(scale에 A3 축척 분모 k)로 한다. list_entities로 객체를 세어 검사하지 않는다.
+  결과의 fixes는 고칠 목록이고 check_standard는 도면을 고치지 않는다. status가 success이고 unchecked가 비어야 '완료'
 - get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
   scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
 """
@@ -1132,6 +1136,25 @@ async def export_snapshot(ctx: Context, file_path: Optional[str] = None) -> Snap
                           snapshot=meta, warnings=warnings)
 
 
+async def _resolve_dxf(ctx: Context, snapshot_id: Optional[str], file_path: Optional[str]):
+    """읽기·검사할 DXF를 정한다. (스냅샷 메타 또는 None, DXF 경로, 경고, 결과 파일 이름)
+
+    snapshot_id → 그 사본, .dxf 경로 → 그 파일, .dwg 경로 → 스냅샷으로 내보냄, 둘 다 없으면 활성 도면을 내보냄.
+    실패하면 SnapshotError
+    """
+    warnings: List[str] = []
+    if snapshot_id:
+        meta = load_meta(_work_dir(), snapshot_id)
+        dxf = Path(meta.dxf_path)
+    elif file_path and file_path.lower().endswith(".dxf"):
+        meta, dxf = None, Path(file_path)
+    else:
+        meta, warnings = await _take_snapshot(ctx, file_path)
+        dxf = Path(meta.dxf_path)
+    name = meta.snapshot_id if meta else "file-" + hashlib.sha256(str(dxf.resolve()).encode("utf-8")).hexdigest()[:12]
+    return meta, dxf, warnings, name
+
+
 @mcp.tool()
 async def read_drawing(ctx: Context, snapshot_id: Optional[str] = None,
                        file_path: Optional[str] = None) -> ReadDrawingResult:
@@ -1142,23 +1165,41 @@ async def read_drawing(ctx: Context, snapshot_id: Optional[str] = None,
     둘 다 없으면 활성 도면을 스냅샷으로 내보내 읽는다.
     판독은 표준 레이어(CEN 축선 + 축열 버블, ROM 실명)로 그린 도면까지다. 객체 전체 목록은 full_path 파일에 있다.
     """
-    work = _work_dir()
     target = snapshot_id or file_path or "활성 도면"
-    warnings: List[str] = []
     try:
         std = _standard()
-        if snapshot_id:
-            meta = load_meta(work, snapshot_id)
-            dxf = Path(meta.dxf_path)
-        elif file_path and file_path.lower().endswith(".dxf"):
-            meta, dxf = None, Path(file_path)
-        else:
-            meta, warnings = await _take_snapshot(ctx, file_path)
-            dxf = Path(meta.dxf_path)
+        meta, dxf, warnings, name = await _resolve_dxf(ctx, snapshot_id, file_path)
     except (SnapshotError, StandardError) as e:
         return ReadDrawingResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
-    name = meta.snapshot_id if meta else "file-" + hashlib.sha256(str(dxf.resolve()).encode("utf-8")).hexdigest()[:12]
-    result = engine_read_drawing(dxf, std, meta, full_out=snapshots_dir(work) / f"{name}.read.json")
+    result = engine_read_drawing(dxf, std, meta, full_out=snapshots_dir(_work_dir()) / f"{name}.read.json")
+    result.warnings = warnings + result.warnings
+    return result
+
+
+CHECK_LIMIT = 20   # 코드별로 돌려줄 위반 수(전체는 full_path 파일)
+
+
+@mcp.tool()
+async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_path: Optional[str] = None,
+                         scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None) -> CheckResult:
+    """도면을 회사 표준과 대조해 위반 목록과 고칠 목록을 돌려준다(도면은 고치지 않는다)
+
+    도면 고르기는 read_drawing과 같다(snapshot_id / .dxf·.dwg 경로 / 없으면 활성 도면을 스냅샷으로).
+    scale: A3 축척 분모 k(1/100이면 100). 주지 않으면 100으로 가정하고 assumptions에 적는다.
+    검사: 도면 단위·LTSCALE, 같은 이름 다른 정의(레이어·문자 스타일·치수 스타일·표준 블록), 비표준 레이어·레이어 0,
+    ByLayer 아닌 색·선종류·선굵기, 문자 스타일·높이, 치수 스타일·레이어·DIMSCALE·재정의, 주석 객체,
+    표준 블록의 레이어·배율, 안 쓰는 블록.
+    violations는 코드별 20건까지(violation_counts가 전체 개수, truncated=true면 잘림), 전체는 full_path 파일.
+    fixes는 정답이 하나인 위반을 (속성, 값)으로 묶은 고칠 목록이다. 정의 불일치는 사람이 정하므로 넣지 않는다.
+    """
+    target = snapshot_id or file_path or "활성 도면"
+    try:
+        std = _standard()
+        meta, dxf, warnings, name = await _resolve_dxf(ctx, snapshot_id, file_path)
+    except (SnapshotError, StandardError) as e:
+        return CheckResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
+    result = engine_check_standard(dxf, std, k=scale, snapshot=meta,
+                                   full_out=snapshots_dir(_work_dir()) / f"{name}.check.json", limit=CHECK_LIMIT)
     result.warnings = warnings + result.warnings
     return result
 
