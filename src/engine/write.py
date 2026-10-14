@@ -4,14 +4,15 @@
   중첩 블록·화살표). 템플릿 전체를 담으면 CAD에 넣는 데 6초가 걸렸다(T0 E4).
   Importer는 XDATA를 지우므로 객체는 옮기지 않고 새 문서에 직접 만들며, 문자 스타일 글꼴(XDATA)과
   기본 레이어(0·Defpoints)는 옮긴 뒤 템플릿·표준 값으로 맞춘다.
-- 태그: XDATA ARCAID에 op·oid·path·ver(엔진 버전)·in(명세 해시)을 1000번 문자열로 단다.
-  기준 상태(state)는 도면에 넣은 뒤 T6이 단다.
+- 태그: XDATA ARCAID에 op·oid·path·ver(엔진 버전)·in(명세 해시)·state(기준 상태)를 1000번 문자열로 단다.
+  state는 여기서 미리 계산한다. CAD에 넣은 뒤 다시 계산해 다른 객체만 고친다(객체마다 쓰면 느림, T6 사전 확인 P5).
+- 쓰는 블록 정의는 늘 담는다. 정의를 뺀 DXF를 넣으면 그 블록 참조가 빠진다(T6 사전 확인 P3).
 - 저장한 DXF를 check_standard로 검사해 위반이 있으면 실패로 돌려준다(엔진 오류를 숨기지 않는다).
 - 도면에 넣지는 않는다. 넣기는 draw_batch(T6)가 한다.
 """
 from collections import Counter
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 import ezdxf
 from ezdxf.addons import Importer
@@ -25,9 +26,9 @@ from .layout import Prim, expand
 from .results import (Applied, Assumption, Checked, EngineResult, OutOfScope, ResultIds, Scope, Status,
                       Violation)
 from .spec import Spec, SpecError, Target, parse_spec, spec_hash, validate_spec
+from .state import APP, state_hash
 from .standards import Standard
 
-APP = "ARCAID"
 DXF_VERSION = "R2013"
 ALIGN = {"L": TextEntityAlignment.LEFT, "C": TextEntityAlignment.CENTER, "R": TextEntityAlignment.RIGHT,
          "ML": TextEntityAlignment.MIDDLE_LEFT, "MC": TextEntityAlignment.MIDDLE_CENTER,
@@ -152,11 +153,8 @@ def _failed(scope, ids, summary: str, violations: List[Violation]) -> BuildResul
     return BuildResult(status=Status.FAILED, summary=summary, scope=scope, violations=violations, ids=ids)
 
 
-def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path, skip_blocks: Iterable[str] = ()) -> BuildResult:
-    """객체 명세를 검증·전개해 R2013 DXF로 쓴다. 명세가 틀리면 파일을 쓰지 않는다
-
-    skip_blocks: 대상 도면에 이미 있는 블록. 정의를 빼고 참조만 남긴다(같은 이름은 어차피 대상 정의가 남는다).
-    """
+def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path) -> BuildResult:
+    """객체 명세를 검증·전개해 R2013 DXF로 쓴다. 명세가 틀리면 파일을 쓰지 않는다"""
     out = Path(out)
     scope = Scope(target=str(out), supported=["line", "polyline", "circle", "arc", "text", "block", "hatch", "dim",
                                               "dim_chain", "group"])
@@ -183,12 +181,8 @@ def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path, skip_block
     for p in prims:
         entity = _add(doc, p, std, k)
         entity.set_xdata(APP, [(1000, f"op={parsed.op}"), (1000, f"oid={p.oid}"), (1000, f"path={p.path}"),
-                               (1000, f"ver={ENGINE_VERSION}"), (1000, f"in={h}")])
-    skipped = []
-    for name in skip_blocks:
-        if doc.blocks.get(name) is not None:
-            doc.blocks.delete_block(name, safe=False)
-            skipped.append(name)
+                               (1000, f"ver={ENGINE_VERSION}"), (1000, f"in={h}"),
+                               (1000, f"state={state_hash(entity)}")])
     out.parent.mkdir(parents=True, exist_ok=True)
     doc.saveas(str(out))
 
@@ -199,7 +193,7 @@ def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path, skip_block
                      dxfversion=doc.dxfversion, object_count=len(prims), by_kind=by_kind, by_layer=by_layer,
                      target=parsed.target)
     manifest = [ManifestItem(oid=p.oid, path=p.path, kind=p.kind, layer=p.layer) for p in prims]
-    warnings = [f"대상 도면에 있는 블록이라 정의를 뺌: {', '.join(skipped)}"] if skipped else []
+    warnings: List[str] = []
     check = check_standard(out, std, k=k)
     if check.status is not Status.SUCCESS or check.violations:
         return BuildResult(status=Status.FAILED, summary=f"생성 DXF 자체 검사 실패(엔진 오류): {check.summary}",

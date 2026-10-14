@@ -16,6 +16,7 @@ from src.engine.check import check_standard
 from src.engine.read import read_drawing
 from src.engine.results import Status
 from src.engine.spec import parse_spec, spec_hash
+from src.engine.state import state_hash
 from src.engine.standards import load_standard
 from src.engine.write import build_dxf
 
@@ -102,7 +103,7 @@ def test_roundtrip_header_tags_and_bylayer(built, std):
     oids = set()
     for e in doc.modelspace():
         t = tags(e)
-        assert set(t) == {"op", "oid", "path", "ver", "in"}
+        assert set(t) == {"op", "oid", "path", "ver", "in", "state"}
         assert (t["op"], t["ver"], t["in"]) == ("dangsan-typical", ENGINE_VERSION, h)
         assert e.dxf.get("color", 256) == 256 and not e.dxf.hasattr("true_color")
         oids.add(t["oid"])
@@ -174,11 +175,7 @@ def test_rejected_spec_writes_nothing(std, tmp_path):
     assert r.status is Status.FAILED and r.violations[0].code == "SPEC_SCHEMA" and not out.exists()
 
 
-def test_skip_blocks_keeps_references_only(std, tmp_path):
-    out = tmp_path / "skip.dxf"
-    r = build_dxf(SPEC, std, out, skip_blocks=["축열버블-상"])
-    assert r.status is Status.SUCCESS
-    doc = ezdxf.readfile(out)
-    assert "축열버블-상" not in [b.name for b in doc.blocks]
-    refs = doc.modelspace().query("INSERT")
-    assert len(refs) == 7 and all(len(list(x.attribs)) == 1 for x in refs)
+def test_state_tag_matches_entity(built):
+    _, _, doc = built
+    for e in doc.modelspace():
+        assert tags(e)["state"] == state_hash(e)
