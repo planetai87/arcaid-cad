@@ -1402,7 +1402,10 @@ async def current_drawing() -> str:
     }, ensure_ascii=False, default=str))
     filtered, changed = egress.filter_payload("drawing://current", payload, _egress_policy())
     if changed:
-        egress.save_full(_work_dir(), "drawing-current", payload)
+        try:
+            egress.save_full(_work_dir(), "drawing-current", payload)
+        except OSError as e:
+            logger.warning(f"가린 결과의 원본을 남기지 못함: {e}")
     return json.dumps(filtered, ensure_ascii=False)
 
 
