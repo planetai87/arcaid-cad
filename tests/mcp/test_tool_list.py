@@ -18,6 +18,7 @@ EXPECTED_TOOLS = sorted([
     "send_command", "cancel_command", "run_lisp",
     "create_block", "insert_block", "list_blocks",
     "get_standard", "export_snapshot", "read_drawing", "check_standard", "draw_batch",
+    "new_from_template", "ensure_standard_layers", "get_selection", "plot",
 ])
 
 
@@ -33,5 +34,5 @@ def registered_tools():
 
 
 def test_tool_list_is_fixed():
-    assert len(EXPECTED_TOOLS) == 41
+    assert len(EXPECTED_TOOLS) == 45
     assert registered_tools() == EXPECTED_TOOLS

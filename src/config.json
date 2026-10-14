@@ -21,5 +21,11 @@
     },
     "egress": {
         "file": "config/egress.yaml"
+    },
+    "plot": {
+        "device": "DWG To PDF.pc3",
+        "official_device": "DWG To PDF.pc3",
+        "ctb": "HEO(2020)_A3.ctb",
+        "media": "A3"
     }
 }
