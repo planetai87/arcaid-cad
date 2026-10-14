@@ -214,7 +214,7 @@ def _loc(loc) -> str:
     return out
 
 
-def _violation(code: str, where: str, message: str, current: Any = None, expected: Any = None) -> Violation:
+def spec_violation(code: str, where: str, message: str, current: Any = None, expected: Any = None) -> Violation:
     return Violation(code=code, message=f"{where}: {message}" if where else message, current=current,
                      expected=expected)
 
@@ -227,7 +227,7 @@ def parse_spec(data: Union[str, dict, Spec]) -> Spec:
         try:
             data = json.loads(data)
         except json.JSONDecodeError as e:
-            raise SpecError([_violation("SPEC_SCHEMA", "", f"JSON 형식 오류: {e}")]) from None
+            raise SpecError([spec_violation("SPEC_SCHEMA", "", f"JSON 형식 오류: {e}")]) from None
     try:
         return Spec.model_validate(data)
     except ValidationError as e:
@@ -241,7 +241,7 @@ def parse_spec(data: Union[str, dict, Spec]) -> Spec:
                 msg = "명세에 없는 항목(색·선굵기·문자 스타일·높이·블록 레이어 등은 표준이 정한다)"
             else:
                 msg = err["msg"]
-            out.append(_violation("SPEC_SCHEMA", where, msg))
+            out.append(spec_violation("SPEC_SCHEMA", where, msg))
         raise SpecError(out) from None
 
 
@@ -279,7 +279,7 @@ class _Checker:
         self.dimstyles = {d.name.casefold() for d in std.dimensions.styles}
 
     def add(self, code, where, message, current=None, expected=None):
-        self.out.append(_violation(code, where, message, current, expected))
+        self.out.append(spec_violation(code, where, message, current, expected))
 
     def coord(self, value, axis: str, where: str, in_group: bool):
         try:
