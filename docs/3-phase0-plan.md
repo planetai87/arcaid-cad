@@ -164,7 +164,7 @@ T0 반영: 삽입은 COM `Document.Import`로 하고, 대상 단위가 mm가 아
   - 신규 툴: `new_from_template`, `ensure_standard_layers`, `get_selection`, `plot`(회사 CTB 지정 PDF)
   - 제거: `create_layer`, `new_drawing`
   - 툴 설명문에 보호 여부 표시(저수준 툴은 '보호되지 않음')
-  - 외부 반환 필터: 모든 MCP 결과를 `config/egress.yaml`의 허용 목록으로 걸러 AI에 돌려주고, 전체 결과는 PC의 작업 폴더에 남긴다. 목록에 없는 필드는 보내지 않는다. `screenshot`은 설정에서 켜 둔 경우에만 동작한다.
+  - 외부 반환 필터: 모든 MCP 결과를 `config/egress.yaml`의 허용 목록으로 걸러 AI에 돌려주고, 전체 결과는 PC의 작업 폴더에 남긴다. 목록에 없는 필드는 보내지 않는다. `screenshot`은 정책(`screenshot`)이 허용일 때 동작한다(D8 A안: 허용).
 - **완료 기준**: 툴 목록이 D2 표와 같다. 새 툴은 D2 결과 형식으로 답한다. 허용 목록에 없는 필드가 AI 반환 결과에 나오지 않는다. `plot` 결과는 E9 기준을 통과하거나 '시험 출력'으로 표시된다.
 - **테스트**: 툴별 연동 테스트, 툴 목록 고정 테스트(의도하지 않은 추가·삭제 방지), 경로·파일명·문자 내용을 넣은 결과로 필터 테스트.
 
