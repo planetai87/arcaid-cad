@@ -4,7 +4,8 @@ import json
 import base64
 import logging
 import argparse
-from typing import Annotated, Any, List, Optional, Union
+from functools import lru_cache
+from typing import Annotated, Any, List, Literal, Optional, Union
 
 from pydantic import Field
 
@@ -17,15 +18,17 @@ if __package__:
     from .cad_controller import CADController
     from .config import get_config
     from .models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
-                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
+                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
     from .colors import color_to_index
+    from .engine.standards import StandardError, get_standard as engine_get_standard, load_standard
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
     from config import get_config
     from models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
-                        ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
+                        ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
     from colors import color_to_index
+    from engine.standards import StandardError, get_standard as engine_get_standard, load_standard
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations, ImageContent, TextContent
@@ -153,6 +156,8 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - cancel_command는 멈춘 명령을 ESC처럼 취소한다(대화상자·문자 편집기가 열려 COM이 막힌 경우 포함)
 - run_lisp는 AutoLISP 식의 결과 값을 돌려받는다(예: (getvar "CLAYER")). 진행 중인 명령이 있으면 거부된다
 - undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
+- get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
+  scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
 """
 
 # ==================== 인자 타입(원본 schema의 좌표 제약 유지) ====================
@@ -1033,6 +1038,41 @@ async def list_blocks(ctx: Context) -> ListBlocksResult:
         return ListBlocksResult(success=False, message="CAD 미연결, 자동 시작 실패")
     blocks = await com(cad_service.controller.list_blocks)
     return ListBlocksResult(success=True, message=f"블록 {len(blocks)}개", blocks=blocks)
+
+
+# ---------- 표준 조회(CAD 불필요) ----------
+
+@lru_cache(maxsize=1)
+def _standard():
+    """표준 프로파일(standards/heo-2026)을 한 번 읽어 둔다. 실패하면 StandardError"""
+    return load_standard()
+
+
+@mcp.tool(annotations=ToolAnnotations(readOnlyHint=True))
+async def get_standard(ctx: Context,
+                       section: Literal["summary", "layers", "text", "dimensions", "blocks"] = "summary",
+                       name: Optional[str] = None,
+                       scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None) -> StandardResult:
+    """회사 표준 프로파일을 조회한다(CAD 연결 불필요)
+
+    section: summary(개요) | layers(레이어 용도·색·선종류) | text(문자 스타일·용도별 높이) |
+             dimensions(치수 스타일·축열/치수/버블 간격) | blocks(표준 블록·삽입 레이어·배율·속성)
+    name: 레이어·블록·치수 스타일 이름 또는 문자 용도 id(general, main_title 등) 하나만 고를 때(대소문자 무시)
+    scale: A3 축척 분모 k(예: 100, 200). 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값(scaled)으로 함께 준다
+    """
+    try:
+        std = _standard()
+    except StandardError as e:
+        return StandardResult(success=False, message="표준 프로파일을 읽지 못했습니다", section=section, error=str(e))
+    try:
+        data = engine_get_standard(std, section, name, scale)
+    except KeyError as e:
+        return StandardResult(success=False, message=f"표준에 없습니다: {name}", standard=std.ref, section=section,
+                              error=str(e))
+    what = f" {name}" if name else ""
+    at = f", 1/{scale} 환산 포함" if scale else ""
+    return StandardResult(success=True, message=f"{std.ref} {section}{what}{at}", standard=std.ref,
+                          section=section, data=data)
 
 
 # ---------- 리소스와 프롬프트 ----------
