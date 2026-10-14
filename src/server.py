@@ -434,7 +434,7 @@ class CADService:
 
         return result
 
-    def add_dimension(self, start_point, end_point, text_position=None, textheight=5, layer=None, color=None):
+    def add_dimension(self, start_point, end_point, text_position=None, textheight=None, layer=None, color=None):
         """선형 치수를 넣는다"""
         if not self.controller.is_running():
             self.start_cad()
@@ -702,9 +702,12 @@ async def draw_hatch(ctx: Context, points: HatchPoints, pattern_name: str = "SOL
 
 @mcp.tool()
 async def add_dimension(ctx: Context, start_point: Point, end_point: Point,
-                        text_position: Optional[Point] = None, textheight: PosFloat = 5,
+                        text_position: Optional[Point] = None, textheight: Optional[PosFloat] = None,
                         layer: Optional[str] = None, color: Union[int, str, None] = None) -> ToolResult:
-    """CAD에 선형 치수를 넣는다(text_position을 주지 않으면 중점 위에 자동으로 놓는다)"""
+    """CAD에 선형 치수를 넣는다(text_position을 주지 않으면 중점 위에 자동으로 놓는다)
+
+    textheight를 주지 않으면 치수 스타일 값(회사 표준)을 따른다. 주면 치수 문자 높이를 재정의해 표준 위반(DIM_OVERRIDE)이 된다.
+    """
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entity = await com(cad_service.add_dimension, start_point, end_point, text_position, textheight,
@@ -880,17 +883,6 @@ async def redo(ctx: Context) -> ToolResult:
 # ---------- 레이어 관리 ----------
 
 @mcp.tool()
-async def create_layer(ctx: Context, layer_name: str) -> ToolResult:
-    """새 레이어를 만들고 현재 레이어로 지정한다(이미 있으면 그 레이어를 현재로 지정)"""
-    if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.create_layer, layer_name)
-    if ok:
-        cad_service.drawing_state["current_layer"] = layer_name
-    return ToolResult(success=ok, message=f"레이어 {layer_name}을(를) 만들고 현재 레이어로 지정했습니다" if ok else f"레이어 {layer_name} 만들기 실패")
-
-
-@mcp.tool()
 async def set_current_layer(ctx: Context, layer_name: str) -> ToolResult:
     """현재 레이어를 바꾼다(레이어가 이미 있어야 한다)"""
     if not await _ensure_running(ctx):
@@ -902,20 +894,6 @@ async def set_current_layer(ctx: Context, layer_name: str) -> ToolResult:
 
 
 # ---------- 도면 관리 ----------
-
-@mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
-async def new_drawing(ctx: Context) -> ToolResult:
-    """새 도면 문서를 만든다"""
-    if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    if busy := await _busy_refusal():
-        return ToolResult(success=False, message=busy)
-    ok = await com(cad_service.controller.new_drawing)
-    if ok:
-        # 세션 그리기 기록은 이전 문서 것이므로 문서를 바꾸면 비운다
-        cad_service.drawing_state["entities"] = []
-    return ToolResult(success=ok, message="새 문서를 만들었습니다" if ok else "새 문서 만들기 실패")
-
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def open_drawing(ctx: Context, file_path: str) -> ToolResult:
@@ -1300,6 +1278,24 @@ async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
                            meta=ApplyMeta(op="?"))
     return await com(apply_service.draw_batch, cad_service.controller, _work_dir(), std, spec, None,
                      resume_after_unverified)
+
+
+# ---------- 보호되지 않는 경로 표시 ----------
+
+# 저수준 그리기·편집·명령 툴은 D5의 보호된 경로(적용 직전 확인·Undo 묶음·결과 확인)를 거치지 않는다
+UNPROTECTED_TOOLS = (
+    "draw_line", "draw_circle", "draw_arc", "draw_ellipse", "draw_polyline", "draw_rectangle", "draw_text",
+    "draw_hatch", "add_dimension",
+    "erase_entity", "move_entity", "rotate_entity", "scale_entity", "copy_entity", "mirror_entity",
+    "offset_entity", "array_linear_entity", "array_polar_entity",
+    "undo", "redo", "set_current_layer", "create_block", "insert_block", "send_command", "run_lisp",
+)
+UNPROTECTED_NOTE = ("\n\n보호되지 않는 경로: 실패해도 되돌리거나 확인하지 않는다. 엔진이 넣은 객체(ARCAID 태그)를 이것으로 고치면 "
+                    "다음 draw_batch에서 '손으로 고친 객체' 충돌로 잡힌다. 여러 객체는 draw_batch, 표준 위반 수정은 "
+                    "check_standard(fix=true)를 쓴다.")
+for _name in UNPROTECTED_TOOLS:
+    _tool = mcp._tool_manager.get_tool(_name)
+    _tool.description = (_tool.description or "").rstrip() + UNPROTECTED_NOTE
 
 
 # ---------- 리소스와 프롬프트 ----------
