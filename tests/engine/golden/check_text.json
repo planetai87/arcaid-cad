@@ -1,0 +1,54 @@
+{
+ "fixes": [
+  [
+   "height",
+   135.0,
+   [
+    "rem200"
+   ]
+  ],
+  [
+   "style",
+   "돋움",
+   [
+    "style"
+   ]
+  ]
+ ],
+ "unchecked": [
+  [
+   "높이 규칙이 없는 레이어의 문자",
+   1
+  ],
+  [
+   "서식 코드로 높이를 바꾼 MTEXT",
+   1
+  ]
+ ],
+ "violations": [
+  [
+   "TEXT_HEIGHT",
+   "rem200",
+   200.0,
+   135.0,
+   true
+  ],
+  [
+   "TEXT_HEIGHT",
+   "rom200",
+   200.0,
+   [
+    105.0,
+    135.0
+   ],
+   false
+  ],
+  [
+   "TEXT_STYLE",
+   "style",
+   "Standard",
+   "돋움",
+   true
+  ]
+ ]
+}
