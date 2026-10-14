@@ -10,10 +10,12 @@ import os
 import secrets
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Optional
+from typing import List, Literal, Optional
 
 import ezdxf
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+from .results import EngineResult
 
 INDEX_NAME = "index.json"
 
@@ -39,6 +41,12 @@ class SnapshotMeta(BaseModel):
     dxfversion: str
     insunits: int
     drawing_id: Optional[str] = None         # $FINGERPRINTGUID(파일을 복사하면 같은 값이 된다)
+
+
+class SnapshotResult(EngineResult):
+    """export_snapshot 결과: D2 공통 항목 + 스냅샷 메타"""
+    snapshot: Optional[SnapshotMeta] = None
+    warnings: List[str] = Field(default_factory=list)
 
 
 def snapshots_dir(work: Path) -> Path:
