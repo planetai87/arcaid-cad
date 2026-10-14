@@ -26,6 +26,7 @@
 - `src/snapshot_service.py`: 스냅샷 조율(MCP 쪽). CAD 내보내기(`cad_controller.export_dxf`·`export_closed_file`) + 엔진 메타(`engine/snapshot.py`). 도면 판독은 `engine/read.py`.
 - `src/engine/check.py`: 표준 검사(`check_standard`). 위반 코드·고칠 목록의 기준. 검사 항목을 바꾸면 `tests/engine/check_cases.py`의 시험 도면과 골든 파일(`tests/engine/golden/`, `ARCAID_UPDATE_GOLDEN=1`로 다시 만든 뒤 한 줄씩 대조)을 함께 고친다.
 - `src/engine/spec.py`·`layout.py`·`write.py`: 객체 명세(JSON) → 검증 → 배치 규칙 전개 → R2013 DXF(`build_dxf`). 명세 형식의 원본은 `spec.py` docstring. 대칭·회전은 `layout.py`가 직접 계산한다(ezdxf `transform()`은 대칭을 OCS로 표현해 읽기·검사가 위치를 잘못 읽음). 생성 DXF는 쓰는 정의만 담고 저장 뒤 `check_standard`로 자체 검사한다.
+- `src/engine/state.py`·`apply.py`: 태그·기준 상태와 보호된 적용 판정(재실행·정의 충돌·넣은 결과·복귀·고칠 대상). `src/apply_service.py`: `draw_batch`·`check_standard(fix)` 조율(COM 스레드). Undo 묶음 안에서는 COM 호출만 쓴다(명령·LISP·자체 묶음을 여는 `draw_*` 금지, T0 E6). 복귀는 스냅샷 핸들 집합으로 확인한다.
 - DXF 사본은 COM `Export`로만 만든다. `save_drawing`으로 DXF를 저장하지 않는다(열린 문서가 DXF로 바뀜). DXFOUT도 쓰지 않는다(미저장 표시를 지움).
 - `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다(`tools/standards/gen_references.py`), 손으로 고치지 않는다.
 - 템플릿 DWG를 고치면 `tools/template/export_template_dxf.py`(GstarCAD 필요)로 `template.dxf`와 해시를 다시 만든다. 안 하면 엔진 테스트가 실패한다.
