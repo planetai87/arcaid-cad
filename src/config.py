@@ -38,6 +38,10 @@ _DEFAULT_CONFIG = {
     # 스냅샷·작업 사본 폴더(한글·공백 없는 로컬 경로 권장, D6)
     "work": {
         "directory": r"C:\arcaid\work"
+    },
+    # 외부 반환 필터 정책 파일(D8). 상대 경로는 저장소 루트 기준. 환경 변수 ARCAID_EGRESS_FILE이 우선
+    "egress": {
+        "file": "config/egress.yaml"
     }
 }
 

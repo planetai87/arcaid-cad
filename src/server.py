@@ -28,7 +28,7 @@ if __package__:
     from .engine.check import CheckResult, check_standard as engine_check_standard
     from .engine.results import Checked, ResultIds, Scope, Status
     from .snapshot_service import snapshot_active, snapshot_file
-    from . import apply_service
+    from . import apply_service, egress
     from .engine.apply import ApplyMeta, ApplyResult, CheckFixResult
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -44,6 +44,7 @@ else:
     from engine.results import Checked, ResultIds, Scope, Status
     from snapshot_service import snapshot_active, snapshot_file
     import apply_service
+    import egress
     from engine.apply import ApplyMeta, ApplyResult, CheckFixResult
 
 from mcp.server.fastmcp import FastMCP, Context
@@ -560,7 +561,38 @@ async def _busy_refusal() -> Optional[str]:
 
 # ==================== MCP 서버와 도구 등록 ====================
 
-mcp = FastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _egress_policy() -> "egress.EgressPolicy":
+    """외부 반환 필터 정책(D8). 호출마다 읽어 설정을 바꾸면 바로 반영된다"""
+    path = Path(os.environ.get("ARCAID_EGRESS_FILE") or config.get("egress", {}).get("file") or "config/egress.yaml")
+    return egress.EgressPolicy.load(path if path.is_absolute() else REPO_ROOT / path)
+
+
+class FilteredFastMCP(FastMCP):
+    """모든 툴 결과를 외부 반환 정책으로 거른 뒤 AI에 돌려준다(D8)
+
+    구조화 결과(structuredContent)와 그 JSON 문자열을 같이 바꾼다. 하나라도 가렸으면 원본은 작업 폴더에 남긴다.
+    """
+
+    async def call_tool(self, name, arguments):
+        policy = _egress_policy()
+        if name == "screenshot" and policy.decide("screenshot") == "deny":
+            return [TextContent(type="text", text="화면 캡처는 외부 반환 정책(D8, config/egress.yaml screenshot)으로 꺼져 있음")]
+        result = await super().call_tool(name, arguments)
+        if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], dict):
+            filtered, changed = egress.filter_payload(name, result[1], policy)
+            if changed:
+                try:
+                    egress.save_full(_work_dir(), name, result[1])
+                except OSError as e:
+                    logger.warning(f"가린 결과의 원본을 남기지 못함: {e}")
+                return [TextContent(type="text", text=json.dumps(filtered, ensure_ascii=False, indent=2))], filtered
+        return result
+
+
+mcp = FilteredFastMCP(name=SERVER_NAME, instructions=SERVER_INSTRUCTIONS)
 
 
 # ---------- 기본 그리기 도구 ----------
@@ -1279,11 +1311,14 @@ async def current_drawing() -> str:
     """현재 CAD 도면 상태 리소스"""
     # 세션 기록 + 실시간 통계: 이번 세션에 무엇을 그렸는지와 문서의 실제 상태를 함께 보여 준다
     stats = await com(cad_service.controller.get_drawing_stats)
-    payload = {
+    payload = json.loads(json.dumps({
         "session": cad_service.drawing_state,
         "live": stats,
-    }
-    return json.dumps(payload, ensure_ascii=False, default=str)
+    }, ensure_ascii=False, default=str))
+    filtered, changed = egress.filter_payload("drawing://current", payload, _egress_policy())
+    if changed:
+        egress.save_full(_work_dir(), "drawing-current", payload)
+    return json.dumps(filtered, ensure_ascii=False)
 
 
 @mcp.prompt(name="cad-assistant", description="자연어로 CAD를 조작하는 어시스턴트")
