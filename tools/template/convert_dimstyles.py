@@ -15,7 +15,6 @@ import argparse
 import os
 import re
 import shutil
-import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
@@ -28,9 +27,8 @@ parser.add_argument("template", nargs="?", default=str(DEFAULT_TPL), help="템�
 parser.add_argument("--work", default=r"C:\arcaid\work\t2", help="작업 폴더(한글·공백 없는 경로 권장)")
 args = parser.parse_args()
 
-sys.path.insert(0, str(REPO / "src"))
 import ezdxf  # noqa: E402
-from cad_controller import CADController  # noqa: E402 (--help는 COM 없이 끝나게 인자를 먼저 읽는다)
+from _cadutil import close_work_docs, connect, ensure_active, lisp, restore_user  # noqa: E402
 
 TPL = Path(args.template).resolve()
 WORK = Path(args.work)
@@ -39,34 +37,6 @@ EDIT = WORK / "template_edit.dwg"
 CHECK_DXF = WORK / "template_edit_check.dxf"
 DIM_TEST = WORK / "template_dimtest.dwg"
 DIM_TEST_DXF = WORK / "template_dimtest.dxf"
-
-
-def ensure_active(ctl, doc, timeout=10.0):
-    """SendCommand·LISP는 활성 문서로 가므로, 보내기 전에 대상 문서가 활성인지 확인한다
-
-    문서를 닫거나 연 직후에는 활성 문서가 바로 바뀌지 않아 명령이 사라진 적이 있다(결과 파일 없음).
-    """
-    import time
-    name = ctl._safe_attr(doc, "Name")
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        active = ctl._safe_attr(ctl._safe_attr(ctl.app, "ActiveDocument"), "Name")
-        if active == name and ctl._read_cmdactive() == 0:
-            return
-        try:
-            ctl._call_attr(doc, "Activate")
-        except Exception:  # noqa: BLE001
-            pass
-        time.sleep(0.3)
-    raise RuntimeError(f"대상 문서가 활성화되지 않음: {name}")
-
-
-def lisp(ctl, expr):
-    ensure_active(ctl, ctl.doc)
-    r = ctl.run_lisp(expr)
-    if not r["ok"]:
-        raise RuntimeError(f"LISP 실패: {r['error']} :: {expr[:100]}")
-    return r["value"]
 
 
 def convert_style(name):
@@ -81,24 +51,9 @@ def close_doc(ctl, doc):
     ctl._call_attr(doc, "Close", False)
 
 
-def close_work_docs(ctl):
-    """작업 폴더에서 연 문서가 남아 있으면 저장하지 않고 닫는다(실패했을 때 대비)"""
-    work = os.path.normcase(str(WORK.resolve())) + os.sep
-    docs = ctl._call(getattr, ctl.app, "Documents")
-    for i in range(ctl._call(getattr, docs, "Count") - 1, -1, -1):
-        doc = ctl._call_attr(docs, "Item", i)
-        full = os.path.normcase(str(ctl._safe_attr(doc, "FullName") or ""))
-        if full.startswith(work):
-            ctl._call_attr(doc, "Close", False)
-            print("작업 사본 닫음:", full)
-
-
 def main():
-    ctl = CADController()
-    if not ctl.start_cad():
-        raise SystemExit("CAD에 연결하지 못함")
-    user = next((d for d in ctl.list_drawings() if d["is_active"]), None)
-    close_work_docs(ctl)  # 앞선 실행이 남긴 작업 사본(파일 잠금) 정리
+    ctl, user = connect()
+    close_work_docs(ctl, WORK)  # 앞선 실행이 남긴 작업 사본(파일 잠금) 정리
 
     shutil.copy2(TPL, str(TPL) + ".bak")  # *.bak은 git이 무시한다
     for p in (EDIT, CHECK_DXF, DIM_TEST, DIM_TEST_DXF):
@@ -148,10 +103,8 @@ def main():
         shutil.copyfile(EDIT, TPL)
         print("원본 교체:", TPL)
     finally:
-        close_work_docs(ctl)
-        if user:
-            ctl.switch_drawing(user["full_name"] or user["name"])
-            print("사용자 도면 재활성화:", user["name"])
+        close_work_docs(ctl, WORK)
+        restore_user(ctl, user)
 
 
 if __name__ == "__main__":
