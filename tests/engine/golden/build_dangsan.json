@@ -5,7 +5,8 @@
    "oid": "dangsan-typical:bubble[0]/b",
    "path": "grid/X1/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "3578dd2b163f6772"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -29,7 +30,8 @@
    "oid": "dangsan-typical:bubble[1]/b",
    "path": "grid/X2/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "474e3087a585b082"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -53,7 +55,8 @@
    "oid": "dangsan-typical:bubble[2]/b",
    "path": "grid/X3/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "14b87571efd7f179"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -77,7 +80,8 @@
    "oid": "dangsan-typical:bubble[3]/b",
    "path": "grid/X4/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "3862167379b856a2"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -101,7 +105,8 @@
    "oid": "dangsan-typical:bubble[4]/b",
    "path": "grid/X5/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "f735c395675485ba"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -125,7 +130,8 @@
    "oid": "dangsan-typical:bubble[5]/b",
    "path": "grid/X6/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "3d08df7d9ac845a2"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -149,7 +155,8 @@
    "oid": "dangsan-typical:bubble[6]/b",
    "path": "grid/X7/bubble/b",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "0c0c10fecd19fc3b"
   },
   "type": "INSERT",
   "layer": "DIM",
@@ -173,7 +180,8 @@
    "oid": "dangsan-typical:cen-x[0]/line",
    "path": "grid/X1/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "984550065b6c7c4b"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -194,7 +202,8 @@
    "oid": "dangsan-typical:cen-x[1]/line",
    "path": "grid/X2/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "325c29561ba86c18"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -215,7 +224,8 @@
    "oid": "dangsan-typical:cen-x[2]/line",
    "path": "grid/X3/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "ac4c4a3abdb179bb"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -236,7 +246,8 @@
    "oid": "dangsan-typical:cen-x[3]/line",
    "path": "grid/X4/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "bf016801a2684e88"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -257,7 +268,8 @@
    "oid": "dangsan-typical:cen-x[4]/line",
    "path": "grid/X5/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "643f19df3c507fd1"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -278,7 +290,8 @@
    "oid": "dangsan-typical:cen-x[5]/line",
    "path": "grid/X6/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "f0dcec9c16d0282f"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -299,7 +312,8 @@
    "oid": "dangsan-typical:cen-x[6]/line",
    "path": "grid/X7/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "57cec1f2f7391e8d"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -320,7 +334,8 @@
    "oid": "dangsan-typical:cen-y[0]/line",
    "path": "grid/Y1/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "6d2a7fa1fda5e847"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -341,7 +356,8 @@
    "oid": "dangsan-typical:cen-y[1]/line",
    "path": "grid/Y2/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "821844ece9abd30b"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -362,7 +378,8 @@
    "oid": "dangsan-typical:cen-y[2]/line",
    "path": "grid/Y3/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "abd035815de12798"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -383,7 +400,8 @@
    "oid": "dangsan-typical:cen-y[3]/line",
    "path": "grid/Y4/line",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "32416d77095040c2"
   },
   "type": "LINE",
   "layer": "CEN",
@@ -404,7 +422,8 @@
    "oid": "dangsan-typical:core-hatch",
    "path": "3F/core/hatch",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "6516f6e5e9fa55d6"
   },
   "type": "HATCH",
   "layer": "HAT",
@@ -466,7 +485,8 @@
    "oid": "dangsan-typical:core-wall",
    "path": "3F/core/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "49e5e9e6fe2ada6d"
   },
   "type": "LWPOLYLINE",
   "layer": "CON",
@@ -502,7 +522,8 @@
    "oid": "dangsan-typical:dim-row1.1",
    "path": "dim/top/row1.1",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "c7e7c560788fc31d"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -531,7 +552,8 @@
    "oid": "dangsan-typical:dim-row1.2",
    "path": "dim/top/row1.2",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "f1e45f42f3b14df5"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -560,7 +582,8 @@
    "oid": "dangsan-typical:dim-row1.3",
    "path": "dim/top/row1.3",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "a88e5678c215afa1"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -589,7 +612,8 @@
    "oid": "dangsan-typical:dim-row1.4",
    "path": "dim/top/row1.4",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "25b967bffe2a869e"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -618,7 +642,8 @@
    "oid": "dangsan-typical:dim-row1.5",
    "path": "dim/top/row1.5",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "3a789192fe3952fc"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -647,7 +672,8 @@
    "oid": "dangsan-typical:dim-row1.6",
    "path": "dim/top/row1.6",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "aca2277d1fbe0703"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -676,7 +702,8 @@
    "oid": "dangsan-typical:dim-total",
    "path": "dim/top/total",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "2216d5a4464a02f3"
   },
   "type": "DIMENSION",
   "layer": "DIM",
@@ -705,7 +732,8 @@
    "oid": "dangsan-typical:room[0]/bath",
    "path": "3F/room/301/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "d1815a529f7b8986"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -736,7 +764,8 @@
    "oid": "dangsan-typical:room[0]/door-leaf",
    "path": "3F/room/301/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "c90a61f8c2c3288f"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -757,7 +786,8 @@
    "oid": "dangsan-typical:room[0]/door-swing",
    "path": "3F/room/301/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e4549857fc05159b"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -779,7 +809,8 @@
    "oid": "dangsan-typical:room[0]/name",
    "path": "3F/room/301/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "078721f0366195b7"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -806,7 +837,8 @@
    "oid": "dangsan-typical:room[0]/number",
    "path": "3F/room/301/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "5e1afabef639790d"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -833,7 +865,8 @@
    "oid": "dangsan-typical:room[0]/wall",
    "path": "3F/room/301/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "a9c8a5433ba25ceb"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -869,7 +902,8 @@
    "oid": "dangsan-typical:room[0]/win-in",
    "path": "3F/room/301/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "5afb9441b1e74e78"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -890,7 +924,8 @@
    "oid": "dangsan-typical:room[0]/win-out",
    "path": "3F/room/301/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "cc8d86ad65beb199"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -911,7 +946,8 @@
    "oid": "dangsan-typical:room[1]/bath",
    "path": "3F/room/302/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "47a6e23ea377849f"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -942,7 +978,8 @@
    "oid": "dangsan-typical:room[1]/door-leaf",
    "path": "3F/room/302/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "a5b42841b043c01c"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -963,7 +1000,8 @@
    "oid": "dangsan-typical:room[1]/door-swing",
    "path": "3F/room/302/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e52109e399fcf2a2"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -985,7 +1023,8 @@
    "oid": "dangsan-typical:room[1]/name",
    "path": "3F/room/302/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "b6ed11ed067a9a66"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1012,7 +1051,8 @@
    "oid": "dangsan-typical:room[1]/number",
    "path": "3F/room/302/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "39d6ca2cc48c5b6f"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1039,7 +1079,8 @@
    "oid": "dangsan-typical:room[1]/wall",
    "path": "3F/room/302/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "38a66bd5a25d8be0"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -1075,7 +1116,8 @@
    "oid": "dangsan-typical:room[1]/win-in",
    "path": "3F/room/302/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "f8ee3204e5aef9b5"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1096,7 +1138,8 @@
    "oid": "dangsan-typical:room[1]/win-out",
    "path": "3F/room/302/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "53ed5f4cc32eca0e"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1117,7 +1160,8 @@
    "oid": "dangsan-typical:room[2]/bath",
    "path": "3F/room/303/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "3e271e61c260642a"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -1148,7 +1192,8 @@
    "oid": "dangsan-typical:room[2]/door-leaf",
    "path": "3F/room/303/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "0886451483eff48b"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -1169,7 +1214,8 @@
    "oid": "dangsan-typical:room[2]/door-swing",
    "path": "3F/room/303/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "53b1d852bdd308c9"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -1191,7 +1237,8 @@
    "oid": "dangsan-typical:room[2]/name",
    "path": "3F/room/303/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "6e1035f2e99619d2"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1218,7 +1265,8 @@
    "oid": "dangsan-typical:room[2]/number",
    "path": "3F/room/303/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "71b152d5bbc6fc59"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1245,7 +1293,8 @@
    "oid": "dangsan-typical:room[2]/wall",
    "path": "3F/room/303/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "b7ef79a126b3a20a"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -1281,7 +1330,8 @@
    "oid": "dangsan-typical:room[2]/win-in",
    "path": "3F/room/303/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e6130257d4c26455"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1302,7 +1352,8 @@
    "oid": "dangsan-typical:room[2]/win-out",
    "path": "3F/room/303/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "0cd493a5152a36d9"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1323,7 +1374,8 @@
    "oid": "dangsan-typical:room[3]/bath",
    "path": "3F/room/304/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "773a1e8b6e09214c"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -1354,7 +1406,8 @@
    "oid": "dangsan-typical:room[3]/door-leaf",
    "path": "3F/room/304/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "1bd3e4ae1d69baf5"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -1375,7 +1428,8 @@
    "oid": "dangsan-typical:room[3]/door-swing",
    "path": "3F/room/304/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "42c68b7029e58df7"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -1397,7 +1451,8 @@
    "oid": "dangsan-typical:room[3]/name",
    "path": "3F/room/304/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "1630c12193e391e0"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1424,7 +1479,8 @@
    "oid": "dangsan-typical:room[3]/number",
    "path": "3F/room/304/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "786eea0939f065f0"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1451,7 +1507,8 @@
    "oid": "dangsan-typical:room[3]/wall",
    "path": "3F/room/304/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "8806a872fdc9ca84"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -1487,7 +1544,8 @@
    "oid": "dangsan-typical:room[3]/win-in",
    "path": "3F/room/304/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "c88de1fe41c44e2e"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1508,7 +1566,8 @@
    "oid": "dangsan-typical:room[3]/win-out",
    "path": "3F/room/304/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "cc4e29fa1f0e6f48"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1529,7 +1588,8 @@
    "oid": "dangsan-typical:room[4]/bath",
    "path": "3F/room/305/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "895ca9c5d393b972"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -1560,7 +1620,8 @@
    "oid": "dangsan-typical:room[4]/door-leaf",
    "path": "3F/room/305/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "8fcdfd7ccfea75fc"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -1581,7 +1642,8 @@
    "oid": "dangsan-typical:room[4]/door-swing",
    "path": "3F/room/305/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "b47af71dc18cc003"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -1603,7 +1665,8 @@
    "oid": "dangsan-typical:room[4]/name",
    "path": "3F/room/305/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "08350d72cfad730b"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1630,7 +1693,8 @@
    "oid": "dangsan-typical:room[4]/number",
    "path": "3F/room/305/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "85775f6ceb272e00"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1657,7 +1721,8 @@
    "oid": "dangsan-typical:room[4]/wall",
    "path": "3F/room/305/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "5754a2c9adeb2b0b"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -1693,7 +1758,8 @@
    "oid": "dangsan-typical:room[4]/win-in",
    "path": "3F/room/305/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "53cce606c090d586"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1714,7 +1780,8 @@
    "oid": "dangsan-typical:room[4]/win-out",
    "path": "3F/room/305/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "6e573694aa607401"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1735,7 +1802,8 @@
    "oid": "dangsan-typical:room[5]/bath",
    "path": "3F/room/310/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "01be4d04daaee682"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -1766,7 +1834,8 @@
    "oid": "dangsan-typical:room[5]/door-leaf",
    "path": "3F/room/310/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "7e8eb3ec2d439ea2"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -1787,7 +1856,8 @@
    "oid": "dangsan-typical:room[5]/door-swing",
    "path": "3F/room/310/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "b77726899daeb7fb"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -1809,7 +1879,8 @@
    "oid": "dangsan-typical:room[5]/name",
    "path": "3F/room/310/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "cf1993d4070f1db3"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1836,7 +1907,8 @@
    "oid": "dangsan-typical:room[5]/number",
    "path": "3F/room/310/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "b7fe2aa108ddf336"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -1863,7 +1935,8 @@
    "oid": "dangsan-typical:room[5]/wall",
    "path": "3F/room/310/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e5290c390eac8bd9"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -1899,7 +1972,8 @@
    "oid": "dangsan-typical:room[5]/win-in",
    "path": "3F/room/310/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "182ec7ce282e9ce4"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1920,7 +1994,8 @@
    "oid": "dangsan-typical:room[5]/win-out",
    "path": "3F/room/310/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "96641a4a48fd2938"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -1941,7 +2016,8 @@
    "oid": "dangsan-typical:room[6]/bath",
    "path": "3F/room/309/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "013be518c7d2d539"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -1972,7 +2048,8 @@
    "oid": "dangsan-typical:room[6]/door-leaf",
    "path": "3F/room/309/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "124c54664e5f2f26"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -1993,7 +2070,8 @@
    "oid": "dangsan-typical:room[6]/door-swing",
    "path": "3F/room/309/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e5581a468ccbcabb"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -2015,7 +2093,8 @@
    "oid": "dangsan-typical:room[6]/name",
    "path": "3F/room/309/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "521bc8af81efc28b"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2042,7 +2121,8 @@
    "oid": "dangsan-typical:room[6]/number",
    "path": "3F/room/309/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "629244403a8fb3ef"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2069,7 +2149,8 @@
    "oid": "dangsan-typical:room[6]/wall",
    "path": "3F/room/309/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "2f11c3f991d3f886"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -2105,7 +2186,8 @@
    "oid": "dangsan-typical:room[6]/win-in",
    "path": "3F/room/309/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "e95d266c588cab23"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2126,7 +2208,8 @@
    "oid": "dangsan-typical:room[6]/win-out",
    "path": "3F/room/309/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "693f89a40ae92b05"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2147,7 +2230,8 @@
    "oid": "dangsan-typical:room[7]/bath",
    "path": "3F/room/308/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "4c53a17f3044d074"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -2178,7 +2262,8 @@
    "oid": "dangsan-typical:room[7]/door-leaf",
    "path": "3F/room/308/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "d2c3c7a7ae10a451"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -2199,7 +2284,8 @@
    "oid": "dangsan-typical:room[7]/door-swing",
    "path": "3F/room/308/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "59e5465847330d1e"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -2221,7 +2307,8 @@
    "oid": "dangsan-typical:room[7]/name",
    "path": "3F/room/308/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "0282f4abf3f591b4"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2248,7 +2335,8 @@
    "oid": "dangsan-typical:room[7]/number",
    "path": "3F/room/308/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "171add9dbceeb35c"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2275,7 +2363,8 @@
    "oid": "dangsan-typical:room[7]/wall",
    "path": "3F/room/308/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "bcab3a7b6bbaac50"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -2311,7 +2400,8 @@
    "oid": "dangsan-typical:room[7]/win-in",
    "path": "3F/room/308/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "8ad6da5819fb1213"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2332,7 +2422,8 @@
    "oid": "dangsan-typical:room[7]/win-out",
    "path": "3F/room/308/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "9b9b00d50e3746b0"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2353,7 +2444,8 @@
    "oid": "dangsan-typical:room[8]/bath",
    "path": "3F/room/307/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "2f34df8f528dfb88"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -2384,7 +2476,8 @@
    "oid": "dangsan-typical:room[8]/door-leaf",
    "path": "3F/room/307/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "85fdf8612d45b3d7"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -2405,7 +2498,8 @@
    "oid": "dangsan-typical:room[8]/door-swing",
    "path": "3F/room/307/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "c96cff7d518787ec"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -2427,7 +2521,8 @@
    "oid": "dangsan-typical:room[8]/name",
    "path": "3F/room/307/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "0240955c6e6ebd98"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2454,7 +2549,8 @@
    "oid": "dangsan-typical:room[8]/number",
    "path": "3F/room/307/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "ae1e55b88a7adc39"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2481,7 +2577,8 @@
    "oid": "dangsan-typical:room[8]/wall",
    "path": "3F/room/307/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "a17373a5e28d3ff4"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -2517,7 +2614,8 @@
    "oid": "dangsan-typical:room[8]/win-in",
    "path": "3F/room/307/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "144d9cffa45632d5"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2538,7 +2636,8 @@
    "oid": "dangsan-typical:room[8]/win-out",
    "path": "3F/room/307/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "6cacedb6b6b76a5d"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2559,7 +2658,8 @@
    "oid": "dangsan-typical:room[9]/bath",
    "path": "3F/room/306/bath",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "f90f6d691aad46da"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL1",
@@ -2590,7 +2690,8 @@
    "oid": "dangsan-typical:room[9]/door-leaf",
    "path": "3F/room/306/door-leaf",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "d8111a85cfc3f217"
   },
   "type": "LINE",
   "layer": "DOR",
@@ -2611,7 +2712,8 @@
    "oid": "dangsan-typical:room[9]/door-swing",
    "path": "3F/room/306/door-swing",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "8791f7489a4bad88"
   },
   "type": "ARC",
   "layer": "DOR",
@@ -2633,7 +2735,8 @@
    "oid": "dangsan-typical:room[9]/name",
    "path": "3F/room/306/name",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "c6615bd374dabdc4"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2660,7 +2763,8 @@
    "oid": "dangsan-typical:room[9]/number",
    "path": "3F/room/306/number",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "2c3e1c13ca26505b"
   },
   "type": "TEXT",
   "layer": "ROM",
@@ -2687,7 +2791,8 @@
    "oid": "dangsan-typical:room[9]/wall",
    "path": "3F/room/306/wall",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "1b57eadf510644e4"
   },
   "type": "LWPOLYLINE",
   "layer": "WAL",
@@ -2723,7 +2828,8 @@
    "oid": "dangsan-typical:room[9]/win-in",
    "path": "3F/room/306/win-in",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "42e97d27baee6ffd"
   },
   "type": "LINE",
   "layer": "WIN",
@@ -2744,7 +2850,8 @@
    "oid": "dangsan-typical:room[9]/win-out",
    "path": "3F/room/306/win-out",
    "ver": "3.0.0",
-   "in": "890c723999ecd0ee"
+   "in": "890c723999ecd0ee",
+   "state": "36f6f55ee5409450"
   },
   "type": "LINE",
   "layer": "WIN",
