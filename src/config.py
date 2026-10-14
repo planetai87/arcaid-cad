@@ -34,6 +34,10 @@ _DEFAULT_CONFIG = {
     "output": {
         "directory": "./output",
         "default_filename": "cad_drawing.dwg"
+    },
+    # 스냅샷·작업 사본 폴더(한글·공백 없는 로컬 경로 권장, D6)
+    "work": {
+        "directory": r"C:\arcaid\work"
     }
 }
 
