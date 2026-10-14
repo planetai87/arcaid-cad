@@ -182,10 +182,12 @@ python tools\template\build_template.py "<표준매뉴얼.dwg>" report.json
 python tools\template\add_standard_blocks.py
 python tools\template\fix_block_origins.py
 python tools\template\convert_dimstyles.py
+python tools\template\set_plot_setup.py
 python tools\template\export_template_dxf.py
 ```
 
 - `convert_dimstyles.py`: DIM330·DIM270을 비주석으로, 스타일 DIMSCALE을 50(A3 1/100)으로 맞춥니다.
+- `set_plot_setup.py`: 모든 레이아웃의 출력 설정을 회사 CTB `HEO(2020)_A3.ctb`·`DWG To PDF.pc3`·A3로 맞춥니다(출력 범위·축척은 그대로).
 - `export_template_dxf.py`: `standards/heo-2026/template.dxf`(R2013)를 만들고 템플릿 DWG·DXF 해시를 `profile.yaml`에 적습니다. 템플릿을 고친 뒤에는 꼭 다시 실행합니다(`--check`는 CAD 없이 해시만 비교).
 
 표준매뉴얼 원본 DWG는 저장소에 넣지 않습니다.
