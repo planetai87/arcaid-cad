@@ -1,0 +1,184 @@
+# 표준 레이어(2026 도면작성 표준매뉴얼 'LAYER 체계'). 색 = 출력 선굵기(CTB). 객체 색·선굵기는 항상 ByLayer.
+# 레이어명은 문자·숫자 3자리가 원칙이고, 구분이 필요하면 팀 협의를 거쳐 숫자를 붙인다(예: WAL2). 작업자가 임의로 만들지 않는다.
+# object_linetypes: 객체에 ByLayer 대신 줄 수 있는 선종류(예: LIM의 대지경계선 PHANTOM, 방화구획선 CENTER)
+# drawable: false면 그 레이어에 그리지 않는다
+color_lineweights_mm:    # 색별 출력 선굵기(A1 / A3)
+  1: [0.13, 0.08]
+  2: [0.50, 0.30]
+  3: [0.35, 0.20]
+  4: [0.18, 0.10]
+  5: [0.15, 0.10]
+  6: [0.15, 0.15]
+  7: [0.25, 0.18]
+  8: [0.10, 0.08]
+  9: [0.13, 0.10]
+layers:
+  - name: "0"
+    color: 7
+    linetype: Continuous
+    purpose: 그리지 않는다(블록 정의 내부 전용)
+    drawable: false
+  - name: CEN
+    color: 1
+    linetype: CEN
+    plot: false
+    purpose: 내부벽체 기준선, 중심선(축선)
+  - name: Defpoints
+    color: 8
+    linetype: Continuous
+    plot: false
+    purpose: 출력 시 보이지 않는 참고선
+    drawable: false
+  - name: CON
+    color: 2
+    linetype: Continuous
+    purpose: 철근콘크리트 구조체(RC 벽·기둥·슬래브 단면, 배치도 건물 외곽)
+  - name: CIL
+    color: 6
+    linetype: Continuous
+    purpose: 천장재 줄눈
+  - name: CIL1
+    color: 7
+    linetype: Continuous
+    purpose: 커튼박스, 천장 단차
+  - name: CIR
+    color: 4
+    linetype: Continuous
+    purpose: 승강기, 에스컬레이터, 무빙워크, 계단
+  - name: LIM
+    color: 2
+    linetype: HID
+    purpose: 대지경계선, 각종 구획선(방화구획 등), 별도공사
+    object_linetypes: [PHANTOM, CENTER]
+  - name: DIM
+    color: 7
+    linetype: Continuous
+    purpose: 축열(축 버블·축 번호), 외부 치수선
+  - name: DIM1
+    color: 7
+    linetype: Continuous
+    purpose: 내부 치수
+  - name: DOR
+    color: 4
+    linetype: Continuous
+    purpose: 문 평면, 문틀
+  - name: ELE
+    color: 7
+    linetype: Continuous
+    purpose: 내외부 입면
+  - name: FIN
+    color: 6
+    linetype: Continuous
+    purpose: 내외부 마감
+  - name: FUR
+    color: 5
+    linetype: HID
+    purpose: 가구, 집기, 설치물(금회 공사 외는 점선)
+  - name: HAT
+    color: 8
+    linetype: Continuous
+    purpose: 재료 표현 해치
+  - name: HAT1
+    color: 9
+    linetype: Continuous
+    purpose: 영역 구분 및 기타 해치
+  - name: HID
+    color: 8
+    linetype: HID
+    purpose: 가상선, 상부 벽체선
+  - name: INS
+    color: 8
+    linetype: Continuous
+    purpose: 단열재
+  - name: LAN
+    color: 9
+    linetype: Continuous
+    purpose: 조경, 도로경계석
+  - name: LEV
+    color: 3
+    linetype: Continuous
+    purpose: 평·입·단면 레벨 기호와 문자, 단차 표시
+  - name: LGT
+    color: 3
+    linetype: Continuous
+    purpose: 조명, 천장 설비기구
+  - name: INT
+    color: 8
+    linetype: Continuous
+    purpose: 별도 인테리어선
+  - name: PAK
+    color: 9
+    linetype: Continuous
+    purpose: 주차구획선
+  - name: PAK1
+    color: 7
+    linetype: Continuous
+    purpose: 주차대수 표시, 주차 관련 표시(출구·일방통행 등)
+  - name: PAT
+    color: 9
+    linetype: Continuous
+    purpose: 내외부 바닥 패턴(템플릿 이름은 소문자 pat, 같은 레이어)
+  - name: REM
+    color: 3
+    linetype: Continuous
+    purpose: 주기(NOTES)란 내용
+  - name: ROM
+    color: 3
+    linetype: Continuous
+    purpose: 실명 박스와 실명 문자
+  - name: SHT
+    color: 7
+    linetype: HID
+    purpose: 셔터, 자동방화셔터
+  - name: STL
+    color: 3
+    linetype: Continuous
+    purpose: H형강 등 구조용 철재
+  - name: STL1
+    color: 4
+    linetype: Continuous
+    purpose: 비구조용 잡철물
+  - name: SPR
+    color: 2
+    linetype: Continuous
+    purpose: 스프링클러
+  - name: SYM
+    color: 3
+    linetype: Continuous
+    purpose: 입면·단면·전개 기호와 그 문자
+  - name: SYM1
+    color: 7
+    linetype: Continuous
+    purpose: 기타 기호(방위표, 주출입구)
+  - name: TIT
+    color: 7
+    linetype: Continuous
+    purpose: 도면 양식(도곽)
+  - name: TIT1
+    color: 3
+    linetype: Continuous
+    purpose: 도면 양식 안의 문자, 타이틀 문자
+  - name: TXT
+    color: 3
+    linetype: Continuous
+    purpose: 도면 내 일반 문자
+  - name: TXT1
+    color: 7
+    linetype: Continuous
+    purpose: 각종 지시선과 그 문자
+  - name: TOL
+    color: 4
+    linetype: Continuous
+    purpose: 화장실 대·소변기, 세면기
+  - name: WAL
+    color: 3
+    linetype: Continuous
+    purpose: 벽돌벽, 보강블록벽
+  - name: WAL1
+    color: 7
+    linetype: Continuous
+    purpose: 건식벽, 내부 칸막이
+  - name: WIN
+    color: 4
+    linetype: Continuous
+    purpose: 창문, 유리문, 커튼월

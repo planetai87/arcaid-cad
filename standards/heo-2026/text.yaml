@@ -1,0 +1,51 @@
+# 문자 스타일과 용도별 높이. 높이는 A3 1/100 기준값이고 실제 높이 = 값 × s(s = k/100).
+# 매뉴얼 '도면글자 크기기준' 표의 510/330/270/210은 실제 매뉴얼 도면 크기의 2배라, 회사 결정에 따라 실제 도면 크기를 쓴다.
+style:
+  name: 돋움
+  font_family: Dotum      # TTF(문자 스타일의 ACAD XDATA)
+  width: 1.0
+  fixed_height: 0         # 0 = 높이를 객체마다 준다
+heights:
+  - id: main_title
+    height: 255
+    use: 설계명, 도면명, 도면 안 MAIN TITLE
+    layers: [TIT1]
+  - id: sub_title
+    height: 165
+    use: 설계자명, 축척, 프로젝트번호, SUB TITLE
+    layers: [TIT1]
+  - id: general
+    height: 135
+    use: 도면 안 일반 문자(실명, NOTES, 기호 안 글자, 레벨)
+    layers: [TXT, ROM, REM, SYM, LEV]
+  - id: small_tag
+    height: 105
+    use: 작은 표식 안 글자(실번호·천장고, 창호 부호)
+    layers: [ROM, DOR, WIN]
+  - id: grid_bubble
+    height: 225
+    use: 축열 버블 번호(블록 속성)
+    layers: [DIM]
+  - id: stair_updn
+    height: 150
+    use: 계단 UP/DN
+    layers: [TXT]
+sheet_title:              # 도곽(HEOarchitects_sheet) 표제란 문자. 좌표·높이 × s, 도곽 좌하단 기준
+  - id: drawing_name
+    height: 300
+    insert: [37400, 3671]
+    layers: [TIT1]
+  - id: scale
+    height: 175
+    insert: [37400, 2712]
+    format: "SCALE   A1 : 1/<k÷2>   A3 : 1/<k>"
+    layers: [TIT1]
+  - id: drawing_number
+    height: 400
+    insert: [37400, 1500]
+    format: A-000
+    layers: [TIT1]
+special_codes:            # 특수기호는 CAD 코드로 쓴다
+  "±": "%%P"
+  "°": "%%D"
+  "Ø": "%%C"
