@@ -1,0 +1,54 @@
+# 치수 스타일과 축열·치수·버블 간격(매뉴얼 '축렬, 계단.dwg' 기준). 간격은 A3 1/100 기준값 × s.
+# 치수 스타일은 비주석이다(2026-10-14 전환). 스타일 DIMSCALE은 1/100 값 50이고, 다른 축척은 DIMSCALE = k/2로 덮어쓴다.
+# vars는 템플릿 치수 스타일의 DXF 값과 같아야 한다(tests/engine/test_definitions.py가 확인)
+styles:
+  - name: DIM330
+    use: 외부 치수(개구부·주열·전체), 축열
+    layer: DIM
+    text_style: 돋움
+    annotative: false
+    vars:
+      dimscale: 50
+      dimtxt: 3.3
+      dimasz: 1.0
+      dimexo: 3.0
+      dimexe: 2.0
+      dimdli: 3.0
+      dimgap: 1.0
+      dimtad: 1
+      dimdec: 0
+      dimclrt: 3
+      dimzin: 9
+      dimtmove: 2
+      dimblk: dots
+  - name: DIM270
+    use: 내부 치수
+    layer: DIM1
+    text_style: 돋움
+    annotative: false
+    vars:
+      dimscale: 50
+      dimtxt: 2.7
+      dimasz: 1.0
+      dimexo: 3.0
+      dimexe: 2.0
+      dimdli: 3.0
+      dimgap: 1.0
+      dimtad: 1
+      dimdec: 0
+      dimclrt: 3
+      dimzin: 9
+      dimtmove: 2
+      dimblk: dots
+spacing:                  # 축선 끝에서 바깥쪽으로(1/100 기준, × s)
+  cen_overhang: 450                   # 가장 바깥 축선 → CEN 끝(기본값, 가변)
+  cen_overhang_beyond_wall_min: 300   # CEN 끝은 외벽 바깥면·돌출부보다 이만큼 더 나간다
+  extension_offset: 150               # CEN 끝 → 치수보조선 시작(DIMEXO, 자동)
+  first_row_from_cen_end: 900         # CEN 끝 → 1단 치수선
+  row_gap: 400                        # 치수 단 사이
+  bubble_from_outer_dim: 800          # 가장 바깥 치수선 → 버블 중심(블록에 포함)
+  text_above_dimline: 132             # 치수 문자 중심의 치수선 위 거리(확인용)
+rules:
+  - 치수 단위는 mm, 단위 기호와 천 단위 콤마는 쓰지 않는다. 소수점이 나오는 구간은 등분 표기(예 3@1000=3000)
+  - 평면도 버블은 상부와 좌측에만, 입면·단면은 상부에만 표기한다
+  - 세로 축선은 왼쪽부터 X1, X2…, 가로 축선은 아래부터 Y1, Y2…

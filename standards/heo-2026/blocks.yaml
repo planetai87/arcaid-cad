@@ -1,0 +1,164 @@
+# 템플릿 블록. extents = 삽입점 (0,0), 배율 1, 회전 0 기준의 형상 범위(속성 정의 문자 제외, mm).
+# scale: 삽입 배율(s = k/100). layer: 삽입할 때 현재 레이어로 둘 레이어(블록 참조가 들어갈 레이어).
+# insert: "-INSERT"(속성값을 함께 넣는 명령 문자열) 또는 "insert_block"(MCP 툴).
+# status: standard = 쓰는 블록, unused = 템플릿에 있지만 쓰지 않는 블록(reason에 이유).
+blocks:
+  - name: 축열버블-상
+    status: standard
+    layer: DIM
+    scale: s
+    insert: -INSERT
+    attributes:
+      - {tag: 축열, height: 225, layer: DIM}
+    extents: [[-300, 350], [300, 1100]]
+    note: 상부(세로 축선 X열) 버블. 삽입점 = 축 x, 가장 바깥 치수선 y
+  - name: 축열버블-좌
+    status: standard
+    layer: DIM
+    scale: s
+    insert: -INSERT
+    attributes:
+      - {tag: 축열, height: 225, layer: DIM}
+    extents: [[-1100, -300], [-350, 300]]
+    note: 좌측(가로 축선 Y열) 버블. 삽입점 = 가장 바깥 치수선 x, 축 y
+  - name: 계단화살표
+    status: standard
+    layer: DIM
+    scale: s
+    insert: insert_block
+    extents: [[-152.5, -125.7], [152.5, 0]]
+    note: 꼭짓점이 삽입점, +y를 가리킴. 회전으로 방향 지정
+  - name: 계단절단선Z
+    status: standard
+    layer: SYM1
+    scale: s
+    insert: insert_block
+    extents: [[-65.6, -110], [65.6, 110]]
+    note: 30° 절단선의 Z 꺾임(stair.md)
+  - name: HEOarchitects_sheet
+    status: standard
+    layer: TIT
+    scale: s
+    insert: insert_block
+    extents: [[0, 0], [42000, 29700]]
+    note: 도곽. 그림 영역은 좌하단 기준 (0,0)–(35000,29700) × s, 오른쪽 띠는 표제란
+  - name: 방위
+    status: standard
+    layer: SYM1
+    scale: s
+    insert: insert_block
+    extents: [[-1250, -1502.9], [1250, 1502.9]]
+    note: 중심 기준
+  - name: LEV
+    status: standard
+    layer: LEV
+    scale: 0.5s
+    insert: insert_block
+    extents: [[0, 0], [2007.4, 400]]
+    note: 평면 레벨 기호. 기호 중심 (200,200), 레벨선 y=200. 문자는 따로 넣는다
+  - name: 입단면층레벨
+    status: standard
+    layer: LEV
+    scale: 0.5s
+    insert: -INSERT
+    attributes:
+      - {tag: SL-80, height: 270, layer: TIT}
+      - {tag: FL%%P0, height: 270, layer: TIT}
+    extents: [[-200, -200], [1645.5, 200]]
+    note: 기호 중심이 삽입점. 속성 2개(선 아래 값 먼저, 선 위 값 나중). X·Y 배율이 같게 고정돼 Y 배율을 묻지 않는다. 속성 문자 포함 범위 (−200,−362)–(1645,369)
+  - name: ARR2
+    status: standard
+    layer: SYM1
+    scale: s
+    insert: insert_block
+    extents: [[0, 0], [2040.3, 1077.3]]
+    note: 속이 빈 화살표, −x를 가리킴. 배치도 주출입구·차량 진입. 매뉴얼 사용 예가 없어 배율 s는 가정
+  - name: ARR
+    status: standard
+    layer: SYM1
+    scale: s
+    insert: insert_block
+    extents: [[0, 0], [641.2, 1436.5]]
+    note: 속이 빈 꺾쇠, −x를 가리킴. 매뉴얼 사용 예가 없어 배율 s는 가정
+  - name: xi_parking_3
+    status: standard
+    layer: PAK
+    scale: "1"
+    insert: insert_block
+    extents: [[0, 0], [5000, 2500]]
+    note: 주차구획(실제 크기)
+  - name: xi_parking_wide_3
+    status: standard
+    layer: PAK
+    scale: "1"
+    insert: insert_block
+    extents: [[0, 0], [5200, 2600]]
+    note: 확장형 주차구획(실제 크기)
+  - name: xi_parking_small_3
+    status: standard
+    layer: PAK
+    scale: "1"
+    insert: insert_block
+    extents: [[0, 0], [3600, 2000]]
+    note: 경형 주차구획(실제 크기)
+  - name: xi_parking_hc_33_mark
+    status: standard
+    layer: PAK
+    scale: "1"
+    insert: insert_block
+    extents: [[-300, 0], [5000, 3300]]
+    note: 장애인 주차구획(실제 크기)
+  - name: M-SD-편개
+    status: unused
+    extents: [[0, 0], [1100, 1140]]
+    reason: 폭 고정(문틀 포함 1100), 블록 안 호에 색 직접 지정, 레이어 0 객체. 문은 직접 그린다
+  - name: M-AD 양개
+    status: unused
+    extents: [[0, 0], [2400, 1290]]
+    reason: 폭 고정(2400), 색 직접 지정, 레이어 0 객체. 문은 직접 그린다
+  - name: 실명
+    status: unused
+    attributes:
+      - {tag: 실번호, height: 2.142857, layer: ROM}
+      - {tag: 실명, height: 2.142857, layer: ROM}
+    extents: [[-8.9, -5], [8.9, 5]]
+    reason: 글꼴 AD, 문자 높이 2.14(1/100에 맞는 배율 없음), 상자형. 실명은 entmake 문자로 쓴다
+  - name: 단면부호
+    status: unused
+    attributes:
+      - {tag: "000", height: 1.5, layer: ROM}
+      - {tag: A, height: 1.5, layer: ROM}
+      - {tag: NUM, height: 1.5, layer: ROM}
+    extents: [[-29.1, -6.4], [-18.2, 40.5]]
+    reason: 문자 높이 1.5로 크기 기준이 다르다. 필요하면 사용자에게 확인
+  - name: 단면부호횡
+    status: unused
+    attributes:
+      - {tag: NUM, height: 1.5, layer: ROM}
+      - {tag: A, height: 1.5, layer: ROM}
+      - {tag: "000", height: 1.5, layer: ROM}
+    extents: [[-453.4, -640.9], [-406.5, -630]]
+    reason: 문자 높이 1.5, 기준점이 형상에서 멀리 떨어져 있다
+  - name: TAG-LEVEL
+    status: unused
+    attributes:
+      - {tag: EL±0, height: 1.25, layer: "0"}
+      - {tag: 1층바닥마감, height: 1.25, layer: "0"}
+    extents: [[-2, -2], [12.1, 2]]
+    reason: 레이어 0, 색 직접 지정(자홍), 글꼴 ARIAL. LEV·입단면층레벨을 쓴다
+  - name: 레벨
+    status: unused
+    extents: [[-200, -200], [200, 200]]
+    reason: 입단면층레벨 안에 들어가는 기호
+  - name: dots
+    status: unused
+    extents: [[-1, 0], [1, 0]]
+    reason: 치수 스타일 DIM270·DIM330의 화살표
+  - name: HEOlogo1
+    status: unused
+    extents: [[296.7, 9.5], [3183.6, 2476.9]]
+    reason: 도곽 HEOarchitects_sheet 안의 로고
+  - name: Block_0
+    status: unused
+    extents: [[-42, -171.1], [338.8, 41.7]]
+    reason: 도곽 HEOarchitects_sheet 안의 부속
