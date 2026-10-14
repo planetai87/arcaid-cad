@@ -61,7 +61,7 @@ def _textstyle_violations(std: Standard, doc) -> List[Violation]:
     return out
 
 
-def _is_annotative(entity) -> bool:
+def is_annotative(entity) -> bool:
     if not entity.has_xdata("AcadAnnotative"):
         return False
     flags = [v for code, v in entity.get_xdata("AcadAnnotative") if code == 1070]
@@ -75,7 +75,7 @@ def _dimstyle_violations(std: Standard, doc) -> List[Violation]:
             out.append(_v("DIMSTYLE_MISSING", f"표준 치수 스타일 {want.name}가 없음", None, want.name))
             continue
         ds = doc.dimstyles.get(want.name)
-        if _is_annotative(ds):
+        if is_annotative(ds):
             out.append(_v("DIMSTYLE_ANNOTATIVE", f"치수 스타일 {want.name}가 주석 스타일임(표준은 비주석)", True, False))
         diffs = {key: (ds.dxf.get(key), value) for key, value in want.vars.items()
                  if not _same(ds.dxf.get(key), value)}

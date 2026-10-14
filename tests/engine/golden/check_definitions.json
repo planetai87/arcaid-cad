@@ -1,0 +1,43 @@
+{
+ "fixes": [],
+ "unchecked": [],
+ "violations": [
+  [
+   "BLOCK_ATTRIB",
+   "도면",
+   [
+    [
+     "축열",
+     300.0,
+     "dim"
+    ]
+   ],
+   [
+    [
+     "축열",
+     225.0,
+     "dim"
+    ]
+   ],
+   false
+  ],
+  [
+   "DIMSTYLE_VAR",
+   "도면",
+   {
+    "dimtxt": 2.5
+   },
+   {
+    "dimtxt": 3.3
+   },
+   false
+  ],
+  [
+   "LAYER_COLOR",
+   "도면",
+   3,
+   1,
+   false
+  ]
+ ]
+}
