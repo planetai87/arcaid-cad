@@ -103,6 +103,20 @@ def test_full_extract_written_to_file(tmp_path, std):
     assert bubble["attribs"] == {"축열": "Y1"} and bubble["layer"] == "DIM"
 
 
+def test_full_extract_creates_missing_folder(tmp_path, std):
+    full = tmp_path / "work" / "snapshots" / "plan.read.json"
+    r = read_drawing(make_plan(tmp_path / "plan.dxf"), std, full_out=full)
+    assert full.exists() and r.full_path == str(full)
+
+
+def test_full_extract_write_failure_is_warning(tmp_path, std):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("파일이라 폴더를 만들 수 없음", encoding="utf-8")
+    r = read_drawing(make_plan(tmp_path / "plan.dxf"), std, full_out=blocker / "plan.read.json")
+    assert r.status is Status.SUCCESS and r.full_path is None
+    assert any("전체 목록" in w for w in r.warnings)
+
+
 def test_unreadable_file_fails(tmp_path, std):
     bad = tmp_path / "bad.dxf"
     bad.write_text("not a dxf", encoding="utf-8")

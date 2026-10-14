@@ -23,6 +23,8 @@
 - `src/colors.py`: 색 이름 해석. 중국어 색 이름은 기능 키워드라 번역하지 않는다.
 - `spikes/`: 사전 검증(T0) 실험 코드. 제품 코드로 옮기지 않는다.
 - `skills/cad-drawing-standard/`: 회사 도면 표준 스킬의 원본.
+- `src/snapshot_service.py`: 스냅샷 조율(MCP 쪽). CAD 내보내기(`cad_controller.export_dxf`·`export_closed_file`) + 엔진 메타(`engine/snapshot.py`). 도면 판독은 `engine/read.py`.
+- DXF 사본은 COM `Export`로만 만든다. `save_drawing`으로 DXF를 저장하지 않는다(열린 문서가 DXF로 바뀜). DXFOUT도 쓰지 않는다(미저장 표시를 지움).
 - `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다(`tools/standards/gen_references.py`), 손으로 고치지 않는다.
 - 템플릿 DWG를 고치면 `tools/template/export_template_dxf.py`(GstarCAD 필요)로 `template.dxf`와 해시를 다시 만든다. 안 하면 엔진 테스트가 실패한다.
 
