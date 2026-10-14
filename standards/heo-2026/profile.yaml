@@ -1,0 +1,21 @@
+# HEO architects 2026 도면작성 표준 프로파일(구조 결정 D3). 표준값의 단일 원본이다.
+# MCP·CLI·검사기는 이 폴더의 YAML을 읽고, 스킬 references의 표는 여기서 생성한다(tools/standards/gen_references.py).
+schema_version: 1
+id: heo-2026
+name: HEO architects 2026 도면작성 표준
+version: "2026.1"
+units: mm
+insunits: 4
+annotative: false        # 주석 축척은 쓰지 않는다(2026-10-14 템플릿 치수 스타일 비주석 전환)
+scale:
+  basis: A3              # "1/100" = A3 1/100 = A1 1/50. k = A3 축척 분모
+  default_k: 100
+  symbol_per_k: 0.01     # s = k/100: 문자·기호·간격·도곽 배율
+  dimscale_per_k: 0.5    # DIMSCALE = k/2
+  ltscale_per_k: 1.0     # LTSCALE = k
+template:
+  # 경로는 이 폴더 기준. 해시는 tools/template/export_template_dxf.py가 고쳐 쓴다(손으로 고치지 않는다)
+  dwg: ../../skills/cad-drawing-standard/assets/회사표준_템플릿.dwg
+  dwg_sha256: 253f2666391d32d2724ac8b7a1fdae968b3a411922307b4a3503e5ddcbcc8345
+  dxf: template.dxf
+  dxf_sha256: 9d7642990b89cc016ec8da6debec685391be25b61660b20a304425a9c53ca295
