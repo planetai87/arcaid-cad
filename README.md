@@ -50,6 +50,7 @@ uv pip install -r requirements.txt
 - `cad.command_delay`: 일부 명령 뒤에 기다리는 시간(초)
 - `cad.command_timeout`: `send_command`, `run_lisp`가 명령 완료를 기다리는 최대 시간(초, 기본 10)
 - `output.directory`: 도면 저장 기본 폴더. 상대 경로는 MCP를 실행한 위치 기준이라, 절대 경로로 적는 것을 권장합니다.
+- `work.directory`: 스냅샷(DXF 사본)과 읽기 결과를 두는 작업 폴더(기본 `C:\arcaid\work`, 한글·공백 없는 로컬 경로 권장). 사본은 `snapshots\` 아래에 쌓입니다.
 - `server.transport`: `stdio`(기본) 또는 `streamable-http`
 
 ## Claude Code에 등록
@@ -89,9 +90,13 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 
 **레이어·도면·블록**
 - `create_layer`, `set_current_layer`: 레이어 만들기, 현재 레이어 바꾸기
-- `new_drawing`, `open_drawing`, `close_drawing`, `save_drawing`: 새 도면, 열기, 닫기, 저장
+- `new_drawing`, `open_drawing`, `close_drawing`, `save_drawing`: 새 도면, 열기, 닫기, 저장(`save_drawing`은 DWG만. DXF 사본은 `export_snapshot`)
 - `list_drawings`, `switch_drawing`: 열린 도면 목록, 활성 도면 전환
 - `create_block`, `insert_block`, `list_blocks`: 블록 만들기, 넣기, 목록
+
+**도면 읽기**
+- `export_snapshot`: 도면을 DXF 사본으로 내보냅니다(COM Export). 열린 문서의 이름·경로·미저장 상태는 바뀌지 않습니다. 닫힌 파일은 읽기 전용으로 열었다 닫고, 바뀌지 않았으면 이전 사본을 다시 씁니다.
+- `read_drawing`: 사본을 읽어 레이어별 개수·비표준 레이어, 그리드 축과 이름(CEN 축선 + 축열 버블), 실명(ROM), 블록, Xref, 단위 경고를 돌려줍니다. 객체 전체 목록은 작업 폴더의 JSON 파일(`full_path`)에 있습니다.
 
 **표준**
 - `get_standard`: 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회합니다. `scale`에 A3 축척 분모를 주면 그 축척의 실제 값으로 환산합니다.

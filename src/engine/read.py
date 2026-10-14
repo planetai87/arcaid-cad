@@ -277,9 +277,14 @@ def read_drawing(dxf_path: Path, std: Standard, snapshot: Optional[SnapshotMeta]
     full_path = None
     if full_out is not None:
         full_out = Path(full_out)
-        full_out.write_text(json.dumps({"meta": meta.model_dump(), "entities": [_record(e) for e in msp]},
-                                       ensure_ascii=False), encoding="utf-8")
-        full_path = str(full_out)
+        try:
+            full_out.parent.mkdir(parents=True, exist_ok=True)
+            full_out.write_text(json.dumps({"meta": meta.model_dump(), "entities": [_record(e) for e in msp]},
+                                           ensure_ascii=False), encoding="utf-8")
+            full_path = str(full_out)
+        except OSError as e:
+            # 요약은 돌려주고, 객체 전체 목록 파일만 못 썼음을 알린다
+            warnings.append(f"객체 전체 목록 파일을 쓰지 못함({full_out}): {e}")
 
     nx = sum(1 for a in grid if a.direction == "X")
     summary = (f"객체 {len(msp)}개, 축 X {nx}·Y {len(grid) - nx}, 실명 {len(rooms)}개, "
