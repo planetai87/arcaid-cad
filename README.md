@@ -100,6 +100,7 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 
 **표준**
 - `get_standard`: 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회합니다. `scale`에 A3 축척 분모를 주면 그 축척의 실제 값으로 환산합니다.
+- `check_standard`: 도면을 회사 표준과 대조합니다(도면 고르기는 `read_drawing`과 같음). 비표준 레이어·레이어 0, ByLayer가 아닌 색·선종류·선굵기, 문자 스타일·높이, 치수 스타일·DIMSCALE·재정의, 주석 객체, 표준 블록의 레이어·배율, 같은 이름 다른 정의, 도면 단위·LTSCALE을 봅니다. `scale`(A3 축척 분모)을 주지 않으면 1/100으로 가정합니다. 정답이 하나인 위반은 고칠 목록(`fixes`)으로 묶어 주지만 도면을 고치지는 않습니다. 위반은 코드별 20건까지 돌려주고 전체는 작업 폴더의 JSON 파일(`full_path`)에 있습니다.
 
 **명령**
 - `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다. 명령이 끝나거나 입력을 기다릴 때까지 기다리고, 아직 입력을 기다리면 `still_active=true`를 돌려줍니다.
