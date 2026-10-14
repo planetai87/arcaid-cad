@@ -7,7 +7,7 @@ import argparse
 import hashlib
 from pathlib import Path
 from functools import lru_cache
-from typing import Annotated, Any, List, Literal, Optional, Union
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 from pydantic import Field
 
@@ -28,6 +28,8 @@ if __package__:
     from .engine.check import CheckResult, check_standard as engine_check_standard
     from .engine.results import Checked, ResultIds, Scope, Status
     from .snapshot_service import snapshot_active, snapshot_file
+    from . import apply_service
+    from .engine.apply import ApplyMeta, ApplyResult, CheckFixResult
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
@@ -41,6 +43,8 @@ else:
     from engine.check import CheckResult, check_standard as engine_check_standard
     from engine.results import Checked, ResultIds, Scope, Status
     from snapshot_service import snapshot_active, snapshot_file
+    import apply_service
+    from engine.apply import ApplyMeta, ApplyResult, CheckFixResult
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations, ImageContent, TextContent
@@ -170,6 +174,10 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
 - 도면 읽기는 export_snapshot(DXF 사본) → read_drawing(구조화 요약) 순서로 한다. DXF가 필요할 때 save_drawing을 쓰지 않는다
 - 마무리 표준 검사는 check_standard(scale에 A3 축척 분모 k)로 한다. list_entities로 객체를 세어 검사하지 않는다.
+- 여러 객체를 도면에 넣을 때는 draw_batch(객체 명세 JSON: 배치 규칙·그리드 기준)를 쓴다. 보호된 경로라 실패하면
+  되돌리고 확인한다. 같은 op를 다시 보내면 '이미 완료'로 건너뛰고, 명세가 바뀌었거나 사람이 고친 객체가 있으면 멈춘다.
+- 표준 위반 중 레이어·색·선종류·선굵기는 check_standard(fix=true)로 고친다(보호된 경로). 사람이 고친 엔진 객체는
+  overwrite_manual=true일 때만 고친다. status가 unverified면 사용자에게 도면 확인을 요청한다(이후 보호된 변경이 멈춤)
   결과의 fixes는 고칠 목록이고 check_standard는 도면을 고치지 않는다. status가 success이고 unchecked가 비어야 '완료'
 - get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
   scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
@@ -1181,8 +1189,10 @@ CHECK_LIMIT = 20   # 코드별로 돌려줄 위반 수(전체는 full_path 파�
 
 @mcp.tool()
 async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_path: Optional[str] = None,
-                         scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None) -> CheckResult:
-    """도면을 회사 표준과 대조해 위반 목록과 고칠 목록을 돌려준다(도면은 고치지 않는다)
+                         scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None, fix: bool = False,
+                         overwrite_manual: bool = False,
+                         resume_after_unverified: bool = False) -> CheckFixResult:
+    """도면을 회사 표준과 대조해 위반 목록과 고칠 목록을 돌려준다. fix=true면 고칠 수 있는 것을 고친다
 
     도면 고르기는 read_drawing과 같다(snapshot_id / .dxf·.dwg 경로 / 없으면 활성 도면을 스냅샷으로).
     scale: A3 축척 분모 k(1/100이면 100). 주지 않으면 100으로 가정하고 assumptions에 적는다.
@@ -1191,17 +1201,73 @@ async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_p
     표준 블록의 레이어·배율, 안 쓰는 블록.
     violations는 코드별 20건까지(violation_counts가 전체 개수, truncated=true면 잘림), 전체는 full_path 파일.
     fixes는 정답이 하나인 위반을 (속성, 값)으로 묶은 고칠 목록이다. 정의 불일치는 사람이 정하므로 넣지 않는다.
+
+    fix=true: 활성 도면에서 고칠 목록 중 레이어·색·선종류·선굵기를 보호된 경로로 고친다(적용 직전 확인 →
+    Undo 묶음 → 결과 확인, 실패하면 되돌림). snapshot_id를 주면 그 사본을 읽은 뒤 바뀐 대상이 있으면 멈춘다.
+    사람이 고친 엔진 객체는 overwrite_manual=true일 때만 고친다. file_path와 함께 쓸 수 없다.
+    결과 본문은 고친 뒤(고치지 못했으면 고치기 전) 사본의 검사 결과이고, fix에 적용 결과가 들어 있다.
+    status는 고치기가 성공했으면 검사 status, 아니면 고치기의 status(conflict·recovered·unverified 등)다.
     """
     target = snapshot_id or file_path or "활성 도면"
+    if fix:
+        if file_path:
+            return CheckFixResult(status=Status.FAILED, summary="fix는 활성 도면에만 쓴다(file_path와 함께 쓸 수 없음)",
+                                  scope=Scope(target=target))
+        try:
+            std = _standard()
+        except StandardError as e:
+            return CheckFixResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
+        if not await _ensure_running(ctx):
+            return CheckFixResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target=target))
+        applied = await com(apply_service.fix_standard, cad_service.controller, _work_dir(), std, scale, snapshot_id,
+                            overwrite_manual, None, resume_after_unverified)
+        sid = applied.meta.snapshot_after or applied.meta.snapshot_before if applied.meta else None
+        if sid is None:
+            return CheckFixResult(status=applied.status, summary=applied.summary, scope=applied.scope, fix=applied)
+        snap = load_meta(_work_dir(), sid)
+        check = engine_check_standard(Path(snap.dxf_path), std, k=scale, snapshot=snap,
+                                      full_out=snapshots_dir(_work_dir()) / f"{sid}.check.json", limit=CHECK_LIMIT)
+        out = CheckFixResult(**check.model_dump(), fix=applied)
+        if applied.status is not Status.SUCCESS:
+            out.status, out.summary = applied.status, f"{applied.summary} / 검사: {check.summary}"
+        else:
+            out.summary = f"{applied.summary} / 다시 검사: {check.summary}"
+        return out
     try:
         std = _standard()
         meta, dxf, warnings, name = await _resolve_dxf(ctx, snapshot_id, file_path)
     except (SnapshotError, StandardError) as e:
-        return CheckResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
+        return CheckFixResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
     result = engine_check_standard(dxf, std, k=scale, snapshot=meta,
                                    full_out=snapshots_dir(_work_dir()) / f"{name}.check.json", limit=CHECK_LIMIT)
     result.warnings = warnings + result.warnings
-    return result
+    return CheckFixResult(**result.model_dump())
+
+
+@mcp.tool()
+async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
+                     resume_after_unverified: bool = False) -> ApplyResult:
+    """객체 명세(JSON)를 표준 DXF로 만들어 활성 도면에 넣는다(보호된 경로)
+
+    spec: 배치 규칙을 담은 객체 명세(형식은 엔진 src/engine/spec.py). 좌표 대신 group·place(반복·대칭·회전),
+    그리드 참조("X2+300"), 표준 문자 용도(role)를 쓴다. 색·문자 높이·블록 배율은 표준이 정한다.
+    흐름: 명세 검증 → 스냅샷 → 적용 직전 확인(단위 mm, 같은 이름 정의, 재실행 판정) → Undo 묶음 안에서 넣기 →
+    결과 확인 → 기준 상태 → 검사. 실패하면 되돌리고 확인한다(recovered / unverified).
+    같은 op를 다시 보내면 이미 완료(success)로 건너뛴다. 같은 op에 다른 명세, 일부만 남은 객체, 사람이 고친 엔진 객체는
+    conflict로 멈춘다. unverified 뒤에는 사용자가 도면을 확인한 다음 resume_after_unverified=true로 다시 부른다.
+    """
+    try:
+        std = _standard()
+    except StandardError as e:
+        return ApplyResult(status=Status.FAILED, summary=str(e), scope=Scope(target="활성 도면"), meta=ApplyMeta(op="?"))
+    refused = apply_service.spec_refusal(std, spec)   # 틀린 명세는 CAD에 붙기 전에 거부한다
+    if refused is not None:
+        return refused
+    if not await _ensure_running(ctx):
+        return ApplyResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target="활성 도면"),
+                           meta=ApplyMeta(op="?"))
+    return await com(apply_service.draw_batch, cad_service.controller, _work_dir(), std, spec, None,
+                     resume_after_unverified)
 
 
 # ---------- 리소스와 프롬프트 ----------
