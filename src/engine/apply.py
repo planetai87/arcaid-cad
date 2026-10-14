@@ -65,6 +65,11 @@ class ApplyResult(EngineResult):
     warnings: List[str] = Field(default_factory=list)
 
 
+class CheckFixResult(CheckResult):
+    """check_standard 결과. fix=true면 본문은 고친 뒤 다시 검사한 결과이고 fix에 적용 결과가 들어 있다"""
+    fix: Optional[ApplyResult] = Field(default=None, description="fix=true일 때 보호된 경로 적용 결과")
+
+
 def _cut(items: List[str]) -> List[str]:
     return items[:DETAIL_LIMIT] + ([f"외 {len(items) - DETAIL_LIMIT}개"] if len(items) > DETAIL_LIMIT else [])
 
