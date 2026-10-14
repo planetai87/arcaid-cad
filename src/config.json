@@ -18,5 +18,8 @@
     },
     "work": {
         "directory": "C:\\arcaid\\work"
+    },
+    "egress": {
+        "file": "config/egress.yaml"
     }
 }

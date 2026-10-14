@@ -1,0 +1,31 @@
+# 외부 반환 필터 정책(구조 결정 D8). MCP 결과가 AI로 돌아가는 시점이 외부 전송 경계다.
+#
+# 결정(2026-10-14 사용자): A안 = 제한 없음. 경로·문자 내용·실명·블록 속성·도곽 정보·화면 캡처를 모두 보낸다.
+# 단 run_lisp 결과 안의 파일 경로는 가린다(lisp_value: scrub_paths).
+# B안(허용 목록)으로 바꿀 때는 아래 policy의 항목을 deny로, unclassified를 deny로 바꾼다. 코드는 고치지 않는다.
+#   deny인 항목의 값은 같은 타입의 "[비공개]"로 바뀌어 나가고(출력 스키마 유지), 원래 결과는 작업 폴더 egress\에 남는다.
+#   가린 값이 summary·message 같은 문장에 들어 있으면 거기서도 가리고, path가 deny면 문장 안의 Windows 경로도 가린다.
+
+policy:
+  path: allow            # 파일 경로·파일명
+  text: allow            # 문자 내용·실명
+  block_attribute: allow # 블록 속성값(축 이름 X1·Y1은 grid.name으로 항상 보냄)
+  sheet: allow           # 도곽 정보(도면명·프로젝트명) — 지금은 이 항목으로 나가는 필드가 없다
+  screenshot: allow      # 화면 캡처 이미지
+  lisp_value: scrub_paths  # run_lisp 결과: allow | scrub_paths | deny
+  unclassified: allow    # 아래 어느 목록에도 없는 문자열 값
+
+# 결과 키 → 항목. "부모.키"가 "키"보다 먼저 맞춰진다.
+fields:
+  path: [full_name, full_path, dxf_path, source_path, source_name, source, gen_dxf, result_path, out_path,
+         drawing, target, xrefs.path, drawings.name, file_path, pdf_path]
+  text: [text, rooms.text, properties.text, content]
+  block_attribute: [attribs, attributes]
+  sheet: []
+
+# 항상 그대로 보내는 키(상태·코드·축·레이어 이름 등). 문장 키(summary 등)는 보내되 가린 값과 경로를 지운다.
+always: [status, summary, message, reason, error, warnings, details, code, item, action, decision, direction,
+         name, handle, handles, entity_handles, layer, linetype, entity_type, property, op, method, section,
+         standard, schema_version, snapshot_id, snapshot_before, snapshot_after, drawing_id, request_id,
+         spec_hash, dxf_sha256, dxfversion, units, exported_at, supported, nonstandard_layers, current,
+         expected, value, media, device, ctb, pattern_name]
