@@ -1456,7 +1456,7 @@ class CADController:
             # 주의: AutoCAD에서 "_.UNDO 1"처럼 접두어와 숫자 인자를 함께 쓰면 동작하지 않음을 확인했다.
             # 순수 영문 명령 이름 "UNDO 1"이 안정적이다(현지화된 CAD도 영문 명령 이름을 그대로 지원)
             # 명령이 처리될 때까지 기다린 뒤 돌아가야 이후 호출이 취소 결과를 본다
-            return self._send_and_wait("UNDO 1\n")["ok"]
+            return self.undo_once()["ok"]   # 활성 문서 확인 뒤 보낸다
         except Exception as e:
             logger.error(f"실행 취소 실패: {str(e)}")
             return False
@@ -1705,6 +1705,92 @@ class CADController:
         result["was_open"] = was_open
         return result
 
+    # ==================== 보호된 적용 경로(T6) ====================
+    # 묶음(StartUndoMark~EndUndoMark) 안에서는 이 절의 COM 호출만 쓴다. 명령·LISP나 자체 묶음을 여는
+    # draw_* 함수가 끼면 UNDO 1이 복귀하지 못했다(T0 E6). Import·Export·SetXData·속성 쓰기는 묶음 안에서
+    # 써도 UNDO 1 한 번으로 되돌아왔다(T6 사전 확인).
+
+    def ensure_active(self, doc=None, timeout: float = 10.0) -> None:
+        """명령·LISP는 활성 문서로만 가므로, 보내기 전에 대상 문서가 활성인지 확인하고 아니면 활성화한다
+
+        문서를 닫거나 연 직후에는 활성 문서가 바로 바뀌지 않아 명령이 어느 도면에서도 실행되지 않은 적이 있다(T2).
+        timeout 안에 활성화되지 않으면 RuntimeError.
+        """
+        doc = doc if doc is not None else self.doc
+        name = self._safe_attr(doc, "Name")
+        deadline = time.monotonic() + timeout
+        while True:
+            active = self._safe_attr(self._safe_attr(self.app, "ActiveDocument"), "Name")
+            if active == name:
+                return
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"대상 문서가 활성화되지 않음: {name}(활성: {active})")
+            try:
+                self._call_attr(doc, "Activate")
+            except Exception:  # noqa: BLE001  (다음 확인에서 다시 본다)
+                pass
+            time.sleep(0.3)
+
+    def start_undo(self) -> None:
+        self._call_attr(self.doc, "StartUndoMark")
+
+    def end_undo(self) -> bool:
+        """묶음을 닫는다. 닫지 못하면 False(되돌리기를 믿을 수 없다는 뜻)"""
+        try:
+            self._call_attr(self.doc, "EndUndoMark")
+            return True
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"Undo 묶음을 닫지 못함: {str(e)}")
+            return False
+
+    def undo_once(self) -> Dict[str, Any]:
+        """닫힌 묶음 하나를 되돌린다(활성 문서 확인 뒤 UNDO 1)"""
+        self.ensure_active()
+        return self._send_and_wait("UNDO 1\n")
+
+    def import_dxf(self, path: str) -> None:
+        """생성 DXF를 원점·배율 1로 넣는다(COM Import, 단위를 환산하지 않음 T0 E8)"""
+        self._call_attr(self.doc, "Import", str(path), self._pt((0, 0, 0)), 1.0)
+
+    @staticmethod
+    def xdata_variants(app: str, strings: List[str]):
+        """SetXData 인자: (그룹 코드 배열 VT_I2, 값 배열 VT_VARIANT). 1001 앱 이름 + 1000 문자열들"""
+        types = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_I2, [1001] + [1000] * len(strings))
+        values = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, [app] + [str(s) for s in strings])
+        return types, values
+
+    def set_xdata(self, handle: str, strings: List[str], app: str = "ARCAID") -> None:
+        """객체의 app XDATA를 문자열 목록으로 바꿔 쓴다(다른 앱의 XDATA는 그대로)"""
+        obj = self._call_attr(self.doc, "HandleToObject", str(handle))
+        types, values = self.xdata_variants(app, strings)
+        self._call_attr(obj, "SetXData", types, values)
+
+    def set_props(self, handle: str, layer: str = None, color: int = None, linetype: str = None,
+                  lineweight: int = None) -> None:
+        """객체 속성을 바꾼다. 색 256은 트루컬러도 지운다(T6 사전 확인 P4)"""
+        obj = self._call_attr(self.doc, "HandleToObject", str(handle))
+        if layer is not None:
+            self._call(setattr, obj, "Layer", layer)
+        if color is not None:
+            self._call(self._write_color, obj, color)
+        if linetype is not None:
+            self._call(setattr, obj, "Linetype", linetype)
+        if lineweight is not None:
+            self._call(setattr, obj, "Lineweight", lineweight)
+
+    def delete_handles(self, handles) -> Tuple[int, List[str]]:
+        """핸들 목록의 객체를 지운다. (지운 수, 지우지 못한 핸들)"""
+        deleted, failed = 0, []
+        for h in handles:
+            try:
+                obj = self._call_attr(self.doc, "HandleToObject", str(h))
+                self._call_attr(obj, "Delete")
+                deleted += 1
+            except Exception as e:  # noqa: BLE001
+                logger.error(f"객체 {h}를 지우지 못함: {str(e)}")
+                failed.append(str(h))
+        return deleted, failed
+
     # ==================== 블록 작업 ====================
 
     def create_block(self, name: str, base_point: List[float] = None):
@@ -1910,6 +1996,10 @@ class CADController:
         """
         if not self.is_running():
             return {"ok": False, "cmdactive": -1, "pending": False, "error": "CAD 미연결"}
+        try:
+            self.ensure_active()   # 명령은 활성 문서로만 간다
+        except RuntimeError as e:
+            return {"ok": False, "cmdactive": -1, "pending": False, "error": str(e)}
         # 명령이 Enter/공백으로 끝나지 않으면 Enter를 하나 붙여 명령이 제출되게 한다
         if not command.endswith(("\n", "\r", " ")):
             command += "\n"
@@ -2027,6 +2117,10 @@ class CADController:
         """
         if not self.is_running():
             return {"ok": False, "value": None, "cmdactive": -1, "error": "CAD 미연결"}
+        try:
+            self.ensure_active()   # LISP는 활성 문서로만 간다
+        except RuntimeError as e:
+            return {"ok": False, "value": None, "cmdactive": -1, "error": str(e)}
         cmd = self._read_cmdactive()
         if cmd != 0 or self._send_pending():
             return {"ok": False, "value": None, "cmdactive": cmd,
