@@ -13,8 +13,8 @@ EXPECTED_TOOLS = sorted([
     "list_layers", "list_entities", "get_entity_properties", "screenshot",
     "erase_entity", "move_entity", "rotate_entity", "scale_entity", "copy_entity", "mirror_entity",
     "offset_entity", "array_linear_entity", "array_polar_entity", "undo", "redo",
-    "create_layer", "set_current_layer",
-    "new_drawing", "open_drawing", "close_drawing", "list_drawings", "switch_drawing", "save_drawing",
+    "set_current_layer",
+    "open_drawing", "close_drawing", "list_drawings", "switch_drawing", "save_drawing",
     "send_command", "cancel_command", "run_lisp",
     "create_block", "insert_block", "list_blocks",
     "get_standard", "export_snapshot", "read_drawing", "check_standard", "draw_batch",
@@ -33,5 +33,5 @@ def registered_tools():
 
 
 def test_tool_list_is_fixed():
-    assert len(EXPECTED_TOOLS) == 43
+    assert len(EXPECTED_TOOLS) == 41
     assert registered_tools() == EXPECTED_TOOLS

@@ -984,7 +984,7 @@ class CADController:
 
     def add_dimension(self, start_point: Tuple[float, float, float],
                      end_point: Tuple[float, float, float],
-                     text_position: Tuple[float, float, float] = None, textheight: float = 5, layer: str = None, color: int=None) -> Any:
+                     text_position: Tuple[float, float, float] = None, textheight: float = None, layer: str = None, color: int=None) -> Any:
             """선형 치수를 넣는다"""
             if not self.is_running():
                 return None
