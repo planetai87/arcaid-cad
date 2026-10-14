@@ -72,20 +72,28 @@ class BuildResult(EngineResult):
 
 def _new_doc(std: Standard, prims: List[Prim], k: int):
     """쓰는 정의만 템플릿에서 옮긴 새 R2013 문서"""
+    return definitions_doc(std, layers={p.layer for p in prims}, linetypes={p.linetype for p in prims if p.linetype},
+                           dimstyles={p.name for p in prims if p.kind == "dim"},
+                           blocks={p.name for p in prims if p.kind == "block"}, k=k)
+
+
+def definitions_doc(std: Standard, layers, linetypes=(), dimstyles=(), blocks=(), k: Optional[int] = None,
+                    text_style: bool = True):
+    """템플릿에서 주어진 정의만 옮긴 새 R2013 문서(객체 없음)"""
+    k = std.profile.scale.default_k if k is None else k
     template = ezdxf.readfile(str(std.path(std.profile.template.dxf)))
     doc = ezdxf.new(DXF_VERSION, setup=False)
     imp = Importer(template, doc)
-    imp.import_table("layers", sorted({p.layer for p in prims}))
-    linetypes = sorted({p.linetype for p in prims if p.linetype})
+    if layers:
+        imp.import_table("layers", sorted(layers))
     if linetypes:
-        imp.import_table("linetypes", linetypes)
-    imp.import_table("styles", [std.text.style.name])
-    dimstyles = sorted({p.name for p in prims if p.kind == "dim"})
+        imp.import_table("linetypes", sorted(linetypes))
+    if text_style:
+        imp.import_table("styles", [std.text.style.name])
     if dimstyles:
-        imp.import_table("dimstyles", dimstyles)
-    blocks = sorted({p.name for p in prims if p.kind == "block"})
+        imp.import_table("dimstyles", sorted(dimstyles))
     if blocks:
-        imp.import_blocks(blocks, rename=False)
+        imp.import_blocks(sorted(blocks), rename=False)
     imp.finalize()
     for style in doc.styles:   # Importer가 지운 글꼴 XDATA(TTF 글꼴 이름)를 되살린다
         name = style.dxf.name
@@ -102,6 +110,14 @@ def _new_doc(std: Standard, prims: List[Prim], k: int):
     doc.header["$MEASUREMENT"] = 1
     doc.header["$LTSCALE"] = float(k * std.profile.scale.ltscale_per_k)
     return doc
+
+
+def build_layer_dxf(std: Standard, names, out: Path) -> Path:
+    """표준 레이어 정의(색·선종류·출력 여부와 쓰는 선종류)만 담은 DXF. ensure_standard_layers가 Import한다(T7 사전 확인 P1)"""
+    out = Path(out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    definitions_doc(std, layers={std.layer(n).name for n in names}, text_style=False).saveas(str(out))
+    return out
 
 
 def _add(doc, p: Prim, std: Standard, k: int):

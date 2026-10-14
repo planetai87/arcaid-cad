@@ -20,21 +20,23 @@ try:
     from .engine.apply import (FIX_PROPERTIES, ApplyMeta, ApplyResult, changed_since, fixed_value_ok, judge_rerun,
                                plan_fixes, restore_status, stale_states, used_definition_conflicts, verify_inserted)
     from .engine.check import check_standard
+    from .engine.definitions import compare_definitions
     from .engine.results import Applied, Assumption, Checked, ResultIds, Scope, Status, Violation
     from .engine.snapshot import SnapshotError, load_meta
     from .engine.spec import SpecError, parse_spec, spec_hash, validate_spec
     from .engine.state import TAG_KEYS, arcaid_tags
-    from .engine.write import build_dxf
+    from .engine.write import build_dxf, build_layer_dxf
     from .snapshot_service import snapshot_active
 except ImportError:
     from engine.apply import (FIX_PROPERTIES, ApplyMeta, ApplyResult, changed_since, fixed_value_ok, judge_rerun,
                               plan_fixes, restore_status, stale_states, used_definition_conflicts, verify_inserted)
     from engine.check import check_standard
+    from engine.definitions import compare_definitions
     from engine.results import Applied, Assumption, Checked, ResultIds, Scope, Status, Violation
     from engine.snapshot import SnapshotError, load_meta
     from engine.spec import SpecError, parse_spec, spec_hash, validate_spec
     from engine.state import TAG_KEYS, arcaid_tags
-    from engine.write import build_dxf
+    from engine.write import build_dxf, build_layer_dxf
     from snapshot_service import snapshot_active
 
 LIST_LIMIT = 20
@@ -423,3 +425,99 @@ def fix_standard(ctl, work: Path, std, k: Optional[int] = None, base_snapshot_id
                             for p, n in by_prop.items()],
                    checked=[Checked(item="고칠 대상", count=len(targets))], unchecked=unchecked,
                    assumptions=assumptions, new_violations=new_violations, remaining_fixes=remaining, warnings=warnings)
+
+
+# ---------- ensure_standard_layers ----------
+
+def layer_refusal(std, names: Optional[List[str]]):
+    """(만들 표준 레이어 이름 목록, 거부 결과 또는 None). 이름을 주지 않으면 그리는 표준 레이어 전부(CAD 없이 판단)"""
+    if not names:
+        return [x.name for x in std.layers if x.drawable], None
+    wanted, bad = [], []
+    for name in names:
+        layer = std.layer(name)
+        if layer is None or not layer.drawable:
+            bad.append(name)
+        elif layer.name not in wanted:
+            wanted.append(layer.name)
+    if bad:
+        return wanted, _result(Status.FAILED, f"표준에 없거나 그리지 않는 레이어: {', '.join(bad)}(만들지 않음)",
+                               Scope(target="활성 도면", supported=["표준 레이어 만들기"]),
+                               ResultIds(standard=std.ref, request_id="layers"), ApplyMeta(op="layers"))
+    return wanted, None
+
+
+def ensure_layers(ctl, work: Path, std, names: Optional[List[str]] = None, hooks: Optional[Hooks] = None,
+                  resume: bool = False) -> ApplyResult:
+    """없는 표준 레이어를 표준 색·선종류·출력 여부로 만든다(D5 보호된 경로). 같은 이름이 다른 정의면 멈춘다(D3)"""
+    hooks = hooks or Hooks()
+    clock = _Clock()
+    scope = Scope(target="활성 도면", supported=["표준 레이어 만들기"])
+    ids = ResultIds(standard=std.ref, request_id="layers")
+    meta = ApplyMeta(op="layers")
+    clock.ms = meta.timings_ms
+    wanted, refused = layer_refusal(std, names)
+    if refused is not None:
+        return refused
+    refusal = _precheck(ctl, resume)
+    if refusal:
+        return _result(Status.FAILED, refusal, scope, ids, meta)
+    folder = _folder(work, "layers")
+    doc = ctl.doc
+    state = ctl.doc_state(doc)
+    meta.drawing = state["full_name"] or state["name"]
+    try:
+        snap0, warnings = snapshot_active(ctl, work)
+    except SnapshotError as e:
+        return _result(Status.FAILED, f"스냅샷 실패: {e}", scope, ids, meta, folder)
+    meta.snapshot_before, ids.snapshot_id, ids.drawing_id = snap0.snapshot_id, snap0.snapshot_id, snap0.drawing_id
+    s0 = ezdxf.readfile(snap0.dxf_path)
+    existing = {x.dxf.name.casefold() for x in s0.layers}
+    present = [w for w in wanted if w.casefold() in existing]
+    conflicts = [v for v in compare_definitions(std, s0, layers=present, dimstyles=[], blocks=[], text_style=False)
+                 if not v.code.endswith("_MISSING")]
+    if conflicts:
+        return _result(Status.CONFLICT, f"같은 이름 레이어가 표준과 다른 정의로 있음 {len(conflicts)}건(덮어쓰지 않고 멈춤, "
+                                        "고칠지는 사람이 정함)", scope, ids, meta, folder, violations=conflicts)
+    missing = [w for w in wanted if w.casefold() not in existing]
+    if not missing:
+        return _result(Status.SUCCESS, f"표준 레이어 {len(wanted)}개가 이미 있음", scope, ids, meta, folder,
+                       checked=[Checked(item="표준 레이어", count=len(wanted))], warnings=warnings)
+    dxf = build_layer_dxf(std, missing, folder / "layers.dxf")
+    clock.lap("precheck")
+
+    base = {e.dxf.handle for e in s0.modelspace()}
+    try:
+        ctl.ensure_active(doc)
+    except RuntimeError as e:
+        return _result(Status.FAILED, f"{e}(만들지 않음)", scope, ids, meta, folder)
+    failure = None
+    ctl.start_undo()
+    try:
+        ctl.import_dxf(dxf)
+        if hooks.after_change:
+            hooks.after_change(ctl)
+        s1 = _export(ctl, folder, "s1")
+        names_now = {x.dxf.name.casefold() for x in s1.layers}
+        problems = [f"레이어 {m}가 생기지 않음" for m in missing if m.casefold() not in names_now]
+        problems += [v.message for v in compare_definitions(std, s1, layers=missing, dimstyles=[], blocks=[],
+                                                            text_style=False) if not v.code.endswith("_MISSING")]
+        if {e.dxf.handle for e in s1.modelspace()} != base:
+            problems.append("레이어를 만드는 동안 객체가 생기거나 없어짐")
+        if problems:
+            raise _CheckFailed(problems)
+    except Exception as e:  # noqa: BLE001
+        failure = e
+    closed = ctl.end_undo()
+    clock.lap("apply")
+    if failure is None and not closed:
+        failure = RuntimeError("Undo 묶음을 닫지 못함")
+    if failure is not None:
+        def layers_gone(now_doc):
+            left = [m for m in missing if now_doc.layers.has_entry(m)]
+            return [f"되돌린 뒤에도 남은 레이어 {', '.join(left)}"] if left else []
+        return _rollback(ctl, folder, base, "layers", failure, closed, scope, ids, meta, list(warnings),
+                         extra_check=layers_gone)
+    return _result(Status.SUCCESS, f"표준 레이어 {len(missing)}개 만듦({', '.join(missing)}), 이미 있음 {len(present)}개",
+                   scope, ids, meta, folder, checked=[Checked(item="표준 레이어", count=len(wanted))],
+                   applied=[Applied(action="레이어 만들기", count=len(missing))], warnings=warnings)

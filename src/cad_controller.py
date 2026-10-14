@@ -1791,6 +1791,83 @@ class CADController:
                 failed.append(str(h))
         return deleted, failed
 
+    # ==================== 선택·출력·시험 도면(T7) ====================
+
+    def pickfirst_handles(self) -> List[str]:
+        """사용자가 CAD에서 고른 객체(Pickfirst 선택)의 핸들"""
+        sel = self._call(getattr, self.doc, "PickfirstSelectionSet")
+        count = self._call(getattr, sel, "Count")
+        return [str(self._safe_attr(self._call_attr(sel, "Item", i), "Handle")) for i in range(count)]
+
+    def add_document_and_save(self, path: str):
+        """빈 문서를 만들어 그 경로로 저장하고 작업 대상으로 삼는다(시험용)"""
+        docs = self._call(getattr, self.app, "Documents")
+        doc = self._call_attr(docs, "Add")
+        self._call_attr(doc, "SaveAs", str(path))
+        self.doc = doc
+        return doc
+
+    def plot_copy_to_pdf(self, dxf_path: str, window, k: int, out_pdf: str, device: str, ctb: str,
+                         media: str = "A3") -> Dict[str, Any]:
+        """DXF 사본을 읽기 전용으로 열어 '화면' 방식·사용자 축척 1:k로 PDF를 출력하고 닫는다
+
+        사용자 도면의 레이아웃 값은 건드리지 않는다. 원래 출력기·CTB가 이 PC에 없으면 되돌릴 수 없었다(T7 사전 확인 P3).
+        창 방식(SetWindowToPlot)은 빈 PDF를 내 출력 범위로 줌한 뒤 화면 방식으로 출력한다(T0 E9).
+        돌려주는 값: {"ok", "error", "media"}
+        """
+        original = self.doc
+        docs = self._call(getattr, self.app, "Documents")
+        copy, background = None, None
+        result: Dict[str, Any] = {"ok": False, "error": None, "media": None}
+        try:
+            copy = self._call_attr(docs, "Open", str(dxf_path), True)
+            self.ensure_active(copy)
+            background = self._call_attr(copy, "GetVariable", "BACKGROUNDPLOT")
+            self._call_attr(copy, "SetVariable", "BACKGROUNDPLOT", 0)
+            self._call_attr(self.app, "ZoomWindow", self._pt(window[0]), self._pt(window[1]))
+            layout = self._call(getattr, copy, "ActiveLayout")
+            self._call(setattr, layout, "ConfigName", device)
+            self._call_attr(layout, "RefreshPlotDeviceInfo")
+            self._call(setattr, layout, "StyleSheet", ctb)
+            self._call(setattr, layout, "PlotWithPlotStyles", True)
+            names = list(self._call_attr(layout, "GetCanonicalMediaNames") or [])
+            chosen = media if media in names else next(
+                (m for m in names if media.upper() in m.upper() and "FULL_BLEED" in m.upper()),
+                next((m for m in names if media.upper() in m.upper()), None))
+            if chosen is None:
+                raise RuntimeError(f"출력기 {device}에 {media} 용지가 없음")
+            self._call(setattr, layout, "CanonicalMediaName", chosen)
+            result["media"] = chosen
+            self._call(setattr, layout, "PaperUnits", 1)          # 밀리미터
+            self._call(setattr, layout, "PlotType", 0)            # 화면
+            self._call(setattr, layout, "UseStandardScale", False)
+            self._call_attr(layout, "SetCustomScale", 1.0, float(k))
+            self._call(setattr, layout, "CenterPlot", True)
+            if os.path.exists(out_pdf):
+                os.remove(out_pdf)
+            ok = self._call_attr(self._call(getattr, copy, "Plot"), "PlotToFile", str(out_pdf), device)
+            result["ok"] = bool(ok) and os.path.exists(out_pdf)
+            if not result["ok"]:
+                result["error"] = "PlotToFile이 파일을 만들지 못함"
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"출력 실패: {str(e)}")
+            result["error"] = str(e)
+        finally:
+            if copy is not None:
+                try:
+                    if background is not None:
+                        self._call_attr(copy, "SetVariable", "BACKGROUNDPLOT", background)
+                    self._call_attr(copy, "Close", False)
+                except Exception as e:  # noqa: BLE001
+                    logger.error(f"출력용 사본을 닫지 못함: {str(e)}")
+            if original is not None:
+                try:
+                    self._call_attr(original, "Activate")
+                except Exception:  # noqa: BLE001
+                    pass
+                self.doc = original
+        return result
+
     # ==================== 블록 작업 ====================
 
     def create_block(self, name: str, base_point: List[float] = None):
