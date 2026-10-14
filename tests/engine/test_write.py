@@ -179,3 +179,15 @@ def test_state_tag_matches_entity(built):
     _, _, doc = built
     for e in doc.modelspace():
         assert tags(e)["state"] == state_hash(e)
+
+
+def test_layer_definition_dxf(std, tmp_path):
+    from src.engine.definitions import compare_definitions
+    from src.engine.write import build_layer_dxf
+    out = build_layer_dxf(std, ["cen", "LIM", "WAL"], tmp_path / "layers.dxf")
+    doc = ezdxf.readfile(out)
+    assert len(doc.modelspace()) == 0
+    assert {x.dxf.name for x in doc.layers} == {"0", "Defpoints", "CEN", "LIM", "WAL"}
+    assert {"CEN", "HID"} <= {x.dxf.name for x in doc.linetypes}
+    assert [v for v in compare_definitions(std, doc, layers=["CEN", "LIM", "WAL"], dimstyles=[], blocks=[],
+                                           text_style=False) if not v.code.endswith("_MISSING")] == []
