@@ -27,3 +27,16 @@ else:
     ink_a = sum(1 for x in sa if x < 128)
     ink_m = sum(1 for x in sm if x < 128)
     print(f"다른 픽셀 {diff} / 전체 {len(sa)} ({100 * diff / len(sa):.3f}%), 잉크 픽셀 자동 {ink_a} 손 {ink_m}")
+
+# 출력기와 선굵기 분포: 손 출력과 자동 출력의 차이가 CTB 때문인지 출력 장치 때문인지 가린다
+for path in (WORK / "manual.pdf", WORK / "e9_auto.pdf"):
+    doc = pymupdf.open(str(path))
+    page = doc[0]
+    widths = {}
+    for d in page.get_drawings():
+        if d.get("width") is not None:
+            w = round(d["width"] / 72 * 25.4, 3)  # pt → mm
+            widths[w] = widths.get(w, 0) + 1
+    print(path.name, "출력기:", doc.metadata.get("producer") or "(기록 없음)",
+          "| 선굵기(mm):개수", dict(sorted(widths.items())),
+          "| 글꼴 문자", "있음" if page.get_fonts() else "없음")
