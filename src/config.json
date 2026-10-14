@@ -15,5 +15,8 @@
     "output": {
         "directory": "./output",
         "default_filename": "cad_drawing.dwg"
+    },
+    "work": {
+        "directory": "C:\\arcaid\\work"
     }
 }
