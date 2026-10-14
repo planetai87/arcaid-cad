@@ -4,6 +4,8 @@ import json
 import base64
 import logging
 import argparse
+import hashlib
+from pathlib import Path
 from functools import lru_cache
 from typing import Annotated, Any, List, Literal, Optional, Union
 
@@ -21,6 +23,10 @@ if __package__:
                          ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
     from .colors import color_to_index
     from .engine.standards import StandardError, get_standard as engine_get_standard, load_standard
+    from .engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
+    from .engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
+    from .engine.results import Checked, ResultIds, Scope, Status
+    from .snapshot_service import snapshot_active, snapshot_file
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
@@ -29,6 +35,10 @@ else:
                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
     from colors import color_to_index
     from engine.standards import StandardError, get_standard as engine_get_standard, load_standard
+    from engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
+    from engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
+    from engine.results import Checked, ResultIds, Scope, Status
+    from snapshot_service import snapshot_active, snapshot_file
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations, ImageContent, TextContent
@@ -156,6 +166,7 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - cancel_command는 멈춘 명령을 ESC처럼 취소한다(대화상자·문자 편집기가 열려 COM이 막힌 경우 포함)
 - run_lisp는 AutoLISP 식의 결과 값을 돌려받는다(예: (getvar "CLAYER")). 진행 중인 명령이 있으면 거부된다
 - undo, redo, close_drawing, save_drawing은 연결 전에는 실행되지 않는다(사용자의 손 작업을 건드리지 않기 위해)
+- 도면 읽기는 export_snapshot(DXF 사본) → read_drawing(구조화 요약) 순서로 한다. DXF가 필요할 때 save_drawing을 쓰지 않는다
 - get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
   scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
 """
@@ -922,7 +933,15 @@ async def switch_drawing(ctx: Context, name_or_path: str) -> ToolResult:
 
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def save_drawing(ctx: Context, file_path: str) -> ToolResult:
-    """현재 도면을 저장한다(확장자에 따라 DWG/DXF 형식을 자동 선택. 같은 이름의 파일은 덮어쓴다)"""
+    """현재 도면을 DWG로 저장한다(같은 이름의 파일은 덮어쓴다)
+
+    DXF로는 저장하지 않는다. SaveAs로 DXF를 쓰면 열린 문서가 그 DXF로 바뀌어, 이후 저장이 원본 DWG가 아니라 DXF에 된다(D6).
+    DXF 사본이 필요하면 export_snapshot을 쓴다.
+    """
+    if os.path.splitext(file_path)[1].lower() == ".dxf":
+        return ToolResult(success=False,
+                          message="DXF로는 저장하지 않습니다(열린 문서가 DXF로 바뀜). DXF 사본은 export_snapshot을 쓰세요",
+                          error="dxf_refused")
     if not cad_service.controller.is_running():
         return ToolResult(success=False, message="CAD 미연결")
     if busy := await _busy_refusal():
@@ -1073,6 +1092,75 @@ async def get_standard(ctx: Context,
     at = f", 1/{scale} 환산 포함" if scale else ""
     return StandardResult(success=True, message=f"{std.ref} {section}{what}{at}", standard=std.ref,
                           section=section, data=data)
+
+
+# ---------- 스냅샷과 도면 읽기 ----------
+
+def _work_dir() -> Path:
+    """스냅샷·작업 사본 폴더(config work.directory)"""
+    return Path(config.get("work", {}).get("directory") or r"C:\arcaid\work")
+
+
+async def _take_snapshot(ctx: Context, file_path: Optional[str]):
+    """활성 도면 또는 파일을 스냅샷으로 만든다. (메타, 경고)를 돌려주고 실패하면 SnapshotError"""
+    if not await _ensure_running(ctx):
+        raise SnapshotError("CAD 미연결, 자동 시작 실패")
+    if file_path is None:
+        return await com(snapshot_active, cad_service.controller, _work_dir())
+    return await com(snapshot_file, cad_service.controller, _work_dir(), file_path)
+
+
+@mcp.tool()
+async def export_snapshot(ctx: Context, file_path: Optional[str] = None) -> SnapshotResult:
+    """도면을 DXF 사본(스냅샷)으로 내보낸다. 열린 문서의 이름·경로·미저장 상태는 바뀌지 않는다
+
+    file_path를 주지 않으면 활성 도면을 내보낸다(저장하지 않은 변경 포함, 매번 새로).
+    file_path가 CAD에 열린 도면이면 그 문서를, 닫힌 파일이면 읽기 전용으로 열어 내보내고 닫는다
+    (닫힌 파일은 수정 시각·크기가 같으면 이전 사본을 다시 쓰고 snapshot.cached=true).
+    명령이 진행 중이면 내보내지 않는다. 결과의 snapshot.snapshot_id를 read_drawing에 넘긴다.
+    """
+    target = file_path or "활성 도면"
+    try:
+        meta, warnings = await _take_snapshot(ctx, file_path)
+    except SnapshotError as e:
+        return SnapshotResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
+    how = "이전 사본 재사용" if meta.cached else "새로 내보냄"
+    return SnapshotResult(status=Status.SUCCESS, summary=f"{meta.source_name} → {meta.snapshot_id}({meta.dxfversion}, {how})",
+                          scope=Scope(target=meta.source_path, supported=["DXF 사본"]),
+                          checked=[Checked(item="파일", count=1)],
+                          ids=ResultIds(snapshot_id=meta.snapshot_id, drawing_id=meta.drawing_id),
+                          snapshot=meta, warnings=warnings)
+
+
+@mcp.tool()
+async def read_drawing(ctx: Context, snapshot_id: Optional[str] = None,
+                       file_path: Optional[str] = None) -> ReadDrawingResult:
+    """도면을 읽어 구조화된 요약을 돌려준다(레이어별 개수·비표준 레이어, 그리드 축과 이름, 실명, 블록, Xref, 단위 경고)
+
+    snapshot_id: export_snapshot이 만든 사본을 읽는다.
+    file_path: .dxf면 그 파일을 바로 읽고, .dwg면 먼저 스냅샷으로 내보낸다.
+    둘 다 없으면 활성 도면을 스냅샷으로 내보내 읽는다.
+    판독은 표준 레이어(CEN 축선 + 축열 버블, ROM 실명)로 그린 도면까지다. 객체 전체 목록은 full_path 파일에 있다.
+    """
+    work = _work_dir()
+    target = snapshot_id or file_path or "활성 도면"
+    warnings: List[str] = []
+    try:
+        std = _standard()
+        if snapshot_id:
+            meta = load_meta(work, snapshot_id)
+            dxf = Path(meta.dxf_path)
+        elif file_path and file_path.lower().endswith(".dxf"):
+            meta, dxf = None, Path(file_path)
+        else:
+            meta, warnings = await _take_snapshot(ctx, file_path)
+            dxf = Path(meta.dxf_path)
+    except (SnapshotError, StandardError) as e:
+        return ReadDrawingResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
+    name = meta.snapshot_id if meta else "file-" + hashlib.sha256(str(dxf.resolve()).encode("utf-8")).hexdigest()[:12]
+    result = engine_read_drawing(dxf, std, meta, full_out=snapshots_dir(work) / f"{name}.read.json")
+    result.warnings = warnings + result.warnings
+    return result
 
 
 # ---------- 리소스와 프롬프트 ----------

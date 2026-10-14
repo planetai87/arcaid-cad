@@ -1602,6 +1602,109 @@ class CADController:
         logger.info(f"활성 도면 전환: {name}")
         return name
 
+    # ==================== 스냅샷(DXF 사본) 내보내기 ====================
+
+    def doc_state(self, doc=None) -> Dict[str, Any]:
+        """문서의 이름·전체 경로·저장 여부(내보내기 전후 비교용)"""
+        doc = doc if doc is not None else self.doc
+        saved = self._safe_attr(doc, "Saved")
+        return {"name": str(self._safe_attr(doc, "Name") or ""),
+                "full_name": str(self._safe_attr(doc, "FullName") or ""),
+                "saved": None if saved is None else bool(saved)}
+
+    def export_dxf(self, out_no_ext: str) -> Dict[str, Any]:
+        """현재 문서를 DXF 사본으로 내보낸다(COM Export)
+
+        T0 E2에서 고른 방법이다. 문서 이름·경로·미저장 상태를 바꾸지 않고, 핸들이 원본과 같다(출력은 R2018).
+        SaveAs(문서가 DXF로 바뀜)와 DXFOUT(미저장 표시를 지움)은 쓰지 않는다.
+        파일 이름에 확장자를 붙이면 Export가 실패하므로 확장자 없이 주고, 실패해도 오류가 없을 수 있어 파일 존재로 확인한다.
+        돌려주는 값: {"ok", "path", "error"}
+        """
+        out_no_ext = os.path.abspath(out_no_ext)
+        path = out_no_ext + ".dxf"
+        if not self.is_running():
+            return {"ok": False, "path": path, "error": "CAD 미연결"}
+        busy = self.command_busy_reason()
+        if busy:
+            return {"ok": False, "path": path, "error": f"{busy}. 명령을 마치거나 cancel_command로 취소한 뒤 다시 내보내세요"}
+        if os.path.exists(path):
+            os.remove(path)
+        selection = None
+        try:
+            sets = self._call(getattr, self.doc, "SelectionSets")
+            # DXF는 선택 세트와 관계없이 도면 전체를 내보내지만 인자는 필요하다(빈 선택 세트)
+            selection = self._call_attr(sets, "Add", f"ARCAID_EXPORT_{uuid.uuid4().hex[:8]}")
+            self._call_attr(self.doc, "Export", out_no_ext, "DXF", selection)
+        except Exception as e:
+            logger.error(f"DXF 내보내기 실패: {str(e)}")
+            return {"ok": False, "path": path, "error": str(e)}
+        finally:
+            if selection is not None:
+                try:
+                    self._call_attr(selection, "Delete")
+                except Exception:
+                    pass
+        if not os.path.exists(path):
+            return {"ok": False, "path": path, "error": "내보낸 파일이 없음(경로·권한 확인)"}
+        logger.info(f"DXF 사본 내보냄: {path}")
+        return {"ok": True, "path": path, "error": None}
+
+    def export_closed_file(self, file_path: str, out_no_ext: str) -> Dict[str, Any]:
+        """파일을 DXF 사본으로 내보낸다. 이미 열려 있으면 그 문서를, 아니면 읽기 전용으로 열어 내보내고 닫는다
+
+        끝나면(실패해도) 원래 활성 도면으로 돌아간다.
+        돌려주는 값: {"ok", "path", "error", "was_open"}
+        """
+        file_path = os.path.abspath(file_path)
+        if self.app is None:
+            return {"ok": False, "path": None, "error": "CAD 미연결", "was_open": False}
+        if not os.path.exists(file_path):
+            return {"ok": False, "path": None, "error": f"파일이 없음: {file_path}", "was_open": False}
+        if self.doc is not None:
+            busy = self.command_busy_reason()
+            if busy:
+                return {"ok": False, "path": None, "error": f"{busy}. 명령을 마치거나 취소한 뒤 다시 내보내세요",
+                        "was_open": False}
+        previous = self._safe_attr(self.app, "ActiveDocument")
+        docs = self._call(getattr, self.app, "Documents")
+        target = None
+        for i in range(self._call(getattr, docs, "Count")):
+            doc = self._call_attr(docs, "Item", i)
+            full = self._safe_attr(doc, "FullName")
+            if full and os.path.normcase(str(full)) == os.path.normcase(file_path):
+                target = doc
+                break
+        was_open = target is not None
+        opened = None
+        try:
+            if target is None:
+                opened = self._call_attr(docs, "Open", file_path, True)  # 읽기 전용
+                target = opened if opened is not None else self._call(getattr, self.app, "ActiveDocument")
+                opened = target
+            else:
+                self._call_attr(target, "Activate")
+            self.doc = target
+            result = self.export_dxf(out_no_ext)
+        except Exception as e:
+            logger.error(f"파일 내보내기 실패: {str(e)}")
+            result = {"ok": False, "path": None, "error": str(e)}
+        finally:
+            if opened is not None:
+                try:
+                    self._call_attr(opened, "Close", False)
+                except Exception as e:
+                    logger.error(f"내보내려고 연 문서를 닫지 못함: {str(e)}")
+            if previous is not None:
+                try:
+                    self._call_attr(previous, "Activate")
+                except Exception:
+                    pass
+                self.doc = previous
+            else:
+                self.doc = self._safe_attr(self.app, "ActiveDocument")
+        result["was_open"] = was_open
+        return result
+
     # ==================== 블록 작업 ====================
 
     def create_block(self, name: str, base_point: List[float] = None):
