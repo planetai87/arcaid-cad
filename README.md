@@ -93,6 +93,9 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 - `list_drawings`, `switch_drawing`: 열린 도면 목록, 활성 도면 전환
 - `create_block`, `insert_block`, `list_blocks`: 블록 만들기, 넣기, 목록
 
+**표준**
+- `get_standard`: 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회합니다. `scale`에 A3 축척 분모를 주면 그 축척의 실제 값으로 환산합니다.
+
 **명령**
 - `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다. 명령이 끝나거나 입력을 기다릴 때까지 기다리고, 아직 입력을 기다리면 `still_active=true`를 돌려줍니다.
 - `cancel_command`: 진행 중인 명령을 ESC처럼 취소합니다. 대화상자나 문자 편집기가 열려 CAD가 응답하지 않을 때는 CAD 창에 키보드 ESC를 보냅니다.
@@ -119,6 +122,8 @@ CAD-MCP/
 │   ├── config.json        # 공통 기본 설정
 │   ├── models.py          # 구조화 출력 모델
 │   └── engine/            # CAD 없이 도는 엔진(읽기·생성·검사). COM 모듈 금지
+├── standards/
+│   └── heo-2026/          # 회사 표준 프로파일(YAML)과 template.dxf(표준값의 단일 원본)
 ├── tests/                 # engine(어디서나), mcp(Windows), cad(CAD 실행 중)
 ├── skills/
 │   └── cad-drawing-standard/  # 회사 도면 표준 스킬 (SKILL.md, references/, assets/회사표준_템플릿.dwg)
@@ -156,7 +161,12 @@ mklink /J "%USERPROFILE%\.claude\skills\cad-drawing-standard" "<저장소>\skill
 python tools\template\build_template.py "<표준매뉴얼.dwg>" report.json
 python tools\template\add_standard_blocks.py
 python tools\template\fix_block_origins.py
+python tools\template\convert_dimstyles.py
+python tools\template\export_template_dxf.py
 ```
+
+- `convert_dimstyles.py`: DIM330·DIM270을 비주석으로, 스타일 DIMSCALE을 50(A3 1/100)으로 맞춥니다.
+- `export_template_dxf.py`: `standards/heo-2026/template.dxf`(R2013)를 만들고 템플릿 DWG·DXF 해시를 `profile.yaml`에 적습니다. 템플릿을 고친 뒤에는 꼭 다시 실행합니다(`--check`는 CAD 없이 해시만 비교).
 
 표준매뉴얼 원본 DWG는 저장소에 넣지 않습니다.
 
