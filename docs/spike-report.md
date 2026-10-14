@@ -136,6 +136,18 @@ synthetic 사본에 문자 하나를 더해 '저장 안 함' 상태(라이브 34
 
 - 기준 상태를 넣은 뒤 객체마다 `SetXData`로 쓰면 큰 요청에서 느리다. 생성 DXF의 객체와 넣은 뒤 CAD 사본의 객체는 기준 상태 필드가 107개 모두 같았다(치수선 위치 포함). 그래서 엔진이 생성 DXF에 `state`를 미리 넣고, 넣은 뒤 CAD 사본으로 다시 계산해 **다른 객체만** `SetXData`로 고친다. 저장된 `state`는 결국 CAD 안의 최종 객체 값과 같다(D5).
 
+## T7 사전 확인
+
+새 툴(T7)이 기대는 동작을 `spikes/t7_probe.py`로 확인했다(2026-10-14, GstarCAD 2021).
+
+| 항목 | 결과 | 결정 |
+|---|---|---|
+| P1 객체 없이 레이어·선종류 정의만 담은 DXF를 Import | CEN(색 1, 선종류 CEN, 출력 안 함)·LIM(2, HID)·WAL(3, Continuous)이 정의 그대로 생김 | `ensure_standard_layers`는 정의만 담은 DXF를 Import한다 |
+| P2 LISP `sssetfirst`로 고른 객체 | COM `PickfirstSelectionSet`·`ActiveSelectionSet` 모두 5개와 핸들을 돌려줌 | `get_selection`은 `PickfirstSelectionSet`을 읽는다 |
+| P3 열린 도면의 레이아웃에서 출력 | 출력·`ZoomWindow`·`ZoomPrevious`·A3 PDF는 됨. 그러나 **원래 출력기("AutoCAD PDF…pc3")·CTB("JUNGLIM-d.ctb")가 이 PC에 없어 레이아웃 값을 되돌리지 못함**("유효하지 않은 입력") | 사용자 도면의 레이아웃을 바꾸지 않는다 |
+| P3b Export한 DXF 사본을 읽기 전용으로 열어 출력하고 닫기 | A3 PDF(420×297mm), 원본 레이아웃 값·이름·경로·저장 상태 그대로, 저장 안 한 변경도 출력됨. **11.4초**(사본 내보내기·열기 10.3초) | `plot`은 사본에서 출력한다. 속도는 나중에 줄인다(DWG 사본 등) |
+| P4 `Documents.Add` → 시험 폴더에 SaveAs | 레이어 `0`만 있는 빈 도면이 시험 경로로 저장됨 | 시험용 빈 도면에 쓴다 |
+
 ## 다루지 않은 것
 
 - 닫힌 파일 일괄 변환 속도(구조 결정 D6 검증 목록): T3에서 닫힌 파일 내보내기를 만들 때 잰다.
