@@ -146,6 +146,7 @@ $env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 
 ```
 
 - `src/engine/`은 CAD 없이 돌아야 합니다(ezdxf·pydantic·PyYAML만 사용). GitHub Actions가 Linux에서 엔진 테스트를 돌립니다.
+- 엔진은 도면 읽기(`read_drawing`)·표준 검사(`check_standard`)와 함께, 배치 규칙(반복·대칭·그리드 기준)을 담은 객체 명세로 표준에 맞는 DXF를 쓰는 `build_dxf`(`src/engine/write.py`)를 갖고 있습니다. 열린 도면에 넣는 MCP 툴(`draw_batch`)은 다음 작업에서 붙습니다.
 - 진행 계획과 구조 결정은 `docs/`와 `CLAUDE.md`를 봅니다.
 
 ## 회사 도면 표준 스킬
