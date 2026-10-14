@@ -1,0 +1,2762 @@
+[
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[0]/b",
+   "path": "grid/X1/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   0.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X1"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[1]/b",
+   "path": "grid/X2/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   3300.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X2"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[2]/b",
+   "path": "grid/X3/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   6600.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X3"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[3]/b",
+   "path": "grid/X4/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   9900.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X4"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[4]/b",
+   "path": "grid/X5/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   13200.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X5"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[5]/b",
+   "path": "grid/X6/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   16500.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X6"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:bubble[6]/b",
+   "path": "grid/X7/bubble/b",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "INSERT",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "name": "축열버블-상",
+  "insert": [
+   19800.0,
+   16350.0
+  ],
+  "xscale": 1,
+  "yscale": 1,
+  "rotation": 0,
+  "attribs": {
+   "축열": "X7"
+  }
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[0]/line",
+   "path": "grid/X1/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   0.0,
+   -450.0
+  ],
+  "end": [
+   0.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[1]/line",
+   "path": "grid/X2/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   3300.0,
+   -450.0
+  ],
+  "end": [
+   3300.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[2]/line",
+   "path": "grid/X3/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   6600.0,
+   -450.0
+  ],
+  "end": [
+   6600.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[3]/line",
+   "path": "grid/X4/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   9900.0,
+   -450.0
+  ],
+  "end": [
+   9900.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[4]/line",
+   "path": "grid/X5/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   13200.0,
+   -450.0
+  ],
+  "end": [
+   13200.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[5]/line",
+   "path": "grid/X6/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   16500.0,
+   -450.0
+  ],
+  "end": [
+   16500.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-x[6]/line",
+   "path": "grid/X7/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   19800.0,
+   -450.0
+  ],
+  "end": [
+   19800.0,
+   14250.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-y[0]/line",
+   "path": "grid/Y1/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   -450.0,
+   0.0
+  ],
+  "end": [
+   20250.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-y[1]/line",
+   "path": "grid/Y2/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   -450.0,
+   6000.0
+  ],
+  "end": [
+   20250.0,
+   6000.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-y[2]/line",
+   "path": "grid/Y3/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   -450.0,
+   7800.0
+  ],
+  "end": [
+   20250.0,
+   7800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:cen-y[3]/line",
+   "path": "grid/Y4/line",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "CEN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   -450.0,
+   13800.0
+  ],
+  "end": [
+   20250.0,
+   13800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:core-hatch",
+   "path": "3F/core/hatch",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "HATCH",
+  "layer": "HAT",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "pattern": "ANSI31",
+  "solid": 0,
+  "style": 0,
+  "scale": 50.0,
+  "angle": 0.0,
+  "paths": [
+   [
+    3,
+    [
+     [
+      16500.0,
+      0.0
+     ],
+     [
+      19800.0,
+      0.0
+     ],
+     [
+      19800.0,
+      13800.0
+     ],
+     [
+      16500.0,
+      13800.0
+     ]
+    ]
+   ],
+   [
+    18,
+    [
+     [
+      17100.0,
+      7800.0
+     ],
+     [
+      19200.0,
+      7800.0
+     ],
+     [
+      19200.0,
+      6000.0
+     ],
+     [
+      17100.0,
+      6000.0
+     ]
+    ]
+   ]
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:core-wall",
+   "path": "3F/core/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "CON",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    16500.0,
+    0.0,
+    0.0
+   ],
+   [
+    19800.0,
+    0.0,
+    0.0
+   ],
+   [
+    19800.0,
+    13800.0,
+    0.0
+   ],
+   [
+    16500.0,
+    13800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.1",
+   "path": "dim/top/row1.1",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   0.0,
+   14250.0
+  ],
+  "p2": [
+   3300.0,
+   14250.0
+  ],
+  "base": [
+   0.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.2",
+   "path": "dim/top/row1.2",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   3300.0,
+   14250.0
+  ],
+  "p2": [
+   6600.0,
+   14250.0
+  ],
+  "base": [
+   3300.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.3",
+   "path": "dim/top/row1.3",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   6600.0,
+   14250.0
+  ],
+  "p2": [
+   9900.0,
+   14250.0
+  ],
+  "base": [
+   6600.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.4",
+   "path": "dim/top/row1.4",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   9900.0,
+   14250.0
+  ],
+  "p2": [
+   13200.0,
+   14250.0
+  ],
+  "base": [
+   9900.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.5",
+   "path": "dim/top/row1.5",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   13200.0,
+   14250.0
+  ],
+  "p2": [
+   16500.0,
+   14250.0
+  ],
+  "base": [
+   13200.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-row1.6",
+   "path": "dim/top/row1.6",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   16500.0,
+   14250.0
+  ],
+  "p2": [
+   19800.0,
+   14250.0
+  ],
+  "base": [
+   16500.0,
+   15150.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 3300.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:dim-total",
+   "path": "dim/top/total",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "DIMENSION",
+  "layer": "DIM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "dimstyle": "DIM330",
+  "p1": [
+   0.0,
+   14250.0
+  ],
+  "p2": [
+   19800.0,
+   14250.0
+  ],
+  "base": [
+   0.0,
+   15550.0
+  ],
+  "angle": 0.0,
+  "dimscale": 50.0,
+  "measurement": 19800.0
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/bath",
+   "path": "3F/room/301/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    0.0,
+    3800.0,
+    0.0
+   ],
+   [
+    1600.0,
+    3800.0,
+    0.0
+   ],
+   [
+    1600.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/door-leaf",
+   "path": "3F/room/301/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   2300.0,
+   6000.0
+  ],
+  "end": [
+   2300.0,
+   5100.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/door-swing",
+   "path": "3F/room/301/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   2300.0,
+   6000.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   180.0,
+   270.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/name",
+   "path": "3F/room/301/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 301",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   1650.0,
+   2500.0
+  ],
+  "align_point": [
+   1650.0,
+   2500.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/number",
+   "path": "3F/room/301/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "301",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   1650.0,
+   2150.0
+  ],
+  "align_point": [
+   1650.0,
+   2150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/wall",
+   "path": "3F/room/301/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    0.0,
+    0.0,
+    0.0
+   ],
+   [
+    3300.0,
+    0.0,
+    0.0
+   ],
+   [
+    3300.0,
+    6000.0,
+    0.0
+   ],
+   [
+    0.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/win-in",
+   "path": "3F/room/301/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   600.0,
+   150.0
+  ],
+  "end": [
+   2700.0,
+   150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[0]/win-out",
+   "path": "3F/room/301/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   600.0,
+   0.0
+  ],
+  "end": [
+   2700.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/bath",
+   "path": "3F/room/302/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    3300.0,
+    3800.0,
+    0.0
+   ],
+   [
+    4900.0,
+    3800.0,
+    0.0
+   ],
+   [
+    4900.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/door-leaf",
+   "path": "3F/room/302/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   5600.0,
+   6000.0
+  ],
+  "end": [
+   5600.0,
+   5100.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/door-swing",
+   "path": "3F/room/302/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   5600.0,
+   6000.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   180.0,
+   270.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/name",
+   "path": "3F/room/302/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 302",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   4950.0,
+   2500.0
+  ],
+  "align_point": [
+   4950.0,
+   2500.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/number",
+   "path": "3F/room/302/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "302",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   4950.0,
+   2150.0
+  ],
+  "align_point": [
+   4950.0,
+   2150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/wall",
+   "path": "3F/room/302/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    3300.0,
+    0.0,
+    0.0
+   ],
+   [
+    6600.0,
+    0.0,
+    0.0
+   ],
+   [
+    6600.0,
+    6000.0,
+    0.0
+   ],
+   [
+    3300.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/win-in",
+   "path": "3F/room/302/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   3900.0,
+   150.0
+  ],
+  "end": [
+   6000.0,
+   150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[1]/win-out",
+   "path": "3F/room/302/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   3900.0,
+   0.0
+  ],
+  "end": [
+   6000.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/bath",
+   "path": "3F/room/303/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    6600.0,
+    3800.0,
+    0.0
+   ],
+   [
+    8200.0,
+    3800.0,
+    0.0
+   ],
+   [
+    8200.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/door-leaf",
+   "path": "3F/room/303/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   8900.0,
+   6000.0
+  ],
+  "end": [
+   8900.0,
+   5100.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/door-swing",
+   "path": "3F/room/303/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   8900.0,
+   6000.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   180.0,
+   270.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/name",
+   "path": "3F/room/303/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 303",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   8250.0,
+   2500.0
+  ],
+  "align_point": [
+   8250.0,
+   2500.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/number",
+   "path": "3F/room/303/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "303",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   8250.0,
+   2150.0
+  ],
+  "align_point": [
+   8250.0,
+   2150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/wall",
+   "path": "3F/room/303/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    6600.0,
+    0.0,
+    0.0
+   ],
+   [
+    9900.0,
+    0.0,
+    0.0
+   ],
+   [
+    9900.0,
+    6000.0,
+    0.0
+   ],
+   [
+    6600.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/win-in",
+   "path": "3F/room/303/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   7200.0,
+   150.0
+  ],
+  "end": [
+   9300.0,
+   150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[2]/win-out",
+   "path": "3F/room/303/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   7200.0,
+   0.0
+  ],
+  "end": [
+   9300.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/bath",
+   "path": "3F/room/304/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    9900.0,
+    3800.0,
+    0.0
+   ],
+   [
+    11500.0,
+    3800.0,
+    0.0
+   ],
+   [
+    11500.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/door-leaf",
+   "path": "3F/room/304/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   12200.0,
+   6000.0
+  ],
+  "end": [
+   12200.0,
+   5100.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/door-swing",
+   "path": "3F/room/304/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   12200.0,
+   6000.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   180.0,
+   270.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/name",
+   "path": "3F/room/304/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 304",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   11550.0,
+   2500.0
+  ],
+  "align_point": [
+   11550.0,
+   2500.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/number",
+   "path": "3F/room/304/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "304",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   11550.0,
+   2150.0
+  ],
+  "align_point": [
+   11550.0,
+   2150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/wall",
+   "path": "3F/room/304/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    9900.0,
+    0.0,
+    0.0
+   ],
+   [
+    13200.0,
+    0.0,
+    0.0
+   ],
+   [
+    13200.0,
+    6000.0,
+    0.0
+   ],
+   [
+    9900.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/win-in",
+   "path": "3F/room/304/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   10500.0,
+   150.0
+  ],
+  "end": [
+   12600.0,
+   150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[3]/win-out",
+   "path": "3F/room/304/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   10500.0,
+   0.0
+  ],
+  "end": [
+   12600.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/bath",
+   "path": "3F/room/305/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    13200.0,
+    3800.0,
+    0.0
+   ],
+   [
+    14800.0,
+    3800.0,
+    0.0
+   ],
+   [
+    14800.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/door-leaf",
+   "path": "3F/room/305/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   15500.0,
+   6000.0
+  ],
+  "end": [
+   15500.0,
+   5100.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/door-swing",
+   "path": "3F/room/305/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   15500.0,
+   6000.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   180.0,
+   270.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/name",
+   "path": "3F/room/305/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 305",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   14850.0,
+   2500.0
+  ],
+  "align_point": [
+   14850.0,
+   2500.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/number",
+   "path": "3F/room/305/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "305",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   14850.0,
+   2150.0
+  ],
+  "align_point": [
+   14850.0,
+   2150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/wall",
+   "path": "3F/room/305/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    13200.0,
+    0.0,
+    0.0
+   ],
+   [
+    16500.0,
+    0.0,
+    0.0
+   ],
+   [
+    16500.0,
+    6000.0,
+    0.0
+   ],
+   [
+    13200.0,
+    6000.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/win-in",
+   "path": "3F/room/305/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   13800.0,
+   150.0
+  ],
+  "end": [
+   15900.0,
+   150.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[4]/win-out",
+   "path": "3F/room/305/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   13800.0,
+   0.0
+  ],
+  "end": [
+   15900.0,
+   0.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/bath",
+   "path": "3F/room/310/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    0.0,
+    10000.0,
+    0.0
+   ],
+   [
+    1600.0,
+    10000.0,
+    0.0
+   ],
+   [
+    1600.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/door-leaf",
+   "path": "3F/room/310/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   2300.0,
+   7800.0
+  ],
+  "end": [
+   2300.0,
+   8700.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/door-swing",
+   "path": "3F/room/310/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   2300.0,
+   7800.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   90.0,
+   180.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/name",
+   "path": "3F/room/310/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 310",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   1650.0,
+   11300.0
+  ],
+  "align_point": [
+   1650.0,
+   11300.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/number",
+   "path": "3F/room/310/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "310",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   1650.0,
+   11650.0
+  ],
+  "align_point": [
+   1650.0,
+   11650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/wall",
+   "path": "3F/room/310/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    0.0,
+    13800.0,
+    0.0
+   ],
+   [
+    3300.0,
+    13800.0,
+    0.0
+   ],
+   [
+    3300.0,
+    7800.0,
+    0.0
+   ],
+   [
+    0.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/win-in",
+   "path": "3F/room/310/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   600.0,
+   13650.0
+  ],
+  "end": [
+   2700.0,
+   13650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[5]/win-out",
+   "path": "3F/room/310/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   600.0,
+   13800.0
+  ],
+  "end": [
+   2700.0,
+   13800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/bath",
+   "path": "3F/room/309/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    3300.0,
+    10000.0,
+    0.0
+   ],
+   [
+    4900.0,
+    10000.0,
+    0.0
+   ],
+   [
+    4900.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/door-leaf",
+   "path": "3F/room/309/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   5600.0,
+   7800.0
+  ],
+  "end": [
+   5600.0,
+   8700.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/door-swing",
+   "path": "3F/room/309/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   5600.0,
+   7800.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   90.0,
+   180.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/name",
+   "path": "3F/room/309/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 309",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   4950.0,
+   11300.0
+  ],
+  "align_point": [
+   4950.0,
+   11300.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/number",
+   "path": "3F/room/309/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "309",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   4950.0,
+   11650.0
+  ],
+  "align_point": [
+   4950.0,
+   11650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/wall",
+   "path": "3F/room/309/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    3300.0,
+    13800.0,
+    0.0
+   ],
+   [
+    6600.0,
+    13800.0,
+    0.0
+   ],
+   [
+    6600.0,
+    7800.0,
+    0.0
+   ],
+   [
+    3300.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/win-in",
+   "path": "3F/room/309/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   3900.0,
+   13650.0
+  ],
+  "end": [
+   6000.0,
+   13650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[6]/win-out",
+   "path": "3F/room/309/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   3900.0,
+   13800.0
+  ],
+  "end": [
+   6000.0,
+   13800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/bath",
+   "path": "3F/room/308/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    6600.0,
+    10000.0,
+    0.0
+   ],
+   [
+    8200.0,
+    10000.0,
+    0.0
+   ],
+   [
+    8200.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/door-leaf",
+   "path": "3F/room/308/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   8900.0,
+   7800.0
+  ],
+  "end": [
+   8900.0,
+   8700.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/door-swing",
+   "path": "3F/room/308/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   8900.0,
+   7800.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   90.0,
+   180.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/name",
+   "path": "3F/room/308/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 308",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   8250.0,
+   11300.0
+  ],
+  "align_point": [
+   8250.0,
+   11300.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/number",
+   "path": "3F/room/308/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "308",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   8250.0,
+   11650.0
+  ],
+  "align_point": [
+   8250.0,
+   11650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/wall",
+   "path": "3F/room/308/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    6600.0,
+    13800.0,
+    0.0
+   ],
+   [
+    9900.0,
+    13800.0,
+    0.0
+   ],
+   [
+    9900.0,
+    7800.0,
+    0.0
+   ],
+   [
+    6600.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/win-in",
+   "path": "3F/room/308/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   7200.0,
+   13650.0
+  ],
+  "end": [
+   9300.0,
+   13650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[7]/win-out",
+   "path": "3F/room/308/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   7200.0,
+   13800.0
+  ],
+  "end": [
+   9300.0,
+   13800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/bath",
+   "path": "3F/room/307/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    9900.0,
+    10000.0,
+    0.0
+   ],
+   [
+    11500.0,
+    10000.0,
+    0.0
+   ],
+   [
+    11500.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/door-leaf",
+   "path": "3F/room/307/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   12200.0,
+   7800.0
+  ],
+  "end": [
+   12200.0,
+   8700.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/door-swing",
+   "path": "3F/room/307/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   12200.0,
+   7800.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   90.0,
+   180.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/name",
+   "path": "3F/room/307/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 307",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   11550.0,
+   11300.0
+  ],
+  "align_point": [
+   11550.0,
+   11300.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/number",
+   "path": "3F/room/307/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "307",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   11550.0,
+   11650.0
+  ],
+  "align_point": [
+   11550.0,
+   11650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/wall",
+   "path": "3F/room/307/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    9900.0,
+    13800.0,
+    0.0
+   ],
+   [
+    13200.0,
+    13800.0,
+    0.0
+   ],
+   [
+    13200.0,
+    7800.0,
+    0.0
+   ],
+   [
+    9900.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/win-in",
+   "path": "3F/room/307/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   10500.0,
+   13650.0
+  ],
+  "end": [
+   12600.0,
+   13650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[8]/win-out",
+   "path": "3F/room/307/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   10500.0,
+   13800.0
+  ],
+  "end": [
+   12600.0,
+   13800.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/bath",
+   "path": "3F/room/306/bath",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL1",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    13200.0,
+    10000.0,
+    0.0
+   ],
+   [
+    14800.0,
+    10000.0,
+    0.0
+   ],
+   [
+    14800.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": false
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/door-leaf",
+   "path": "3F/room/306/door-leaf",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   15500.0,
+   7800.0
+  ],
+  "end": [
+   15500.0,
+   8700.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/door-swing",
+   "path": "3F/room/306/door-swing",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "ARC",
+  "layer": "DOR",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "center": [
+   15500.0,
+   7800.0
+  ],
+  "radius": 900.0,
+  "angles": [
+   90.0,
+   180.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/name",
+   "path": "3F/room/306/name",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "객실 306",
+  "height": 135.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   14850.0,
+   11300.0
+  ],
+  "align_point": [
+   14850.0,
+   11300.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/number",
+   "path": "3F/room/306/number",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "TEXT",
+  "layer": "ROM",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "text": "306",
+  "height": 105.0,
+  "rotation": 0,
+  "style": "돋움",
+  "halign": 1,
+  "valign": 2,
+  "insert": [
+   14850.0,
+   11650.0
+  ],
+  "align_point": [
+   14850.0,
+   11650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/wall",
+   "path": "3F/room/306/wall",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LWPOLYLINE",
+  "layer": "WAL",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "points": [
+   [
+    13200.0,
+    13800.0,
+    0.0
+   ],
+   [
+    16500.0,
+    13800.0,
+    0.0
+   ],
+   [
+    16500.0,
+    7800.0,
+    0.0
+   ],
+   [
+    13200.0,
+    7800.0,
+    0.0
+   ]
+  ],
+  "closed": true
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/win-in",
+   "path": "3F/room/306/win-in",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   13800.0,
+   13650.0
+  ],
+  "end": [
+   15900.0,
+   13650.0
+  ]
+ },
+ {
+  "tags": {
+   "op": "dangsan-typical",
+   "oid": "dangsan-typical:room[9]/win-out",
+   "path": "3F/room/306/win-out",
+   "ver": "3.0.0",
+   "in": "890c723999ecd0ee"
+  },
+  "type": "LINE",
+  "layer": "WIN",
+  "linetype": "BYLAYER",
+  "color": 256,
+  "start": [
+   13800.0,
+   13800.0
+  ],
+  "end": [
+   15900.0,
+   13800.0
+  ]
+ }
+]

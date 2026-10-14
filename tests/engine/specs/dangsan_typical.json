@@ -1,0 +1,50 @@
+{
+ "schema_version": 1,
+ "standard": "heo-2026@2026.1",
+ "op": "dangsan-typical",
+ "units": "mm",
+ "scale": 100,
+ "grid": {
+  "X": {"X1": 0, "X2": 3300, "X3": 6600, "X4": 9900, "X5": 13200, "X6": 16500, "X7": 19800},
+  "Y": {"Y1": 0, "Y2": 6000, "Y3": 7800, "Y4": 13800}
+ },
+ "items": [
+  {"kind": "group", "id": "cen-x", "path": "grid/X{n}",
+   "items": [{"kind": "line", "id": "line", "layer": "CEN", "start": [0, -450], "end": [0, 14250]}],
+   "place": [{"at": ["X1", "Y1"], "repeat": {"count": 7, "step": [3300, 0]}, "vars": {"n": {"start": 1}}}]},
+  {"kind": "group", "id": "cen-y", "path": "grid/Y{n}",
+   "items": [{"kind": "line", "id": "line", "layer": "CEN", "start": [-450, 0], "end": [20250, 0]}],
+   "place": [{"at": ["X1", "Y1"], "vars": {"n": {"start": 1}}},
+             {"at": ["X1", "Y2"], "vars": {"n": {"start": 2}}},
+             {"at": ["X1", "Y3"], "vars": {"n": {"start": 3}}},
+             {"at": ["X1", "Y4"], "vars": {"n": {"start": 4}}}]},
+  {"kind": "group", "id": "room", "path": "3F/room/{no}",
+   "items": [
+    {"kind": "polyline", "id": "wall", "layer": "WAL", "points": [[0, 0], [3300, 0], [3300, 6000], [0, 6000]], "closed": true},
+    {"kind": "polyline", "id": "bath", "layer": "WAL1", "points": [[0, 3800], [1600, 3800], [1600, 6000]]},
+    {"kind": "line", "id": "door-leaf", "layer": "DOR", "start": [2300, 6000], "end": [2300, 5100]},
+    {"kind": "arc", "id": "door-swing", "layer": "DOR", "center": [2300, 6000], "radius": 900, "start_angle": 180, "end_angle": 270},
+    {"kind": "line", "id": "win-out", "layer": "WIN", "start": [600, 0], "end": [2700, 0]},
+    {"kind": "line", "id": "win-in", "layer": "WIN", "start": [600, 150], "end": [2700, 150]},
+    {"kind": "text", "id": "name", "layer": "ROM", "role": "general", "content": "객실 {no}", "at": [1650, 2500], "align": "MC"},
+    {"kind": "text", "id": "number", "layer": "ROM", "role": "small_tag", "content": "{no}", "at": [1650, 2150], "align": "MC"}
+   ],
+   "place": [
+    {"at": ["X1", "Y1"], "repeat": {"count": 5, "step": [3300, 0]}, "vars": {"no": {"start": 301}}},
+    {"at": ["X1", "Y4"], "mirror": "y", "repeat": {"count": 5, "step": [3300, 0]}, "vars": {"no": {"start": 310, "step": -1}}}
+   ]},
+  {"kind": "polyline", "id": "core-wall", "path": "3F/core/wall", "layer": "CON",
+   "points": [["X6", "Y1"], ["X7", "Y1"], ["X7", "Y4"], ["X6", "Y4"]], "closed": true},
+  {"kind": "hatch", "id": "core-hatch", "path": "3F/core/hatch", "layer": "HAT", "pattern": "ANSI31", "pattern_scale": 50,
+   "boundary": [["X6", "Y1"], ["X7", "Y1"], ["X7", "Y4"], ["X6", "Y4"]],
+   "holes": [[["X6+600", "Y2"], ["X7-600", "Y2"], ["X7-600", "Y3"], ["X6+600", "Y3"]]]},
+  {"kind": "group", "id": "bubble", "path": "grid/X{n}/bubble",
+   "items": [{"kind": "block", "id": "b", "name": "축열버블-상", "at": [0, 0], "attribs": {"축열": "X{n}"}}],
+   "place": [{"at": ["X1", "Y4+2550"], "repeat": {"count": 7, "step": [3300, 0]}, "vars": {"n": {"start": 1}}}]},
+  {"kind": "dim_chain", "id": "dim-row1", "path": "dim/top/row1", "style": "DIM330",
+   "points": [["X1", "Y4+450"], ["X2", "Y4+450"], ["X3", "Y4+450"], ["X4", "Y4+450"], ["X5", "Y4+450"], ["X6", "Y4+450"], ["X7", "Y4+450"]],
+   "direction": "x", "line_at": "Y4+1350"},
+  {"kind": "dim", "id": "dim-total", "path": "dim/top/total", "style": "DIM330",
+   "p1": ["X1", "Y4+450"], "p2": ["X7", "Y4+450"], "direction": "x", "line_at": "Y4+1750"}
+ ]
+}
