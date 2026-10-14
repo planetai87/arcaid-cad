@@ -501,19 +501,19 @@ $TDUCREATE
   9
 $TDUPDATE
  40
-2461328.663610903
+2461329.021390602
   9
 $TDUUPDATE
  40
-2461328.288610903
+2461328.646390602
   9
 $TDINDWG
  40
-28.709424213
+28.7094479167
   9
 $TDUSRTIMER
  40
-28.7094151389
+28.7094354398
   9
 $USRTIMER
  70
@@ -1135,7 +1135,7 @@ ObjectDBX Classes
  90
         0
  91
-        7
+        6
 280
      0
 281
@@ -1183,7 +1183,7 @@ ObjectDBX Classes
  90
         0
  91
-        7
+        6
 280
      0
 281
@@ -1199,7 +1199,7 @@ ObjectDBX Classes
  90
         0
  91
-        6
+        5
 280
      0
 281
@@ -1215,7 +1215,7 @@ ObjectDBX Classes
  90
      4095
  91
-        6
+        5
 280
      0
 281
@@ -5007,7 +5007,7 @@ ObjectDBX Classes
  90
      1153
  91
-        7
+        6
 280
      0
 281
@@ -5023,7 +5023,7 @@ ObjectDBX Classes
  90
      4095
  91
-        7
+        6
 280
      0
 281
@@ -5135,7 +5135,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5167,7 +5167,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5231,7 +5231,7 @@ ISM
  90
         0
  91
-        5
+        4
 280
      0
 281
@@ -5247,7 +5247,7 @@ ObjectDBX Classes
  90
      1153
  91
-        7
+        6
 280
      0
 281
@@ -5263,7 +5263,7 @@ ACDB_MLEADERSTYLE_CLASS
  90
      4095
  91
-        6
+        5
 280
      0
 281
@@ -5279,7 +5279,7 @@ ObjectDBX Classes
  90
      1152
  91
-        6
+        5
 280
      0
 281
@@ -5295,7 +5295,7 @@ ObjectDBX Classes
  90
      1153
  91
-        6
+        5
 280
      0
 281
@@ -5327,7 +5327,7 @@ ObjectDBX Classes
  90
      1025
  91
-        6
+        5
 280
      0
 281
@@ -5343,7 +5343,7 @@ ObjectDBX Classes
  90
      1025
  91
-        6
+        5
 280
      0
 281
@@ -5359,7 +5359,7 @@ ObjectDBX Classes
  90
      1153
  91
-        6
+        5
 280
      0
 281
@@ -5375,7 +5375,7 @@ AcDbDimAssoc
  90
         0
  91
-        5
+        4
 280
      0
 281
@@ -5407,7 +5407,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5423,7 +5423,7 @@ ACDB_MLEADER_CLASS
  90
      1025
  91
-        5
+        4
 280
      0
 281
@@ -5439,7 +5439,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5455,7 +5455,7 @@ ObjectDBX Classes
  90
         0
  91
-        5
+        4
 280
      0
 281
@@ -5471,7 +5471,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5487,7 +5487,7 @@ ISM
  90
         0
  91
-        5
+        4
 280
      0
 281
@@ -5503,7 +5503,7 @@ ISM
  90
         1
  91
-        5
+        4
 280
      0
 281
@@ -5519,7 +5519,7 @@ ISM
  90
       127
  91
-        6
+        5
 280
      0
 281
@@ -5535,7 +5535,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5551,7 +5551,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5567,7 +5567,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5583,7 +5583,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5599,7 +5599,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5615,7 +5615,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5631,7 +5631,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5647,7 +5647,7 @@ ObjectDBX Classes
  90
      1152
  91
-        5
+        4
 280
      0
 281
@@ -5663,7 +5663,7 @@ WipeOut|AutoCAD Express Tool|expresstools@autodesk.com
  90
       127
  91
-        5
+        4
 280
      0
 281
@@ -5679,7 +5679,7 @@ ObjectDBX Classes
  90
      1152
  91
-        5
+        4
 280
      0
 281
@@ -5695,7 +5695,7 @@ WipeOut|AutoCAD Express Tool|expresstools@autodesk.com
  90
         0
  91
-        5
+        4
 280
      0
 281
@@ -5711,7 +5711,7 @@ SCENEOE
  90
      4095
  91
-        5
+        4
 280
      0
 281
@@ -5727,7 +5727,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5743,7 +5743,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5759,7 +5759,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5775,7 +5775,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -5791,7 +5791,7 @@ ObjectDBX Classes
  90
      1153
  91
-        5
+        4
 280
      0
 281
@@ -27259,27 +27259,27 @@ AcDbPlotSettings
   1
 
   2
-AutoCAD PDF (General Documentation).pc3
+DWG To PDF.pc3
   4
-ISO_full_bleed_A3_(297.00_x_420.00_MM)
+A3
   6
 
  40
-0.0
+5.8
  41
-0.0
+17.8
  42
-0.0
+5.8
  43
-0.0
+17.8
  44
 297.0
  45
 420.0
  46
-0.0
+-5.799999999999997
  47
--0.25
+-18.05000000000001
  48
 -20928.72088985937
  49
@@ -27301,7 +27301,7 @@ ISO_full_bleed_A3_(297.00_x_420.00_MM)
  74
      4
   7
-JUNGLIM-d.ctb
+HEO(2020)_A3.ctb
  75
      0
  76
@@ -27313,9 +27313,9 @@ JUNGLIM-d.ctb
 147
 0.004893633705197
 148
-20928.72088985937
+2472.287330226958
 149
-8689.634914163045
+-28761.73970519235
 100
 AcDbLayout
   1
@@ -27379,15 +27379,19 @@ Model
 1001
 ACAD_PSEXT
 1000
-AutoCAD PDF (General Documentation).pc3
+DWG To PDF.pc3
 1000
-DWG To PDF
+HaoChenPDF
 1000
-파일
+FILE:
 1000
-
+PDF Print Driver of GreatStar Tech
 1070
      0
+1001
+PLOTTRANSPARENCY
+1071
+        0
   0
 LAYOUT
   5
@@ -27405,23 +27409,23 @@ AcDbPlotSettings
   1
 
   2
-C:\Program Files\Autodesk Architectural Desktop 3 Kor\plotters\DWF ePlot (optimized for plotting).pc3
+DWG To PDF.pc3
   4
-
+A3
   6
 
  40
-0.0
+5.8
  41
-0.0
+17.8
  42
-0.0
+5.8
  43
-0.0
+17.8
  44
-0.0
+297.0
  45
-0.0
+420.0
  46
 0.0
  47
@@ -27441,13 +27445,13 @@ C:\Program Files\Autodesk Architectural Desktop 3 Kor\plotters\DWF ePlot (optimi
  70
    688
  72
-     0
+     1
  73
      0
  74
      5
   7
-JUNGLIM-d.ctb
+HEO(2020)_A3.ctb
  75
     16
  76
@@ -27520,6 +27524,22 @@ AcDbLayout
      0
 330
 16
+1001
+ACAD_PSEXT
+1000
+DWG To PDF.pc3
+1000
+HaoChenPDF
+1000
+FILE:
+1000
+PDF Print Driver of GreatStar Tech
+1070
+     0
+1001
+PLOTTRANSPARENCY
+1071
+        0
   0
 MATERIAL
   5
