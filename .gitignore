@@ -27,3 +27,6 @@ _integration_test.py
 # IDE
 .idea/
 .vscode/
+
+# 테스트 캐시
+.pytest_cache/
