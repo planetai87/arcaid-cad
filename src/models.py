@@ -123,3 +123,13 @@ class ListBlocksResult(BaseModel):
     success: bool = Field(description="조회 성공 여부")
     message: str = Field(description="결과 설명")
     blocks: List[BlockInfo] = Field(default_factory=list, description="블록 목록")
+
+
+class StandardResult(BaseModel):
+    """get_standard 결과(회사 표준 프로파일 조회)"""
+    success: bool = Field(description="조회 성공 여부")
+    message: str = Field(description="결과 설명")
+    standard: str = Field(default="", description="표준 프로파일 ID@버전(예: heo-2026@2026.1)")
+    section: str = Field(default="", description="조회한 부분(summary/layers/text/dimensions/blocks)")
+    data: Dict[str, Any] = Field(default_factory=dict, description="조회 결과. scale을 주면 scaled·factors에 그 축척의 실제 값이 들어 있다")
+    error: Optional[str] = Field(default=None, description="실패 시 오류 정보")
