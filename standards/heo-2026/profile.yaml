@@ -16,6 +16,6 @@ scale:
 template:
   # 경로는 이 폴더 기준. 해시는 tools/template/export_template_dxf.py가 고쳐 쓴다(손으로 고치지 않는다)
   dwg: ../../skills/cad-drawing-standard/assets/회사표준_템플릿.dwg
-  dwg_sha256: "253f2666391d32d2724ac8b7a1fdae968b3a411922307b4a3503e5ddcbcc8345"
+  dwg_sha256: "4b722191e3b2258167313ceed7ba306e631638b68a06fa7094edb3b57f9ffd86"
   dxf: template.dxf
-  dxf_sha256: "9d7642990b89cc016ec8da6debec685391be25b61660b20a304425a9c53ca295"
+  dxf_sha256: "b7c4951f62a684903625d7c2f2240163a8d5e14b0575b1ee64eed134239bc24d"
