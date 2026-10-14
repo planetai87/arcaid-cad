@@ -36,7 +36,7 @@ def template_paths():
 
 
 def recorded(text: str, key: str) -> str:
-    return re.search(rf"^\s*{key}:\s*(\S+)\s*$", text, re.M).group(1)
+    return re.search(rf"^\s*{key}:\s*(\S+)\s*$", text, re.M).group(1).strip('"')
 
 
 def check() -> int:
@@ -76,7 +76,8 @@ def export() -> None:
         restore_user(ctl, user)
     shutil.copyfile(out, dxf)
     for key, path in (("dwg_sha256", dwg), ("dxf_sha256", dxf)):
-        text = re.sub(rf"^(\s*{key}:\s*)\S+(\s*)$", rf"\g<1>{sha256(path)}\g<2>", text, flags=re.M)
+        # 따옴표로 감싼다: 숫자로만 된 해시를 YAML이 정수로 읽지 않게
+        text = re.sub(rf"^(\s*{key}:\s*)\S+(\s*)$", rf'\g<1>"{sha256(path)}"\g<2>', text, flags=re.M)
     PROFILE.write_text(text, encoding="utf-8", newline="\n")
     print("만듦:", dxf, "| DWG", sha256(dwg)[:12], "| DXF", sha256(dxf)[:12])
 
