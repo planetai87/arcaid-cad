@@ -6,7 +6,7 @@
 """
 import hashlib
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 import ezdxf
 from ezdxf import bbox
@@ -28,9 +28,14 @@ def _v(code: str, message: str, current: Any = None, expected: Any = None, fixab
     return Violation(code=code, message=message, current=current, expected=expected, fixable=fixable)
 
 
-def _layer_violations(std: Standard, doc) -> List[Violation]:
+def _picked(items, names: Optional[Set[str]]):
+    """names(소문자 이름 집합)에 있는 표준 정의만. None이면 전부"""
+    return list(items) if names is None else [x for x in items if x.name.casefold() in names]
+
+
+def _layer_violations(std: Standard, doc, names: Optional[Set[str]] = None) -> List[Violation]:
     out = []
-    for want in std.layers:
+    for want in _picked(std.layers, names):
         layer = doc.layers.get(want.name) if doc.layers.has_entry(want.name) else None
         if layer is None:
             out.append(_v("LAYER_MISSING", f"표준 레이어 {want.name}가 없음", None, want.name))
@@ -68,9 +73,9 @@ def is_annotative(entity) -> bool:
     return len(flags) >= 2 and flags[1] == 1
 
 
-def _dimstyle_violations(std: Standard, doc) -> List[Violation]:
+def _dimstyle_violations(std: Standard, doc, names: Optional[Set[str]] = None) -> List[Violation]:
     out = []
-    for want in std.dimensions.styles:
+    for want in _picked(std.dimensions.styles, names):
         if not doc.dimstyles.has_entry(want.name):
             out.append(_v("DIMSTYLE_MISSING", f"표준 치수 스타일 {want.name}가 없음", None, want.name))
             continue
@@ -99,10 +104,10 @@ def block_geometry_extents(block) -> Optional[List[List[float]]]:
     return [[ext.extmin.x - base.x, ext.extmin.y - base.y], [ext.extmax.x - base.x, ext.extmax.y - base.y]]
 
 
-def _block_violations(std: Standard, doc) -> List[Violation]:
+def _block_violations(std: Standard, doc, names: Optional[Set[str]] = None) -> List[Violation]:
     out = []
     names = {b.name.casefold(): b.name for b in doc.blocks}
-    for want in std.blocks:
+    for want in _picked(std.blocks, names):
         if want.status != "standard":
             continue
         name = names.get(want.name.casefold())
@@ -124,10 +129,18 @@ def _block_violations(std: Standard, doc) -> List[Violation]:
     return out
 
 
-def compare_definitions(std: Standard, doc) -> List[Violation]:
-    """도면(ezdxf 문서)의 표준 이름 정의가 표준 프로파일과 같은지 비교해 위반 목록을 돌려준다"""
-    return (_layer_violations(std, doc) + _textstyle_violations(std, doc)
-            + _dimstyle_violations(std, doc) + _block_violations(std, doc))
+def compare_definitions(std: Standard, doc, layers: Optional[Iterable[str]] = None,
+                        dimstyles: Optional[Iterable[str]] = None, blocks: Optional[Iterable[str]] = None,
+                        text_style: bool = True) -> List[Violation]:
+    """도면(ezdxf 문서)의 표준 이름 정의가 표준 프로파일과 같은지 비교해 위반 목록을 돌려준다
+
+    layers·dimstyles·blocks에 이름을 주면 그 정의만 본다(적용할 명세가 쓰는 정의만 확인할 때, T6).
+    """
+    def norm(names):
+        return None if names is None else {n.casefold() for n in names}
+
+    return (_layer_violations(std, doc, norm(layers)) + (_textstyle_violations(std, doc) if text_style else [])
+            + _dimstyle_violations(std, doc, norm(dimstyles)) + _block_violations(std, doc, norm(blocks)))
 
 
 def extra_definitions(std: Standard, doc) -> Dict[str, List[str]]:
