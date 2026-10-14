@@ -5,15 +5,16 @@
 - 작업자는 레이어를 임의로 지정하거나 바꿀 수 없다. 구분이 필요하면 팀 협의를 거쳐 정의된 레이어 안에서 숫자를 붙여 구분한다.
 - 색상 = 출력 선굵기(아래 '색상별 선굵기'). 객체 색은 항상 ByLayer.
 
+<!-- arcaid:generated layers -->
 | 레이어 | 색(ACI) | 선종류 | 용도 |
 |---|---|---|---|
-| CEN | 1 RED | CEN | 내부벽체 기준선, 중심선(축선) — 템플릿에서 '출력 안 함' |
-| Defpoints | 8 | Continuous | 출력 시 보이지 않는 참고선 |
+| CEN | 1 RED | CEN | 내부벽체 기준선, 중심선(축선)(출력 안 함) |
+| Defpoints | 8 GRAY | Continuous | 출력 시 보이지 않는 참고선(출력 안 함) |
 | CON | 2 YELLOW | Continuous | 철근콘크리트 구조체(RC 벽·기둥·슬래브 단면, 배치도 건물 외곽) |
 | CIL | 6 MAGENTA | Continuous | 천장재 줄눈 |
 | CIL1 | 7 WHITE | Continuous | 커튼박스, 천장 단차 |
 | CIR | 4 CYAN | Continuous | 승강기, 에스컬레이터, 무빙워크, 계단 |
-| LIM | 2 YELLOW | HID | 대지경계선, 각종 구획선(방화구획 등), 별도공사 |
+| LIM | 2 YELLOW | HID | 대지경계선, 각종 구획선(방화구획 등), 별도공사. 객체 선종류 PHANTOM·CENTER 허용 |
 | DIM | 7 WHITE | Continuous | 축열(축 버블·축 번호), 외부 치수선 |
 | DIM1 | 7 WHITE | Continuous | 내부 치수 |
 | DOR | 4 CYAN | Continuous | 문 평면, 문틀 |
@@ -30,7 +31,7 @@
 | INT | 8 GRAY | Continuous | 별도 인테리어선 |
 | PAK | 9 GRAY | Continuous | 주차구획선 |
 | PAK1 | 7 WHITE | Continuous | 주차대수 표시, 주차 관련 표시(출구·일방통행 등) |
-| PAT | 9 GRAY | Continuous | 내외부 바닥 패턴 (템플릿 이름은 소문자 `pat`, 같은 레이어) |
+| PAT | 9 GRAY | Continuous | 내외부 바닥 패턴(템플릿 이름은 소문자 pat, 같은 레이어) |
 | REM | 3 GREEN | Continuous | 주기(NOTES)란 내용 |
 | ROM | 3 GREEN | Continuous | 실명 박스와 실명 문자 |
 | SHT | 7 WHITE | HID | 셔터, 자동방화셔터 |
@@ -47,11 +48,13 @@
 | WAL | 3 GREEN | Continuous | 벽돌벽, 보강블록벽 |
 | WAL1 | 7 WHITE | Continuous | 건식벽, 내부 칸막이 |
 | WIN | 4 CYAN | Continuous | 창문, 유리문, 커튼월 |
+<!-- arcaid:end -->
 
 (매뉴얼 표의 HAD9/TID9/TXD9는 HAT1/TIT1/TXT1의 오기로 확인됨. 색상은 매뉴얼에 글로 적힌 표가 기준이다.)
 
 ## 색상별 출력 선굵기 (mm)
 
+<!-- arcaid:generated color-lineweights -->
 | 색 | A1 | A3 |
 |---|---|---|
 | 1 RED | 0.13 | 0.08 |
@@ -63,6 +66,7 @@
 | 7 WHITE | 0.25 | 0.18 |
 | 8 GRAY | 0.10 | 0.08 |
 | 9 GRAY | 0.13 | 0.10 |
+<!-- arcaid:end -->
 
 굵게 보여야 할 선(구조 단면선, 입면 외곽선, 대지경계선)이 YELLOW(2) 레이어인 이유가 이것이다.
 
