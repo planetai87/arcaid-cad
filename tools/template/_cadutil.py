@@ -11,22 +11,13 @@ from cad_controller import CADController  # noqa: E402,F401  (도구가 여기�
 
 
 def ensure_active(ctl, doc, timeout=10.0):
-    """SendCommand·LISP는 활성 문서로 가므로, 보내기 전에 대상 문서가 활성인지 확인한다
-
-    문서를 닫거나 연 직후에는 활성 문서가 바로 바뀌지 않아 명령이 사라진 적이 있다(결과 파일 없음).
-    """
-    name = ctl._safe_attr(doc, "Name")
+    """대상 문서를 활성으로 만들고(CADController.ensure_active) 명령이 끝날 때까지 기다린다"""
+    ctl.ensure_active(doc, timeout)
     deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        active = ctl._safe_attr(ctl._safe_attr(ctl.app, "ActiveDocument"), "Name")
-        if active == name and ctl._read_cmdactive() == 0:
-            return
-        try:
-            ctl._call_attr(doc, "Activate")
-        except Exception:  # noqa: BLE001
-            pass
+    while ctl._read_cmdactive() != 0:
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"명령이 끝나지 않음: {ctl._safe_attr(doc, 'Name')}")
         time.sleep(0.3)
-    raise RuntimeError(f"대상 문서가 활성화되지 않음: {name}")
 
 
 def lisp(ctl, expr):
