@@ -193,7 +193,8 @@ def draw_batch(ctl, work: Path, std, spec, hooks: Optional[Hooks] = None, resume
     scope = Scope(target="활성 도면", supported=DRAW_SCOPE)
     ids = ResultIds(standard=std.ref, request_id=parsed.op)
     h = spec_hash(parsed)
-    meta = ApplyMeta(op=parsed.op, spec_hash=h, timings_ms=clock.ms)
+    meta = ApplyMeta(op=parsed.op, spec_hash=h)
+    clock.ms = meta.timings_ms   # 모델이 dict를 복사하므로 모델 쪽 dict에 바로 적는다
     refusal = _precheck(ctl, resume)
     if refusal:
         return _result(Status.FAILED, refusal, scope, ids, meta)
@@ -306,7 +307,8 @@ def fix_standard(ctl, work: Path, std, k: Optional[int] = None, base_snapshot_id
     clock = _Clock()
     scope = Scope(target="활성 도면", supported=[f"고치기: {', '.join(FIX_PROPERTIES)}"])
     ids = ResultIds(standard=std.ref, request_id="fix")
-    meta = ApplyMeta(op="fix", timings_ms=clock.ms)
+    meta = ApplyMeta(op="fix")
+    clock.ms = meta.timings_ms
     refusal = _precheck(ctl, resume)
     if refusal:
         return _result(Status.FAILED, refusal, scope, ids, meta)
