@@ -1,6 +1,6 @@
 """설정 불러오기 모듈: 프로세스 전체 싱글턴
 
-예전에는 config.json을 server.py / cad_controller.py / nlp_processor.py 세 곳에서 따로 읽었다.
+예전에는 config.json을 server.py / cad_controller.py / nlp_processor.py(지금은 지운 자연어 처리 모듈) 세 곳에서 따로 읽었다.
 지금은 이 모듈로 모아서 프로세스 전체에서 한 번만 읽는다.
 """
 

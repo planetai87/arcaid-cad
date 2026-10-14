@@ -4,7 +4,7 @@ import json
 import base64
 import logging
 import argparse
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, List, Optional, Union
 
 from pydantic import Field
 
@@ -18,14 +18,14 @@ if __package__:
     from .config import get_config
     from .models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
                          ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
-    from .nlp_processor import NLPProcessor
+    from .colors import color_to_index
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from cad_controller import CADController
     from config import get_config
     from models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult)
-    from nlp_processor import NLPProcessor
+    from colors import color_to_index
 
 from mcp.server.fastmcp import FastMCP, Context
 from mcp.types import ToolAnnotations, ImageContent, TextContent
@@ -130,9 +130,6 @@ PROMPT_TEMPLATE = """
 "cancel_command": 진행 중인 명령을 취소한다(ESC)
 "run_lisp": AutoLISP 식을 실행하고 결과 값을 돌려받는다
 
-옛 인터페이스:
-"process_command": 자연어 명령을 CAD 작업으로 바꿔 실행한다(위의 구조화 도구를 먼저 쓰는 것을 권장)
-
 </arcaid-cad>
 
 친근하게 시연을 시작한다. 예: "안녕하세요! 오늘은 arcaid-cad 사용법을 보여 드릴게요. 이 서비스를 쓰면 화면을 직접 조작하지 않고 대화 안에서 CAD를 다룰 수 있습니다. 시작해 볼까요?"
@@ -176,7 +173,6 @@ class CADService:
     def __init__(self):
         """CAD 서비스를 초기화한다"""
         self.controller = CADController()
-        self.nlp_processor = NLPProcessor()
         self.drawing_state = {
             "entities": [],
             "current_layer": "0",
@@ -450,165 +446,6 @@ class CADService:
 
         return result
 
-    def process_command(self, command: str) -> Dict[str, Any]:
-        """자연어 명령을 처리한다(옛 인터페이스. 클라이언트는 구조화 그리기 도구를 직접 쓰는 것을 권장)"""
-        if not self.controller.is_running():
-            self.start_cad()
-        # NLP 처리기로 명령을 해석한다
-        parsed_command = self.nlp_processor.process_command(command)
-        command_type = parsed_command.get("type")
-        try:
-            # 알아듣지 못한 명령은 명확히 실패로 돌려준다(예전에는 조용히 None을 돌려줬다)
-            if command_type in (None, "unknown", "error"):
-                return {
-                    "success": False,
-                    "message": parsed_command.get("error") or "알 수 없는 명령",
-                    "original_command": command
-                }
-
-            # 색상을 통일해서 해석한다: 명령 문자열에서 뽑은 색이 해석 결과의 색 인자보다 우선한다
-            color = parsed_command.get("color")
-            color_rgb = self.nlp_processor.extract_color_from_command(command)
-            if color_rgb is not None:
-                color = color_rgb
-            # 선굵기 인자
-            lineweight = parsed_command.get("lineweight")
-
-            if command_type == "draw_line":
-                result = self.draw_line(parsed_command.get("start_point"), parsed_command.get("end_point"), None, color, lineweight)
-                return {
-                    "success": result is not None,
-                    "message": "선을 그렸습니다" if result else "선 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_circle":
-                result = self.draw_circle(parsed_command.get("center"), parsed_command.get("radius"), None, color, lineweight)
-                return {
-                    "success": result is not None,
-                    "message": "원을 그렸습니다" if result else "원 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_arc":
-                center = parsed_command.get("center")
-                radius = parsed_command.get("radius")
-                start_angle = parsed_command.get("start_angle")
-                end_angle = parsed_command.get("end_angle")
-                # 필요한 인자가 모두 있고 유효한지 확인한다
-                if center is None or radius is None or start_angle is None or end_angle is None:
-                    return {
-                        "success": False,
-                        "message": "호 그리기 실패: 필요한 인자가 없습니다",
-                        "error": "필요한 인자 없음: 중심, 반지름, 시작 각도 또는 끝 각도"
-                    }
-                result = self.draw_arc(center, radius, start_angle, end_angle, None, color, lineweight)
-                return {
-                    "success": result is not None,
-                    "message": "호를 그렸습니다" if result else "호 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_ellipse":
-                center = parsed_command.get("center")
-                major_axis = parsed_command.get("major_axis")
-                minor_axis = parsed_command.get("minor_axis")
-                rotation = parsed_command.get("rotation", 0)  # 회전 각도 기본값 0
-                # 필요한 인자가 모두 있고 유효한지 확인한다
-                if center is None or major_axis is None or minor_axis is None:
-                    return {
-                        "success": False,
-                        "message": "타원 그리기 실패: 필요한 인자가 없습니다",
-                        "error": "필요한 인자 없음: 중심, 장축 또는 단축"
-                    }
-                result = self.draw_ellipse(center, major_axis, minor_axis, rotation, None, color, lineweight)
-                return {
-                    "success": result is not None,
-                    "message": "타원을 그렸습니다" if result else "타원 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_rectangle":
-                result = self.draw_rectangle(parsed_command.get("corner1"), parsed_command.get("corner2"), None, color, lineweight)
-                return {
-                    "success": result is not None,
-                    "message": "사각형을 그렸습니다" if result else "사각형 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_text":
-                height = parsed_command.get("height", 2.5)
-                rotation = parsed_command.get("rotation", 0)
-                result = self.draw_text(parsed_command.get("position"), parsed_command.get("text"), height, rotation, None, color)
-                return {
-                    "success": result is not None,
-                    "message": "문자를 넣었습니다" if result else "문자 넣기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "draw_hatch":
-                points = parsed_command.get("points")
-                pattern_name = parsed_command.get("pattern_name", "SOLID")
-                scale = parsed_command.get("scale", 1.0)
-                # 필요한 인자가 모두 있고 유효한지 확인한다
-                if points is None or len(points) < 3:
-                    return {
-                        "success": False,
-                        "message": "해치 그리기 실패: 필요한 인자가 없거나 점이 부족합니다",
-                        "error": "해치 경계에는 점이 3개 이상 필요합니다"
-                    }
-                result = self.draw_hatch(points, pattern_name, scale, None, color)
-                return {
-                    "success": result is not None,
-                    "message": "해치를 그렸습니다" if result else "해치 그리기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "add_dimension":
-                # 서비스 계층을 거친다(세션 상태도 함께 갱신)
-                result = self.add_dimension(parsed_command.get("start_point"), parsed_command.get("end_point"), parsed_command.get("text_position"))
-                return {
-                    "success": result is not None,
-                    "message": "치수를 넣었습니다" if result else "치수 넣기 실패",
-                    "entity_id": self._handle(result)
-                }
-
-            elif command_type == "save":
-                file_path = parsed_command.get("file_path")
-                result = self.save_drawing(file_path)
-                return {
-                    "success": result,
-                    "message": f"도면을 저장했습니다: {file_path}" if result else f"도면 저장 실패: {file_path}"
-                }
-
-            # 레이어 작업 처리
-            elif command_type == "create_layer":
-                layer_name = parsed_command.get("layer_name")
-                if not layer_name:
-                    return {
-                        "success": False,
-                        "message": "레이어 만들기 실패: 레이어 이름이 없습니다"
-                    }
-                result = self.controller.create_layer(layer_name)  # , color
-                if result:
-                    self.drawing_state["current_layer"] = layer_name
-                return {
-                    "success": result,
-                    "message": f"레이어 {layer_name}을(를) 만들었습니다" if result else f"레이어 {layer_name} 만들기 실패"
-                }
-
-            # 알고는 있지만 아직 지원하지 않는 명령 종류
-            return {
-                "success": False,
-                "message": f"아직 지원하지 않는 명령 종류: {command_type}"
-            }
-
-        except Exception as e:
-            return {
-                "success": False,
-                "message": f"명령 처리 중 오류: {str(e)}"
-            }
-
 
 # ==================== 서비스 인스턴스와 공통 도우미 ====================
 
@@ -638,7 +475,7 @@ def _noop() -> None:
 
 def _resolve_color(color) -> Optional[int]:
     """색상 인자를 ACI 인덱스로 바꾼다: None=ByLayer. 인덱스와 한국어·영어·중국어 색 이름을 받는다"""
-    return cad_service.nlp_processor.color_to_index(color)
+    return color_to_index(color)
 
 
 async def _entity_result(entity, ok_message: str, fail_message: str) -> ToolResult:
@@ -1196,30 +1033,6 @@ async def list_blocks(ctx: Context) -> ListBlocksResult:
         return ListBlocksResult(success=False, message="CAD 미연결, 자동 시작 실패")
     blocks = await com(cad_service.controller.list_blocks)
     return ListBlocksResult(success=True, message=f"블록 {len(blocks)}개", blocks=blocks)
-
-
-# ---------- 옛 인터페이스 ----------
-
-@mcp.tool()
-async def process_command(ctx: Context, command: str) -> ToolResult:
-    """자연어 명령을 해석해 CAD 작업으로 실행한다(옛 인터페이스)
-
-    구조화 그리기 도구(draw_line/draw_circle 등)를 직접 쓰는 것을 권장한다.
-    사용자가 자연어 입력을 명시적으로 원할 때만 이 도구를 쓴다.
-    """
-    if not await _ensure_running(ctx):
-        return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패", error="CAD 미연결, 자동 시작 실패")
-    result = await com(cad_service.process_command, command)
-    # 옛 반환 구조(entity_id)를 공통 결과로 옮긴다
-    handles = []
-    if result.get("entity_id"):
-        handles = [str(result["entity_id"])]
-    return ToolResult(
-        success=bool(result.get("success")),
-        message=result.get("message", ""),
-        entity_handles=handles,
-        error=result.get("error") if not result.get("success") else None
-    )
 
 
 # ---------- 리소스와 프롬프트 ----------
