@@ -22,7 +22,7 @@ from .results import (Assumption, Checked, EngineResult, OutOfScope, ResultIds, 
 from .snapshot import SnapshotMeta
 from .standards import Standard
 
-HEIGHT_RTOL = 0.001          # 문자 높이 허용오차(0.1%)
+REL_TOL = 0.001              # 문자 높이·블록 배율 상대 허용오차(0.1%)
 NUM_TOL = 1e-6
 TEXT_TYPES = ("TEXT", "MTEXT")
 UNREAD_TEXT_TYPES = ("MULTILEADER", "ACAD_TABLE")   # 문자를 담지만 0단계에서 읽지 않는 객체
@@ -170,7 +170,7 @@ def _check_text(c: _Collector, std: Standard, e, layer_name: str, heights: Dict[
     candidates = heights.get(layer_name.casefold())
     if not candidates:
         c.skip("높이 규칙이 없는 레이어의 문자", "text.yaml에 그 레이어의 문자 높이가 없음")
-    elif not any(_close(height, h, HEIGHT_RTOL) for h in candidates):
+    elif not any(_close(height, h, REL_TOL) for h in candidates):
         if len(candidates) == 1:
             c.add("TEXT_HEIGHT", f"{layer_name} 문자 높이가 표준과 다름", e, _num(height), candidates[0], "height")
         else:
@@ -232,7 +232,7 @@ def _check_insert(c: _Collector, std: Standard, e, layer_name: str, s: float):
         c.add("BLOCK_LAYER", f"블록 {bdef.name}는 {bdef.layer} 레이어", e, layer_name, bdef.layer, "layer")
     factor = bdef.scale_factor(s)
     xs, ys = abs(e.dxf.get("xscale", 1)), abs(e.dxf.get("yscale", 1))
-    if not (_close(xs, factor, HEIGHT_RTOL) and _close(ys, factor, HEIGHT_RTOL)):
+    if not (_close(xs, factor, REL_TOL) and _close(ys, factor, REL_TOL)):
         c.add("BLOCK_SCALE", f"블록 {bdef.name} 배율이 규칙({bdef.scale})과 다름", e, [_num(xs), _num(ys)],
               _num(factor))
 
@@ -321,7 +321,7 @@ def check_standard(dxf_path: Path, std: Standard, k: Optional[int] = None, snaps
         if v.code.endswith("_MISSING"):
             continue
         c.items.append((v.model_copy(update={"fixable": False,
-                                             "message": v.message + "(고칠지는 사람이 정함)"}), None, None))
+                                             "message": v.message + ". 고칠지는 사람이 정함(D3)"}), None, None))
 
     # 객체
     heights = _allowed_heights(std, s)
