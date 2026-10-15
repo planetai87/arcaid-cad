@@ -183,6 +183,8 @@ T4 반영: `add_dimension`이 `TextHeight` 기본값 5를 늘 넣어 치수 문�
 - **완료 기준**: CLI와 MCP가 같은 입력에 같은 결과를 낸다. Linux에서 돈다. Claude Code가 읽는 표준 출력도 같은 허용 목록으로 거르고, 전체 결과는 `--full` 옵션일 때 파일로만 쓴다.
 - **테스트**: CLI·MCP 결과 동일성 테스트, GitHub Actions 실행.
 
+완료: 2026-10-15(PR #19). `arcaid read·check·build`(`python -m src.cli` 또는 편집 가능 설치 뒤 `arcaid`). 표준 출력은 MCP와 같은 결과 모델·상한(`engine/ops.py`)과 같은 외부 반환 정책(`egress.load_policy`)을 거친 UTF-8 JSON 하나, 전체 결과는 `--full`일 때만. 종료 코드 0·1·2·3(`--strict`). CI: Ubuntu에서 실제 명령, Windows에서 MCP·CLI 동일성 시험. 저장소 checkout 기준(wheel 단독 배포는 범위 밖). 계획은 Codex 검토를 반영했고 구현은 Codex에 맡긴 뒤 검토했다.
+
 ### T9 · 스킬 개정
 
 - **목적**: 스킬이 새 툴과 표준 파일을 기준으로 일하게 한다.
