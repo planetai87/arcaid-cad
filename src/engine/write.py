@@ -67,6 +67,7 @@ class BuildResult(EngineResult):
     """build_dxf 결과: D2 공통 항목 + 작성 정보와 객체 목록(manifest)"""
     meta: Optional[BuildMeta] = None
     manifest: List[ManifestItem] = Field(default_factory=list)
+    truncated: bool = Field(default=False, description="manifest를 반환 상한까지만 담았는지")
     warnings: List[str] = Field(default_factory=list)
 
 

@@ -4,13 +4,14 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FORBIDDEN = ("win32com", "pythoncom", "pywintypes", "win32api", "win32gui")
+FORBIDDEN = ("mcp", "win32com", "pythoncom", "pywintypes", "win32api", "win32gui")
 CODE = f"""
 import importlib, pkgutil, sys
 import src.engine as engine
+import src.cli, src.egress
 for m in pkgutil.walk_packages(engine.__path__, "src.engine."):
     importlib.import_module(m.name)
-bad = [n for n in {FORBIDDEN!r} if n in sys.modules]
+bad = [n for n in sys.modules if n.split('.')[0] in {FORBIDDEN!r}]
 print(",".join(bad))
 sys.exit(1 if bad else 0)
 """

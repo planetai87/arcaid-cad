@@ -31,6 +31,47 @@ uv pip install -r requirements.txt
 
 비공개 저장소이므로 clone하려면 저장소에 초대된 GitHub 계정이 필요합니다.
 
+## CLI
+
+`arcaid`는 CAD 없이 DXF 파일을 읽고·검사하고·만듭니다. Windows와 Linux에서 **저장소 checkout 기준**으로 씁니다.
+표준(`standards/`)과 정책(`config/`)이 패키지 밖에 있어 wheel만 설치해서는 실행할 수 없습니다.
+
+```powershell
+.venv\Scripts\python.exe -m src.cli read "도면.dxf"
+.venv\Scripts\python.exe -m src.cli check "도면.dxf" --scale 100 --strict
+.venv\Scripts\python.exe -m src.cli build tests/engine/specs/dangsan_typical.json -o "출력.dxf"
+
+# 저장소에서 편집 가능 설치 후에는 arcaid 명령을 쓸 수 있습니다
+uv pip install -e .
+.venv\Scripts\arcaid.exe check "출력.dxf" --strict
+```
+
+Linux에서는 `python -m src.cli`로 실행합니다. 엔진 의존성(`ezdxf`, `pydantic>=2`, `PyYAML`)만 있어도 됩니다.
+저장소 밖에서 모듈로 실행하려면 `PYTHONPATH`에 저장소 경로를 지정합니다.
+
+표준 출력은 MCP와 같은 결과 모델·외부 반환 정책으로 거른 **UTF-8 JSON 하나**입니다(`PYTHONIOENCODING`보다 우선).
+검사 위반과 고칠 핸들은 코드별 20건(`--limit N`으로 조정), 작성 manifest는 20줄까지만 반환하고 `truncated`로 알립니다.
+`check --scale`을 생략하면 표준의 기본 축척(1/100)을 가정하고 `assumptions`에 적습니다.
+DWG는 MCP `export_snapshot`으로 DXF 사본을 만든 뒤 입력합니다.
+
+각 명령에 `--full <파일.json>`을 붙이면 필터 적용 전의 전체 결과를 그 파일에 씁니다.
+`read`는 메타와 객체 전체 목록, `check`는 상한 없는 검사 결과(`fix` 없음), `build`는 manifest 전체를 포함한 작성 결과입니다.
+`--full`과 `build -o` 이외에는 결과·로그·가린 원본을 저장하지 않습니다. 입력·출력·`--full`이 같은 파일이면 실행 전에 거부합니다.
+
+공통 옵션은 명령 뒤에 지정합니다.
+
+- `--policy <정책.yaml>`: cwd 기준입니다. 생략하면 `ARCAID_EGRESS_FILE` → 설정 `egress.file` → `config/egress.yaml` 순으로 찾습니다(이 세 경로는 저장소 기준). 정책을 읽거나 검증하지 못하면 실행 전에 고정 실패 JSON을 반환합니다.
+- `--standard <프로파일 폴더>`: cwd 기준입니다. 생략하면 `ARCAID_STANDARD_DIR` → 저장소의 `standards/heo-2026`을 씁니다.
+
+| 종료 코드 | 의미 |
+|---|---|
+| 0 | 실행 성공(일반 검사는 위반이 있어도 0) |
+| 1 | 실행·검증·저장·정책 오류 또는 경로 충돌(`--full` 저장 실패 포함) |
+| 2 | argparse 사용 오류(도움말을 출력하며 JSON이 아님) |
+| 3 | `check --strict`에서 위반 또는 검사하지 못한 항목이 있음 |
+
+실패(1)는 strict 불합격(3)보다 우선합니다. `build_dxf`의 자체 검사 실패 시 작성된 DXF가 남을 수 있습니다.
+
 ## 설정
 
 공통 기본값은 `src/config.json`에 있습니다. **PC마다 다른 값은 `src/config.local.json`에 적습니다.**
@@ -135,15 +176,17 @@ CAD-MCP/
 ├── docs/                  # 로드맵·구조 결정·0단계 실행 계획 사본(원본은 Claude Docs)
 ├── src/
 │   ├── server.py          # MCP 서버와 도구 정의 (FastMCP)
+│   ├── cli.py             # CAD 없이 read·check·build 실행(argparse)
+│   ├── egress.py          # MCP·CLI 공용 외부 반환 정책·필터
 │   ├── cad_controller.py  # COM 계층: 전용 COM 스레드, 재시도, 그리기·조회·편집
 │   ├── colors.py          # 색 인자 해석(한국어·영어·중국어 색 이름 → ACI)
 │   ├── config.py          # 설정 로더 (config.json + config.local.json)
 │   ├── config.json        # 공통 기본 설정
 │   ├── models.py          # 구조화 출력 모델
-│   └── engine/            # CAD 없이 도는 엔진(읽기·생성·검사). COM 모듈 금지
+│   └── engine/            # CAD 없이 도는 엔진(읽기·생성·검사, ops.py 공용 출력). COM·MCP 모듈 금지
 ├── standards/
 │   └── heo-2026/          # 회사 표준 프로파일(YAML)과 template.dxf(표준값의 단일 원본)
-├── tests/                 # engine(어디서나), mcp(Windows), cad(CAD 실행 중)
+├── tests/                 # engine·cli(어디서나), mcp(Windows), cad(CAD 실행 중)
 ├── skills/
 │   └── cad-drawing-standard/  # 회사 도면 표준 스킬 (SKILL.md, references/, assets/회사표준_템플릿.dwg)
 └── tools/
@@ -158,7 +201,7 @@ uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 $env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 연동(GstarCAD 실행 중)
 ```
 
-- `src/engine/`은 CAD 없이 돌아야 합니다(ezdxf·pydantic·PyYAML만 사용). GitHub Actions가 Linux에서 엔진 테스트를 돌립니다.
+- `src/engine/`은 CAD 없이 돌아야 합니다(ezdxf·pydantic·PyYAML만 사용). GitHub Actions가 Linux에서 엔진·CLI 시험과 실제 CLI 명령을, Windows에서 MCP·CLI·엔진 시험을 돌립니다.
 - 엔진은 도면 읽기(`read_drawing`)·표준 검사(`check_standard`)와 함께, 배치 규칙(반복·대칭·그리드 기준)을 담은 객체 명세로 표준에 맞는 DXF를 쓰는 `build_dxf`(`src/engine/write.py`)를 갖고 있습니다. 열린 도면에 넣는 MCP 툴(`draw_batch`)은 다음 작업에서 붙습니다.
 - 진행 계획과 구조 결정은 `docs/`와 `CLAUDE.md`를 봅니다.
 

@@ -101,6 +101,20 @@ def test_deny_keeps_other_models_valid(deny_policy, model, payload, tool):
     jsonschema.validate(filtered, model.model_json_schema())
 
 
+def test_deny_scrubs_paths_present_only_in_sentences(deny_policy):
+    payload = {"summary": "축척 1/100, 사본 /tmp/현장 비밀/plan.dxf",
+               "warnings": [r"읽기 실패 C:\건축주\도면.dxf", "실패 '/home/건축주/도면.dxf'"]}
+    result, changed = egress.filter_payload("check_standard", payload, deny_policy)
+    assert changed and "1/100" in result["summary"]
+    assert "건축주" not in str(result) and "현장 비밀" not in str(result)
+
+
+def test_manifest_identity_is_always_returned(deny_policy):
+    payload = {"manifest": [{"oid": "wall-1", "path": "items[0]/wall", "kind": "line", "layer": "WAL"}]}
+    result, changed = egress.filter_payload("build", payload, deny_policy)
+    assert result == payload and not changed
+
+
 def _server(code, env):
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env={**os.environ, "PYTHONIOENCODING": "utf-8", **env},
                          capture_output=True, text=True, encoding="utf-8", timeout=120)

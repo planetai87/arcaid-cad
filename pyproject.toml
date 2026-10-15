@@ -20,6 +20,7 @@ dev = ["pytest>=8"]
 [project.scripts]
 # 설치 후 arcaid-cad 명령으로 서버를 바로 실행할 수 있다
 arcaid-cad = "src.server:main"
+arcaid = "src.cli:main"
 
 [build-system]
 requires = ["hatchling"]

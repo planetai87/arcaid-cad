@@ -17,7 +17,9 @@
 
 ## 코드 배치
 
-- `src/engine/`: CAD 없이 도는 엔진. ezdxf·pydantic·PyYAML과 표준 라이브러리만 쓴다. `win32com`·`pythoncom` 등 COM 모듈 금지.
+- `src/engine/`: CAD 없이 도는 엔진. ezdxf·pydantic·PyYAML과 표준 라이브러리만 쓴다. `mcp`·`win32com`·`pythoncom` 등 MCP·COM 모듈 금지.
+- `src/cli.py`: CAD 없이 파일 단위 `read`·`check`·`build` 실행(`python -m src.cli` 또는 편집 가능 설치 뒤 `arcaid`). `mcp`·COM 모듈 금지. 표준 출력은 공용 정책으로 거른 UTF-8 JSON 하나이고, 전체 결과는 `--full`일 때만 저장한다. 저장소 checkout 기준이며 wheel 단독 배포는 지원하지 않는다.
+- `src/engine/ops.py`: MCP·CLI 공용 검사 모델·상한(`check_file`)과 작성 결과 출력 상한(`limit_build`). 엔진 원본 manifest를 자르지 않는다.
 - `src/server.py`: MCP 서버. Claude Code에 이 경로로 등록돼 있으므로 위치·이름을 바꾸지 않는다. 패키지 import와 스크립트 직접 실행을 모두 지원한다.
 - `src/cad_controller.py`: COM 계층. MCP만 쓴다. CAD마다 다른 동작은 여기서만 나눈다.
 - `src/colors.py`: 색 이름 해석. 중국어 색 이름은 기능 키워드라 번역하지 않는다.
@@ -28,7 +30,7 @@
 - `src/engine/spec.py`·`layout.py`·`write.py`: 객체 명세(JSON) → 검증 → 배치 규칙 전개 → R2013 DXF(`build_dxf`). 명세 형식의 원본은 `spec.py` docstring. 대칭·회전은 `layout.py`가 직접 계산한다(ezdxf `transform()`은 대칭을 OCS로 표현해 읽기·검사가 위치를 잘못 읽음). 생성 DXF는 쓰는 정의만 담고 저장 뒤 `check_standard`로 자체 검사한다.
 - `src/engine/state.py`·`apply.py`: 태그·기준 상태와 보호된 적용 판정(재실행·정의 충돌·넣은 결과·복귀·고칠 대상). `src/apply_service.py`: `draw_batch`·`check_standard(fix)` 조율(COM 스레드). Undo 묶음 안에서는 COM 호출만 쓴다(명령·LISP·자체 묶음을 여는 `draw_*` 금지, T0 E6). 복귀는 스냅샷 핸들 집합으로 확인한다.
 - `src/tools_service.py`: `new_from_template`·`get_selection`·`plot` 조율. `plot`은 사용자 도면 레이아웃을 바꾸지 않도록 Export한 DXF 사본에서 출력한다(원래 출력기·CTB가 이 PC에 없으면 되돌릴 수 없음, T7 사전 확인). `src/engine/sheet.py`: 도곽 → 출력 창·k.
-- `src/egress.py` + `config/egress.yaml`: 외부 반환 필터(D8). 새 결과 필드가 경로·문자·속성이면 `fields`에, 상태·코드처럼 늘 보낼 것이면 `always`에 넣는다. 정책을 바꿔도 출력 스키마가 깨지지 않게 값만 같은 타입으로 바꾼다.
+- `src/egress.py` + `config/egress.yaml`: MCP·CLI 공용 외부 반환 필터(D8, MCP·COM 모듈 금지). `egress.load_policy`는 인자(cwd 기준) → 환경 변수 → 설정 → 기본 정책(나머지는 저장소 기준) 순으로 찾는다. 새 결과 필드가 경로·문자·속성이면 `fields`에, 상태·코드처럼 늘 보낼 것이면 `always`에 넣는다. 정책을 바꿔도 출력 스키마가 깨지지 않게 값만 같은 타입으로 바꾼다.
 - 새 저수준(보호되지 않는) 툴을 만들면 `server.py`의 `UNPROTECTED_TOOLS`와 `tests/mcp/test_tool_descriptions.py`에 넣는다.
 - DXF 사본은 COM `Export`로만 만든다. `save_drawing`으로 DXF를 저장하지 않는다(열린 문서가 DXF로 바뀜). DXFOUT도 쓰지 않는다(미저장 표시를 지움).
 - `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다(`tools/standards/gen_references.py`), 손으로 고치지 않는다.
@@ -50,6 +52,7 @@ $env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 
 ```
 
 - `tests/engine/`: CAD 없이 도는 엔진 테스트. GitHub Actions(Linux)에서 매 커밋 돈다.
+- `tests/cli/`: CAD 없이 하위 프로세스로 CLI를 실행한다(Linux·Windows). 결과 동일성·파일 쓰기·필터·UTF-8·종료 코드를 확인한다.
 - `tests/mcp/`: Windows 전용(pywin32), CAD 불필요. MCP 툴 목록 고정 테스트 — 툴을 더하거나 빼면 여기도 고친다.
 - `tests/cad/`: 실행 중인 CAD가 필요하다. `ARCAID_CAD_TESTS=1`일 때만 모은다.
 - 의존성 설치: `uv pip install --python .venv\Scripts\python.exe -r requirements.txt` (venv에 pip가 없다).
