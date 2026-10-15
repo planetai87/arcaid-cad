@@ -4,11 +4,12 @@
   키는 지우지 않는다(저수준 MCP 서버가 결과를 outputSchema로 검증하므로).
 - 정책에 없는 문자열 값은 unclassified 정책을 따른다. 묶음(dict·list)은 안으로 들어가 본다.
 - 가린 값이 문장(summary·message·reason·error·warnings·details)에 들어 있으면 거기서도 가린다.
-  path가 deny면 문장 안의 Windows 경로도 가린다.
+  path가 deny면 문장 안의 Windows·POSIX 경로도 가린다.
 - run_lisp 결과(value)는 lisp_value 정책: allow / scrub_paths(경로만 가림) / deny.
 - 2026-10-14 결정은 A안(제한 없음)이라 기본 정책으로는 run_lisp 경로만 가린다.
 """
 import json
+import os
 import re
 from datetime import datetime
 from pathlib import Path
@@ -21,13 +22,19 @@ PATH_MARK = "[경로]"
 FREE_TEXT = {"summary", "message", "reason", "error", "warnings", "details"}
 CATEGORIES = ("path", "text", "block_attribute", "sheet")
 DECISIONS = ("allow", "deny", "scrub_paths")
-# 드라이브 경로·UNC 경로. 따옴표·줄바꿈·구두점에서 끊는다(공백이 든 경로를 위해 공백은 포함)
-_PATH = re.compile(r"(?:[A-Za-z]:[\\/]|\\\\[^\\\s]+\\)[^\"'\r\n<>|*?,;()\[\]{}]*")
+# 드라이브·UNC·POSIX 절대 경로. 축척(1/100)·URL은 제외하고 공백이 든 경로도 가린다.
+_PATH = re.compile(r"(?:(?<![A-Za-z])[A-Za-z]:[\\/]|\\\\[^\\\s]+\\|(?<![\w/\\:])/(?=[^\s/]))[^\"'\r\n<>|*?,;()\[\]{}]+")
 _MIN_SECRET = 3
 
 
 class EgressPolicy:
     def __init__(self, policy: Dict[str, str], fields: Dict[str, List[str]], always: Iterable[str]):
+        if not isinstance(policy, dict) or not isinstance(fields, dict):
+            raise ValueError("egress policy·fields는 객체여야 함")
+        if not isinstance(always, (list, tuple, set)) or any(not isinstance(v, str) for v in always):
+            raise ValueError("egress always는 문자열 목록이어야 함")
+        if any(not isinstance(v, list) or any(not isinstance(n, str) for n in v) for v in fields.values()):
+            raise ValueError("egress fields의 값은 문자열 목록이어야 함")
         for key, value in policy.items():
             if value not in DECISIONS:
                 raise ValueError(f"egress 정책 값이 틀림: {key}={value}(가능: {', '.join(DECISIONS)})")
@@ -38,7 +45,11 @@ class EgressPolicy:
 
     @classmethod
     def load(cls, path) -> "EgressPolicy":
-        data = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError("egress 정책은 객체여야 함")
         return cls(data.get("policy", {}), data.get("fields", {}), data.get("always", []))
 
     def with_overrides(self, policy: Dict[str, str]) -> "EgressPolicy":
@@ -55,6 +66,8 @@ class EgressPolicy:
         """키의 항목. 'always'면 항상 보냄, None이면 분류되지 않음"""
         if parent and f"{parent}.{key}" in self._lookup:
             return self._lookup[f"{parent}.{key}"]
+        if parent and f"{parent}.{key}" in self.always:
+            return "always"
         if key in self._lookup:
             return self._lookup[key]
         if key in self.always:
@@ -108,8 +121,16 @@ def _walk(node: Any, parent: Optional[str], policy: EgressPolicy, ctx: _Ctx) -> 
     return node
 
 
+def load_policy(path: Optional[str], config: dict, repo_root: Path) -> EgressPolicy:
+    """인자(cwd 기준) → 환경 변수 → 설정 → 기본 순서로 읽는다. 나머지는 저장소 기준이다"""
+    if path is not None:
+        return EgressPolicy.load(Path(path))
+    selected = Path(os.environ.get("ARCAID_EGRESS_FILE") or config.get("egress", {}).get("file") or "config/egress.yaml")
+    return EgressPolicy.load(selected if selected.is_absolute() else repo_root / selected)
+
+
 def scrub_text(text: str, secrets: Iterable[str], paths: bool) -> str:
-    """문장 안의 가린 값(긴 것부터)과, paths면 Windows 경로를 지운다"""
+    """문장 안의 가린 값(긴 것부터)과, paths면 Windows·POSIX 경로를 지운다"""
     for secret in sorted(secrets, key=len, reverse=True):
         text = text.replace(secret, REDACTED)
     if paths:

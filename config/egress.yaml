@@ -28,4 +28,4 @@ always: [status, summary, message, reason, error, warnings, details, code, item,
          name, handle, handles, entity_handles, layer, linetype, entity_type, property, op, method, section,
          standard, schema_version, snapshot_id, snapshot_before, snapshot_after, drawing_id, request_id,
          spec_hash, dxf_sha256, dxfversion, units, exported_at, supported, nonstandard_layers, current,
-         expected, value, media, device, ctb, pattern_name]
+         expected, value, media, device, ctb, pattern_name, oid, kind, manifest.oid, manifest.path, manifest.kind]

@@ -26,6 +26,7 @@ if __package__:
     from .engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from .engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
     from .engine.check import CheckResult, check_standard as engine_check_standard
+    from .engine.ops import CHECK_LIMIT, check_file
     from .engine.results import Checked, EngineResult, ResultIds, Scope, Status
     from . import tools_service
     from .tools_service import PlotResult, SelectionResult
@@ -43,6 +44,7 @@ else:
     from engine.snapshot import SnapshotError, SnapshotResult, load_meta, snapshots_dir
     from engine.read import ReadDrawingResult, read_drawing as engine_read_drawing
     from engine.check import CheckResult, check_standard as engine_check_standard
+    from engine.ops import CHECK_LIMIT, check_file
     from engine.results import Checked, EngineResult, ResultIds, Scope, Status
     import tools_service
     from tools_service import PlotResult, SelectionResult
@@ -573,8 +575,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _egress_policy() -> "egress.EgressPolicy":
     """외부 반환 필터 정책(D8). 호출마다 읽어 설정을 바꾸면 바로 반영된다"""
-    path = Path(os.environ.get("ARCAID_EGRESS_FILE") or config.get("egress", {}).get("file") or "config/egress.yaml")
-    return egress.EgressPolicy.load(path if path.is_absolute() else REPO_ROOT / path)
+    return egress.load_policy(None, config, REPO_ROOT)
 
 
 class FilteredFastMCP(FastMCP):
@@ -1201,9 +1202,6 @@ async def read_drawing(ctx: Context, snapshot_id: Optional[str] = None,
     return result
 
 
-CHECK_LIMIT = 20   # 코드별로 돌려줄 위반 수(전체는 full_path 파일)
-
-
 @mcp.tool()
 async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_path: Optional[str] = None,
                          scale: Optional[Annotated[int, Field(ge=1, le=10000)]] = None, fix: bool = False,
@@ -1255,10 +1253,10 @@ async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_p
         meta, dxf, warnings, name = await _resolve_dxf(ctx, snapshot_id, file_path)
     except (SnapshotError, StandardError) as e:
         return CheckFixResult(status=Status.FAILED, summary=str(e), scope=Scope(target=target))
-    result = engine_check_standard(dxf, std, k=scale, snapshot=meta,
-                                   full_out=snapshots_dir(_work_dir()) / f"{name}.check.json", limit=CHECK_LIMIT)
+    result = check_file(dxf, std, k=scale, snapshot=meta,
+                        full_out=snapshots_dir(_work_dir()) / f"{name}.check.json")
     result.warnings = warnings + result.warnings
-    return CheckFixResult(**result.model_dump())
+    return result
 
 
 @mcp.tool()
