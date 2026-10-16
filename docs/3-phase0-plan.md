@@ -224,7 +224,7 @@ T4 반영: `add_dimension`이 `TextHeight` 기본값 5를 늘 넣어 치수 문�
 | 지원 범위 | 지원 객체와 검사 항목이 문서로 정리돼 있음 |
 | 소요 시간 | 측정해 기록. 수치 기준은 이번 결과를 기준선으로 삼아 다음 단계에서 정한다 |
 
-진행: 2026-10-16. [승인 상세 계획](plans/2026-10-16-t10-dangsan-acceptance.md)에 따라 준비 도구와 실제 CAD 시험을 구현 중이다. 기준 입력 553개·위반/미검사 0건과 원본/사용자 상태 보존을 확인했고 사용자가 기준 입력을 확정했다. 객실·주석의 순수 엔진 대조는 17,264개/102개 모두 통과했다. GstarCAD A/B·충돌·복구, 독립 검토·CI는 완료 후 근거를 기록하며 현재 T10 통과 전이다. 상세 기록은 [T10 실행 기록](t10-dangsan-acceptance.md)에 둔다. Claude Docs 원본은 이 세션에서 편집할 연결이 없어 사본만 갱신했다.
+완료: 2026-10-16([PR #22](https://github.com/planetai87/arcaid-cad/pull/22), T9 PR #21 기반). 사람이 확정한 기준 553개에 A25/B2의 상세 17,264개·주석 102개를 재현해 총 17,919개를 확인했다. GstarCAD 독립 A/B 형상·속성 일치, 전체 위반/미검사 0건, 같은 op 재전송 skip, 충돌 5종 무변경 중단, 실패 recovered·553 핸들/형상 복귀·새 태그 0, 원본/사용자 상태 보존을 확인했다. 공개 MCP 전체 작도·검사·재전송도 passed다. 독립 검토 Important 3건을 반례 RED→GREEN으로 수정하고 강화 비교기로 실제 산출물 전체를 다시 통과했다. 기본 전체 테스트 280개·실제 CAD 시험 1개·참조표 검사와 [CI #44](https://github.com/planetai87/arcaid-cad/actions/runs/38901519089)(Linux Python3.10/3.12, Windows3.12)가 통과했다. 최대 형상 편차 상한 0.002483mm <0.01mm. 상세 증거·시간·검사 한계·후속 범위는 [T10 실행 기록](t10-dangsan-acceptance.md), [수치 결과](t10-acceptance-results.json), [검토 처리](t10-code-review.md)에 기록했다. Claude Docs 원본은 편집 연결이 없어 사본만 갱신했다. BricsCAD 호환·0-B는 후속 작업으로 남긴다.
 
 **통과 뒤**: BricsCAD에서 같은 시험을 돌려 호환 상태를 기록하고, 0-B 계획을 쓴다.
 

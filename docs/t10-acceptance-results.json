@@ -1,5 +1,5 @@
 {
-  "status": "validated_review_fixed_ci_pending",
+  "status": "passed",
   "standard": "heo-2026@2026.1",
   "scale": 200,
   "inputs": {
@@ -409,5 +409,17 @@
   "basic_tests_after_review": {
     "passed": 280,
     "seconds": 269.18
+  },
+  "pr": "https://github.com/planetai87/arcaid-cad/pull/22",
+  "ci": {
+    "run_id": 38901519089,
+    "run_number": 44,
+    "url": "https://github.com/planetai87/arcaid-cad/actions/runs/38901519089",
+    "verified_code_commit": "00676b6950bf11890255a4c587888bd60f9fd59c",
+    "jobs": {
+      "engine (3.10)": "success",
+      "engine (3.12)": "success",
+      "windows": "success"
+    }
   }
 }
