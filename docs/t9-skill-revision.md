@@ -18,7 +18,9 @@
 - [x] 문서 예제 왕복 검사, 전체 테스트, 합성 CAD 리허설.
 - [x] 개정 후 행동 평가와 독립 코드 검토.
 - [x] zip 검증, 기존 설치본 백업·동기화·해시 대조.
-- [ ] T9 완료 기록, 커밋·PR.
+- [x] T9 완료 기록, 커밋·PR.
+
+브랜치: `t9-skill-revision`. 구현 커밋: `e4c2b9c`. PR: [#21](https://github.com/planetai87/arcaid-cad/pull/21).
 
 ## 검증 결과
 
