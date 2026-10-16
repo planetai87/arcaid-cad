@@ -10,6 +10,8 @@
 
 세 항목을 하나의 수정 단계에서 처리했다. 반례 9개를 RED→GREEN으로 확인했으며 순수 시험 26개가 통과했다. 재검토를 중복 요청하지 않고 회귀시험·전체 시험과 실제 저장된 산출물의 강화 재검사를 근거로 판정한다.
 
+최종 근거: 기본 전체 280 passed(269.18초), 참조표 검사 통과, 실제 CAD 시험 1 passed(594.15초) 및 모든 실제 산출물·보호 전후 스냅샷의 강화 재검사 passed. 구현 `00676b6`의 [CI #44](https://github.com/planetai87/arcaid-cad/actions/runs/38901519089)는 Linux3.10/3.12·Windows3.12 모두 success. [PR #22](https://github.com/planetai87/arcaid-cad/pull/22)에 변경·검증 근거를 기록했다. 미처리 Critical/Important·보류 Minor 없음.
+
 실제 산출물에서 손상은 없었다. 타원 81개는 bulge=0, 열린 폴리선이고 해치 36개는 style=0이며 내부 경계가 있는 2개도 정상이다. 비교본에서 고정한 좌표·형상·주석과 작도 명세·기준 입력은 유지했다. 예전 실행 manifest를 `manifest-at-execution.json`으로 보존하고, 원래 비교본 스냅샷에서 해치 설정·경계 역할만 추가한 검증 manifest를 별도로 식별했다. 강화 검사로 기준 DXF/DWG, 실제 A/B/MCP 산출물 모두 다시 통과했다.
 
 ## 검토자가 판정에서 제외한 항목에 대한 결정
