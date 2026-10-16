@@ -1,6 +1,6 @@
 # 템플릿 블록. extents = 삽입점 (0,0), 배율 1, 회전 0 기준의 형상 범위(속성 정의 문자 제외, mm).
-# scale: 삽입 배율(s = k/100). layer: 삽입할 때 현재 레이어로 둘 레이어(블록 참조가 들어갈 레이어).
-# insert: "-INSERT"(속성값을 함께 넣는 명령 문자열) 또는 "insert_block"(MCP 툴).
+# scale: 삽입 배율(s = k/100). layer: 엔진이 블록 참조에 지정할 레이어.
+# insert: 이전 저수준 삽입 방식의 호환 메타데이터. 새 작도는 draw_batch의 block·attribs를 쓴다.
 # status: standard = 쓰는 블록, unused = 템플릿에 있지만 쓰지 않는 블록(reason에 이유).
 blocks:
   - name: 축열버블-상
@@ -65,7 +65,7 @@ blocks:
       - {tag: SL-80, height: 270, layer: TIT}
       - {tag: FL%%P0, height: 270, layer: TIT}
     extents: [[-200, -200], [1645.5, 200]]
-    note: 기호 중심이 삽입점. 속성 2개(선 아래 값 먼저, 선 위 값 나중). X·Y 배율이 같게 고정돼 Y 배율을 묻지 않는다. 속성 문자 포함 범위 (−200,−362)–(1645,369)
+    note: 기호 중심이 삽입점. SL-80은 선 아래 레벨 값, FL%%P0는 선 위 층 이름. 속성 문자 포함 범위 (−200,−362)–(1645,369)
   - name: ARR2
     status: standard
     layer: SYM1
@@ -122,7 +122,7 @@ blocks:
       - {tag: 실번호, height: 2.142857, layer: ROM}
       - {tag: 실명, height: 2.142857, layer: ROM}
     extents: [[-8.9, -5], [8.9, 5]]
-    reason: 글꼴 AD, 문자 높이 2.14(1/100에 맞는 배율 없음), 상자형. 실명은 entmake 문자로 쓴다
+    reason: 글꼴 AD, 문자 높이 2.14(1/100에 맞는 배율 없음), 상자형. 실명은 text 명세의 general 용도와 MC 정렬로 쓴다
   - name: 단면부호
     status: unused
     attributes:
