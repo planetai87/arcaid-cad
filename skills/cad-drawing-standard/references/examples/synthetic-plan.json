@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "standard": "heo-2026@2026.1",
+  "op": "skill-synthetic-plan",
+  "units": "mm",
+  "scale": 100,
+  "grid": {
+    "X": {"X1": 0, "X2": 3000, "X3": 6000},
+    "Y": {"Y1": 0, "Y2": 4000, "Y3": 6000, "Y4": 10000}
+  },
+  "items": [
+    {
+      "kind": "group", "id": "grid-x", "path": "grid/X{n}",
+      "items": [{"kind": "line", "id": "axis", "layer": "CEN", "start": [0, -450], "end": [0, 10450]}],
+      "place": [{"at": ["X1", "Y1"], "repeat": {"count": 3, "step": [3000, 0]}, "vars": {"n": {"start": 1}}}]
+    },
+    {
+      "kind": "group", "id": "grid-y", "path": "grid/Y{n}",
+      "items": [{"kind": "line", "id": "axis", "layer": "CEN", "start": [-450, 0], "end": [6450, 0]}],
+      "place": [
+        {"at": ["X1", "Y1"], "vars": {"n": {"start": 1}}},
+        {"at": ["X1", "Y2"], "vars": {"n": {"start": 2}}},
+        {"at": ["X1", "Y3"], "vars": {"n": {"start": 3}}},
+        {"at": ["X1", "Y4"], "vars": {"n": {"start": 4}}}
+      ]
+    },
+    {
+      "kind": "group", "id": "room", "path": "synthetic/room/{no}",
+      "items": [
+        {"kind": "polyline", "id": "wall", "layer": "WAL1", "points": [[0, 0], [3000, 0], [3000, 4000], [0, 4000]], "closed": true},
+        {"kind": "text", "id": "label", "layer": "ROM", "role": "general", "content": "객실 {no}", "at": [1500, 2000], "align": "MC"},
+        {"kind": "hatch", "id": "floor", "layer": "HAT", "pattern": "SOLID", "boundary": [[200, 200], [1200, 200], [1200, 1200], [200, 1200]], "holes": [[[500, 500], [900, 500], [900, 900], [500, 900]]]}
+      ],
+      "place": [
+        {"at": ["X1", "Y1"], "repeat": {"count": 2, "step": [3000, 0]}, "vars": {"no": {"start": 101}}},
+        {"at": ["X1", "Y4"], "mirror": "y", "repeat": {"count": 2, "step": [3000, 0]}, "vars": {"no": {"start": 103}}}
+      ]
+    },
+    {
+      "kind": "group", "id": "bubble", "path": "grid/X{n}/bubble",
+      "items": [{"kind": "block", "id": "b", "name": "축열버블-상", "at": [0, 0], "attribs": {"축열": "X{n}"}}],
+      "place": [{"at": ["X1", "Y4+1750"], "repeat": {"count": 3, "step": [3000, 0]}, "vars": {"n": {"start": 1}}}]
+    },
+    {"kind": "dim_chain", "id": "axis-dims", "style": "DIM330", "points": [["X1", "Y4+450"], ["X2", "Y4+450"], ["X3", "Y4+450"]], "direction": "x", "line_at": "Y4+1350"},
+    {"kind": "dim", "id": "total-dim", "style": "DIM330", "p1": ["X1", "Y4+450"], "p2": ["X3", "Y4+450"], "direction": "x", "line_at": "Y4+1750"}
+  ]
+}

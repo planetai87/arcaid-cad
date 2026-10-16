@@ -216,7 +216,9 @@ $env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 
 mklink /J "%USERPROFILE%\.claude\skills\cad-drawing-standard" "<저장소>\skills\cad-drawing-standard"
 ```
 
-**claude.ai에 올리기**: `skills/cad-drawing-standard` 폴더를 zip으로 묶어 claude.ai의 스킬 설정에서 올립니다. 저장소에서 스킬을 고친 뒤에는 다시 올려야 합니다.
+**claude.ai에 올리기**: `.venv\Scripts\python.exe tools/skills/package_skill.py -o ../cad-drawing-standard.zip`으로 만듭니다. 템플릿·상대 링크·한글 파일명·zip 무결성을 확인하고 백업·임시 파일을 제외합니다. 만들어진 zip을 claude.ai의 스킬 설정에서 올립니다. 저장소에서 스킬을 고친 뒤에는 다시 올려야 합니다.
+
+스킬은 `get_standard` → `export_snapshot`·`read_drawing` → 객체 명세 → `draw_batch` → `check_standard` → 보고 순서입니다. 실행 가능한 합성 예제는 `skills/cad-drawing-standard/references/examples/synthetic-plan.json`에 있습니다. 스킬 zip은 서버·CLI 설치본을 포함하지 않습니다.
 
 **템플릿 다시 만들기**(GstarCAD 실행 중, 저장소 `.venv`의 파이썬):
 

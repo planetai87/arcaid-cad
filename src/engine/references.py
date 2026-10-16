@@ -46,23 +46,65 @@ def render_color_lineweights(std: Standard) -> str:
 
 
 def render_text_heights(std: Standard) -> str:
-    rows = ["| 높이 | 용도 | 레이어 |", "|---|---|---|"]
+    rows = ["| role | 기준 높이 | 용도 | 허용 레이어 |", "|---|---|---|---|"]
     for h in std.text.heights:
-        rows.append(f"| {_num(h.height)} | {h.use} | {' / '.join(h.layers)} |")
+        rows.append(f"| `{h.id}` | {_num(h.height)} | {h.use} | {' / '.join(h.layers)} |")
+    return "\n".join(rows)
+
+
+def render_scale_rules(std: Standard) -> str:
+    p, r = std.profile, std.profile.scale
+    return "\n".join([
+        "| 항목 | 프로파일 기준 |", "|---|---|",
+        f"| 표준 | `{std.ref}` |", f"| 단위 / 축척 기준 | {p.units} / {r.basis} |",
+        f"| 축척 생략 시 k | {r.default_k} |",
+        f"| 문자·기호·간격·도곽 배율 s | k × {_num(r.symbol_per_k)} |",
+        f"| 비주석 치수 DIMSCALE | k × {_num(r.dimscale_per_k)} |",
+        f"| LTSCALE | k × {_num(r.ltscale_per_k)} |",
+    ])
+
+
+def render_dimension_styles(std: Standard) -> str:
+    rows = ["| style | 용도 | 레이어 | 문자 스타일 | 주석 | 기준 DIMSCALE | DIMTXT |",
+            "|---|---|---|---|---|---|---|"]
+    for d in std.dimensions.styles:
+        rows.append(f"| `{d.name}` | {d.use} | {d.layer} | {d.text_style} | 아니오 | "
+                    f"{_num(d.vars['dimscale'])} | {_num(d.vars['dimtxt'])} |")
+    return "\n".join(rows)
+
+
+def render_dimension_spacing(std: Standard) -> str:
+    labels = {
+        "cen_overhang": "가장 바깥 축선 → CEN 끝(가변 기본값)",
+        "cen_overhang_beyond_wall_min": "외벽 바깥면·돌출부보다 더 나가는 최소 길이",
+        "extension_offset": "CEN 끝 → 치수보조선 시작(스타일에서 자동 적용)",
+        "first_row_from_cen_end": "CEN 끝 → 첫 치수선",
+        "row_gap": "치수 단 사이",
+        "bubble_from_outer_dim": "가장 바깥 치수선 → 버블 중심(블록에 포함)",
+        "text_above_dimline": "치수 문자 중심의 치수선 위 거리(확인용)",
+    }
+    rows = ["| spacing 키 | 의미 | 기준 간격 |", "|---|---|---|"]
+    for key, value in std.dimensions.spacing.model_dump().items():
+        rows.append(f"| `{key}` | {labels[key]} | {_num(value)} |")
+    return "\n".join(rows)
+
+
+def render_sheet_title(std: Standard) -> str:
+    rows = ["| role | 도곽 좌하단 기준 위치 | 기준 높이 | 레이어 | 형식 |", "|---|---|---|---|---|"]
+    for t in std.text.sheet_title:
+        rows.append(f"| `{t.id}` | {_pt(t.insert)} | {_num(t.height)} | {' / '.join(t.layers)} | {t.format or '도면명'} |")
     return "\n".join(rows)
 
 
 def render_blocks(std: Standard) -> str:
-    rows = ["| 블록 | 범위 | 배율 | 레이어(현재 레이어로 지정) | 삽입 방법 | 비고 |", "|---|---|---|---|---|---|"]
+    rows = ["| name | 형상 범위 | 엔진 배율 | 엔진 레이어 | attribs 키 | 비고 |", "|---|---|---|---|---|---|"]
     for b in std.blocks:
         if b.status != "standard":
             continue
         rng = f"{_pt(b.extents[0])}–{_pt(b.extents[1])}"
-        if b.attributes:
-            rng += ", 속성 " + ", ".join(f"`{a.tag}`" for a in b.attributes)
+        tags = ", ".join(f"`{a.tag}`" for a in b.attributes) or "—"
         scale = {"s": "s", "0.5s": "**0.5·s**", "1": "1 (실제 크기)"}[b.scale]
-        method = "`-INSERT` + 속성값" if b.insert == "-INSERT" else "`insert_block`"
-        rows.append(f"| `{b.name}` | {rng} | {scale} | {b.layer} | {method} | {b.note} |")
+        rows.append(f"| `{b.name}` | {rng} | {scale} | {b.layer} | {tags} | {b.note} |")
     return "\n".join(rows)
 
 
@@ -78,6 +120,10 @@ RENDERERS: Dict[str, Callable[[Standard], str]] = {
     "layers": render_layers,
     "color-lineweights": render_color_lineweights,
     "text-heights": render_text_heights,
+    "scale-rules": render_scale_rules,
+    "dimension-styles": render_dimension_styles,
+    "dimension-spacing": render_dimension_spacing,
+    "sheet-title": render_sheet_title,
     "blocks": render_blocks,
     "unused-blocks": render_unused_blocks,
 }
@@ -85,7 +131,8 @@ RENDERERS: Dict[str, Callable[[Standard], str]] = {
 # 생성 구역이 있어야 하는 문서와 그 구역(순서대로)
 TARGETS: Dict[str, List[str]] = {
     "layers.md": ["layers", "color-lineweights"],
-    "annotation.md": ["text-heights", "blocks", "unused-blocks"],
+    "annotation.md": ["scale-rules", "text-heights", "dimension-styles", "dimension-spacing",
+                      "blocks", "unused-blocks", "sheet-title"],
 }
 
 
