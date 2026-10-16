@@ -3,6 +3,7 @@
 준비는 스냅샷 DXF만 읽는다. CAD 적용은 기존 apply_service/MCP가 담당한다.
 """
 import argparse
+import cmath
 from collections import Counter
 import hashlib
 import json
@@ -134,7 +135,10 @@ def geometry(e):
                 raise ValueError("곡선 해치 경계는 별도 준비 필요")
             loops.append([[float(x), float(y), float(b)] for x, y, b in path.vertices])
         return {"type": t, "loops": loops, "pattern": e.dxf.pattern_name,
-                "scale": e.dxf.get("pattern_scale", 1), "angle": e.dxf.get("pattern_angle", 0)}
+                "scale": e.dxf.get("pattern_scale", 1), "angle": e.dxf.get("pattern_angle", 0),
+                "hatch_style": e.dxf.get("hatch_style", 0),
+                "roles": ["external" if p.path_type_flags & 1 else "outermost" if p.path_type_flags & 16
+                          else "default" for p in e.paths]}
     if t == "TEXT":
         return {"type": t, "text": e.dxf.text, "at": p(text_anchor(e))}
     if t == "INSERT":
@@ -248,25 +252,85 @@ def _difference(a, b):
     return 0 if a == b else math.inf
 
 
+def _segment_curve(a, b):
+    """bulge 구간을 정확한 원호 매개변수로 표현한다(직선의 2차미분은 0)."""
+    p, q = complex(*a[:2]), complex(*b[:2]); bulge = a[2]
+    if not bulge:
+        return lambda t: p + (q - p) * t, 0.0, 0.0, 0.0
+    if p == q:
+        raise ValueError("끝점이 같은 유효하지 않은 bulge 구간")
+    center = (p + q) / 2 + (q - p) * 1j * (1 - bulge * bulge) / (4 * bulge)
+    radial = p - center; angle = 4 * math.atan(bulge)
+    def point(t):
+        if t == 0:
+            return p
+        if t == 1:
+            return q
+        u = angle * t
+        return p + radial * complex(-2 * math.sin(u / 2) ** 2, math.sin(u))
+    return point, abs(radial) * angle * angle, cmath.phase(radial), angle
+
+
+def _polyline_error(expected, got):
+    if got["type"] != "LWPOLYLINE" or expected["closed"] != got["closed"]:
+        return math.inf
+    a, b = expected["points"], got["points"]
+    if len(a) != len(b):
+        return math.inf
+    error = max((math.hypot(p[0] - q[0], p[1] - q[1]) for p, q in zip(a, b)), default=0)
+    for i in range(len(a) if expected["closed"] else len(a) - 1):
+        j = (i + 1) % len(a)
+        f, af, phase_f, angle_f = _segment_curve(a[i], a[j])
+        g, ag, phase_g, angle_g = _segment_curve(b[i], b[j])
+        mid = abs(f(0.5) - g(0.5))
+        error = max(error, mid)
+        if error > TOLERANCE:
+            return error
+        # D=f-g의 2차미분 상한. 같은 원호는 차이가 0이므로 과도한 표본을 만들지 않는다.
+        phase_delta = abs((phase_f - phase_g + math.pi) % math.tau - math.pi)
+        bound = min(af + ag, abs(af - ag) + min(af, ag) * (phase_delta + abs(angle_f - angle_g)))
+        n = max(1, math.ceil(math.sqrt(bound / (8 * (TOLERANCE / 10)))))
+        observed = max(abs(f(k / n) - g(k / n)) for k in range(n + 1))
+        # 구간 사이도 선형 보간 오차 ||D''|| h²/8 이하이므로 전 곡선의 거리 상한이다.
+        error = max(error, observed + bound / (8 * n * n))
+    return error
+
+
 def geometry_error(expected, actual):
     if expected["type"] == "ELLIPSE":
         if actual.dxftype() != "LWPOLYLINE":
             return math.inf
-        pts = list(actual.get_points("xy")); n = len(pts) - 1
+        actual_geometry = geometry(actual)
+        pts = actual_geometry["points"]; n = len(pts) - 1
+        if any(p[2] != 0 for p in pts):
+            return math.inf
+        span = (expected["end"] - expected["start"]) % math.tau or math.tau
+        if actual.closed and abs(span - math.tau) > 1e-8:
+            return math.inf
         if n < 4:
             return math.inf
         cx, cy = expected["center"]; mx, my = expected["major"]
         ratio, sign = expected["ratio"], expected["normal"]
-        span = (expected["end"] - expected["start"]) % math.tau or math.tau
         vertex_error = 0
-        for i, (x, y) in enumerate(pts):
+        for i, (x, y, _) in enumerate(pts):
             t = expected["start"] + span * i / n
             ex = cx + mx * math.cos(t) - my * ratio * sign * math.sin(t)
             ey = cy + my * math.cos(t) + mx * ratio * sign * math.sin(t)
             vertex_error = max(vertex_error, math.hypot(x - ex, y - ey))
         return vertex_error + math.hypot(mx, my) * (span / n) ** 2 / 8
     got = geometry(actual)
+    if expected["type"] == "LWPOLYLINE":
+        return _polyline_error(expected, got)
     if expected["type"] == "HATCH" and got["type"] == "HATCH":
+        if expected["hatch_style"] != got["hatch_style"]:
+            return math.inf
+        # 외부 루프를 섬으로 바꾸거나 섬을 external로 바꾸면 채움 의미가 달라진다.
+        # 원본 default 섬 → 엔진 outermost 섬은 지원되는 표준화다.
+        for roles in (expected["roles"], got["roles"]):
+            if not roles or roles[0] not in ("external", "default") or any(r == "external" for r in roles[1:]):
+                return math.inf
+        expected = dict(expected, roles=["outer"] + ["island"] * (len(expected["roles"]) - 1))
+        got = dict(got, roles=["outer"] + ["island"] * (len(got["roles"]) - 1))
         def canonical(loop):
             if len(loop) > 1 and loop[0] == loop[-1]:
                 loop = loop[:-1]
@@ -279,11 +343,14 @@ def geometry_error(expected, actual):
             outer, *holes = [canonical(p) for p in record["loops"]]
             return [outer] + sorted(holes)
         expected = dict(expected, loops=loops(expected)); got = dict(got, loops=loops(got))
-    if expected["type"] == "ARC" and got["type"] == "ARC":
-        # 각도 차이는 호 길이로 환산한다.
-        angle_error = max(abs((a - b + 180) % 360 - 180) for a, b in zip(expected["angles"], got["angles"]))
-        expected = dict(expected, angles=[0, 0]); got = dict(got, angles=[0, 0])
-        return _difference(expected, got) + math.radians(angle_error) * expected["radius"]
+    if expected["type"] in ("ARC", "CIRCLE") and got["type"] == expected["type"]:
+        error = (math.dist(expected["center"], got["center"]) + abs(expected["radius"] - got["radius"]))
+        if expected["type"] == "ARC":
+            start, end = expected["angles"]; actual_start, actual_end = got["angles"]
+            start_error = abs((start - actual_start + 180) % 360 - 180)
+            sweep_error = abs((end - start) % 360 - (actual_end - actual_start) % 360)
+            error += math.radians(start_error + sweep_error) * expected["radius"]
+        return error
     return _difference(expected, got)
 
 
@@ -299,6 +366,12 @@ def verify_geometry(expectation, actual):
     return {"passed": not failures and not extras, "expected_count": len(expectation),
             "actual_count": len(actual), "max_error_mm": max(errors, default=0),
             "failure_count": len(failures), "failures": failures[:20], "extra_paths": extras[:20]}
+
+
+def verify_baseline(expectation, doc):
+    keys = list(expectation)
+    actual = {keys[i] if i < len(keys) else f"unexpected/{i}": e for i, e in enumerate(doc.modelspace())}
+    return verify_geometry(expectation, actual)
 
 
 def compress_places(places):
@@ -490,8 +563,7 @@ def prepare(source_dxf, reference_dxf, out, std, source_dwg=None, reference_dwg=
     baseline.saveas(out / "baseline.dxf")
     checked = check_standard(out / "baseline.dxf", std, 200)
     manifest["baseline_check"] = checked.model_dump(mode="json")
-    manifest["baseline_geometry"] = verify_geometry(manifest["baseline_expectation"],
-                                                     dict(zip(manifest["baseline_expectation"], baseline.modelspace())))
+    manifest["baseline_geometry"] = verify_baseline(manifest["baseline_expectation"], baseline)
     # 객실 기대값은 비교본 원시 객체에서 명세 변환과 별도로 저장한다.
     chunks = room_chunks(ref)
     if Counter(c["type"] for c in chunks) != Counter(A=25, B=2):

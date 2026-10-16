@@ -118,6 +118,71 @@ def test_hatch_geometry_ignores_vertex_start_and_winding_but_checks_island():
     assert t10.geometry_error(t10.expected_record(h1), h2) >= 1
 
 
+@pytest.mark.parametrize("mode", ["bulge", "diagonal"])
+def test_polyline_bulge_error_is_measured_in_mm_and_diagonal_distance(mode):
+    d = ezdxf.new(); m = d.modelspace()
+    source = m.add_lwpolyline([(0, 0, 0), (10000, 0, 0)], format="xyb")
+    actual = source.copy()
+    if mode == "bulge":
+        actual.set_points([(0, 0, 0.009), (10000, 0, 0)], format="xyb")
+    else:
+        actual.set_points([(0.009, 0.009), (10000.009, 0.009)])
+    assert t10.geometry_error(t10.expected_record(source), actual) > (44.99 if mode == "bulge" else 0.01)
+
+
+@pytest.mark.parametrize("mode", ["bulge", "closed"])
+def test_ellipse_polyline_rejects_bulge_and_extra_closing_segment(mode):
+    d = ezdxf.new(); ellipse = d.modelspace().add_ellipse((0, 0), major_axis=(100, 0), ratio=0.4,
+                                                       start_param=0.2, end_param=2.9)
+    points, _ = t10.ellipse_polyline(ellipse)
+    actual = d.modelspace().add_lwpolyline(points)
+    expected = t10.expected_record(ellipse)
+    assert t10.geometry_error(expected, actual) < 0.01
+    if mode == "bulge":
+        actual.set_points([(x, y, 1 if i == 0 else 0) for i, (x, y) in enumerate(points)], format="xyb")
+    else:
+        actual.closed = True
+    assert t10.geometry_error(expected, actual) > 0.01
+
+
+def test_hatch_island_fill_mode_change_is_a_failure():
+    d = ezdxf.new(); h = d.modelspace().add_hatch()
+    h.paths.add_polyline_path([(0, 0), (20, 0), (20, 20), (0, 20)], flags=1)
+    h.paths.add_polyline_path([(5, 5), (5, 8), (8, 8), (8, 5)], flags=16)
+    expected = t10.expected_record(h)
+    h.dxf.hatch_style = 2
+    assert not t10.verify_geometry({"hatch": expected}, {"hatch": h})["passed"]
+    h.dxf.hatch_style = 0
+    h.paths[1].path_type_flags = 3  # 내부 경계를 외곽으로 표시하는 고장
+    assert not t10.verify_geometry({"hatch": expected}, {"hatch": h})["passed"]
+
+
+def test_baseline_verification_never_drops_unexpected_entities():
+    d = ezdxf.new(); e = d.modelspace().add_line((0, 0), (1, 2))
+    expected = {"core": t10.expected_record(e)}
+    assert t10.verify_baseline(expected, d)["passed"]
+    d.modelspace().add_line((10, 0), (11, 2))
+    result = t10.verify_baseline(expected, d)
+    assert not result["passed"] and result["actual_count"] == 2 and result["extra_paths"]
+
+
+@pytest.mark.parametrize("kind", ["circle", "arc"])
+def test_round_curve_center_and_radius_errors_accumulate(kind):
+    d = ezdxf.new()
+    e = (d.modelspace().add_circle((0, 0), 100) if kind == "circle" else
+         d.modelspace().add_arc((0, 0), 100, 10, 110))
+    expected = t10.expected_record(e)
+    e.dxf.center = (0.006, 0, 0); e.dxf.radius = 100.006
+    assert t10.geometry_error(expected, e) > 0.01
+
+
+def test_arc_sweep_cannot_change_short_arc_to_almost_full_circle():
+    d = ezdxf.new(); e = d.modelspace().add_arc((0, 0), 100, 359.999, 0.001)
+    expected = t10.expected_record(e)
+    e.dxf.start_angle, e.dxf.end_angle = 0.001, 359.999
+    assert t10.geometry_error(expected, e) > 1
+
+
 def test_reference_annotation_manifest_preserves_dimension_and_bubble_meaning():
     d = ezdxf.new(); m = d.modelspace()
     m.add_linear_dim(base=(13259, 36044), p1=(9659, 34244), p2=(13259, 34244),

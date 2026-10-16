@@ -1,0 +1,413 @@
+{
+  "status": "validated_review_fixed_ci_pending",
+  "standard": "heo-2026@2026.1",
+  "scale": 200,
+  "inputs": {
+    "source_file": {
+      "path": "D:\\worktable\\python\\cad mcp\\당산동 숙박시설.dwg",
+      "sha256": "3a77a39697ee713aa30bfee367d2bc810761fdf5f183952f6ee9d388a18f0a63",
+      "mtime_ns": 1791795767238927600,
+      "size": 213176
+    },
+    "reference_file": {
+      "path": "D:\\worktable\\python\\cad mcp\\CAD-MCP\\output\\당산동 숙박시설_평면도.dwg",
+      "sha256": "6b30a0f02977031ac2e71c1ff7a95c037f90dfe3069460dd3c6b156878562f3c",
+      "mtime_ns": 1791855699530694800,
+      "size": 326112
+    },
+    "source_drawing_id": "{3F026324-C1E2-4A14-9DAD-8FE9C5CCD397}",
+    "reference_drawing_id": "{3F026324-C1E2-4A14-9DAD-8FE9C5CCD397}"
+  },
+  "approved_manifest_sha256": "73b5e9682ccb9321dd2a073e8aa14651ac48e404d5d9c02e9b673b77adb712fb",
+  "counts": {
+    "baseline": 553,
+    "rooms": 17264,
+    "annotations": 102,
+    "final": 17919,
+    "A": 25,
+    "B": 2,
+    "reference_objects": 927,
+    "historical_objects": 943
+  },
+  "geometry_tolerance_mm": 0.01,
+  "copies": {
+    "A": {
+      "drawing_id": "{BD1E7721-4743-402E-8178-E1E32F5D9187}",
+      "read_and_baseline_check_seconds": 1.202608000006876,
+      "check_seconds": 3.3368744000035804,
+      "violations": 0,
+      "unchecked": [],
+      "room_geometry": {
+        "passed": true,
+        "expected_count": 17264,
+        "actual_count": 17264,
+        "max_error_mm": 0.0024826778514775586,
+        "failure_count": 0,
+        "failures": [],
+        "extra_paths": []
+      },
+      "annotations": {
+        "passed": true,
+        "expected_count": 102,
+        "actual_count": 102,
+        "max_error_mm": 4.903618255669579e-07,
+        "failure_count": 0,
+        "failures": [],
+        "extra_paths": []
+      },
+      "timings": {
+        "t10-rooms": {
+          "apply_seconds": 32.918915000002016,
+          "replay_seconds": 22.52855129999807
+        },
+        "t10-annotations": {
+          "apply_seconds": 25.230804300008458,
+          "replay_seconds": 7.2232299000024796
+        }
+      },
+      "dwg": {
+        "path": "C:\\arcaid\\work\\t10-acceptance-20261016-01\\test_real_dangsan_reproduction0\\dangsan-A.dwg",
+        "sha256": "e1094433b97871994f8592721719615cb8fd37a8c22c1c1ce358b491a2a16697",
+        "mtime_ns": 1792152476172805000,
+        "size": 1706914
+      }
+    },
+    "B": {
+      "drawing_id": "{9573E7F5-D85D-4A5E-8F5D-1D53EC0DF3D7}",
+      "read_and_baseline_check_seconds": 1.2806776000070386,
+      "check_seconds": 2.5641337999986717,
+      "violations": 0,
+      "unchecked": [],
+      "room_geometry": {
+        "passed": true,
+        "expected_count": 17264,
+        "actual_count": 17264,
+        "max_error_mm": 0.0024826778514775586,
+        "failure_count": 0,
+        "failures": [],
+        "extra_paths": []
+      },
+      "annotations": {
+        "passed": true,
+        "expected_count": 102,
+        "actual_count": 102,
+        "max_error_mm": 4.903618255669579e-07,
+        "failure_count": 0,
+        "failures": [],
+        "extra_paths": []
+      },
+      "timings": {
+        "t10-rooms": {
+          "apply_seconds": 34.5286128000007,
+          "replay_seconds": 22.24484179999854
+        },
+        "t10-annotations": {
+          "apply_seconds": 25.005160500004422,
+          "replay_seconds": 9.59747090000019
+        }
+      },
+      "dwg": {
+        "path": "C:\\arcaid\\work\\t10-acceptance-20261016-01\\test_real_dangsan_reproduction0\\dangsan-B.dwg",
+        "sha256": "6ac06674724fa8b2eb7c407fb7e33e0cd038531de2344c8d862dccc6a8362ee7",
+        "mtime_ns": 1792152602823084300,
+        "size": 1707162
+      }
+    }
+  },
+  "determinism": {
+    "equal": true,
+    "expected_count": 17919,
+    "actual_count": 17919,
+    "missing": 0,
+    "extra": 0,
+    "missing_examples": [],
+    "extra_examples": []
+  },
+  "conflicts": {
+    "different-input": {
+      "status": "conflict",
+      "decision": "conflict"
+    },
+    "partial-delete": {
+      "status": "conflict",
+      "decision": "conflict"
+    },
+    "manual-text": {
+      "status": "conflict",
+      "decision": "conflict"
+    },
+    "manual-layer": {
+      "status": "conflict",
+      "decision": "conflict"
+    },
+    "manual-bubble": {
+      "status": "conflict",
+      "decision": "conflict"
+    }
+  },
+  "recovery": {
+    "status": "recovered",
+    "summary": "적용 실패, 원래 상태로 되돌림(확인함): T10 시험용 Import 직후 실패"
+  },
+  "originals_unchanged": true,
+  "user_state_unchanged": true,
+  "mcp": {
+    "status": "passed",
+    "user_unchanged": true,
+    "originals_unchanged": true,
+    "calls": [
+      {
+        "tool": "list_drawings",
+        "seconds": 2.3460024000087287,
+        "status": true
+      },
+      {
+        "tool": "get_standard",
+        "seconds": 0.11655469999823254,
+        "status": true
+      },
+      {
+        "tool": "get_standard",
+        "seconds": 0.03607289999490604,
+        "status": true
+      },
+      {
+        "tool": "get_standard",
+        "seconds": 0.03829760001099203,
+        "status": true
+      },
+      {
+        "tool": "get_standard",
+        "seconds": 0.03894639998907223,
+        "status": true
+      },
+      {
+        "tool": "get_standard",
+        "seconds": 0.02145569999993313,
+        "status": true
+      },
+      {
+        "tool": "open_drawing",
+        "seconds": 7.9968612999946345,
+        "status": true
+      },
+      {
+        "tool": "save_drawing",
+        "seconds": 0.8925306000019191,
+        "status": true
+      },
+      {
+        "tool": "export_snapshot",
+        "seconds": 1.2801200999965658,
+        "status": "success"
+      },
+      {
+        "tool": "read_drawing",
+        "seconds": 0.5980218000040622,
+        "status": "success"
+      },
+      {
+        "tool": "draw_batch",
+        "seconds": 30.806810699999915,
+        "status": "success"
+      },
+      {
+        "tool": "draw_batch",
+        "seconds": 23.145986799994716,
+        "status": "success"
+      },
+      {
+        "tool": "check_standard",
+        "seconds": 7.49611449999793,
+        "status": "success"
+      },
+      {
+        "tool": "export_snapshot",
+        "seconds": 4.214477000001352,
+        "status": "success"
+      },
+      {
+        "tool": "draw_batch",
+        "seconds": 18.96112720000383,
+        "status": "success"
+      },
+      {
+        "tool": "draw_batch",
+        "seconds": 7.267517699991004,
+        "status": "success"
+      },
+      {
+        "tool": "save_drawing",
+        "seconds": 0.887206100000185,
+        "status": true
+      },
+      {
+        "tool": "close_drawing",
+        "seconds": 0.4322119999997085,
+        "status": true
+      },
+      {
+        "tool": "switch_drawing",
+        "seconds": 0.37227599999459926,
+        "status": true
+      },
+      {
+        "tool": "list_drawings",
+        "seconds": 0.24649089999729767,
+        "status": true
+      }
+    ]
+  },
+  "basic_tests": {
+    "passed": 271,
+    "seconds": 281.17
+  },
+  "cad_test": {
+    "passed": 1,
+    "seconds": 594.15
+  },
+  "strengthened_validation": {
+    "passed": true,
+    "verification_manifest_sha256": "ae08c1007aff576a6118aab8468ba088fef1adaec96dbf5468729032921ea59c",
+    "execution_manifest_sha256": "73b5e9682ccb9321dd2a073e8aa14651ac48e404d5d9c02e9b673b77adb712fb",
+    "artifacts_unchanged": true,
+    "copies": {
+      "A": {
+        "room_expectation": {
+          "passed": true,
+          "expected_count": 17264,
+          "actual_count": 17264,
+          "max_error_mm": 0.0024826778514775586,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "annotation_expectation": {
+          "passed": true,
+          "expected_count": 102,
+          "actual_count": 102,
+          "max_error_mm": 4.903618255669579e-07,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "standard": {
+          "violations": 0,
+          "unchecked": []
+        }
+      },
+      "B": {
+        "room_expectation": {
+          "passed": true,
+          "expected_count": 17264,
+          "actual_count": 17264,
+          "max_error_mm": 0.0024826778514775586,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "annotation_expectation": {
+          "passed": true,
+          "expected_count": 102,
+          "actual_count": 102,
+          "max_error_mm": 4.903618255669579e-07,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "standard": {
+          "violations": 0,
+          "unchecked": []
+        }
+      },
+      "mcp": {
+        "room_expectation": {
+          "passed": true,
+          "expected_count": 17264,
+          "actual_count": 17264,
+          "max_error_mm": 0.0024826778514775586,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "annotation_expectation": {
+          "passed": true,
+          "expected_count": 102,
+          "actual_count": 102,
+          "max_error_mm": 4.903618255669579e-07,
+          "failure_count": 0,
+          "failures": [],
+          "extra_paths": []
+        },
+        "standard": {
+          "violations": 0,
+          "unchecked": []
+        }
+      }
+    },
+    "baseline_dxf": {
+      "passed": true,
+      "expected_count": 553,
+      "actual_count": 553,
+      "max_error_mm": 1.1951134913536273e-05,
+      "failure_count": 0,
+      "failures": [],
+      "extra_paths": []
+    },
+    "baseline_dwg_export": {
+      "passed": true,
+      "expected_count": 553,
+      "actual_count": 553,
+      "max_error_mm": 1.1951138683659459e-05,
+      "failure_count": 0,
+      "failures": [],
+      "extra_paths": []
+    },
+    "originals_unchanged": true,
+    "protection": {
+      "different-input": {
+        "status": "conflict",
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true
+      },
+      "partial-delete": {
+        "status": "conflict",
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true
+      },
+      "manual-text": {
+        "status": "conflict",
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true
+      },
+      "manual-layer": {
+        "status": "conflict",
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true
+      },
+      "manual-bubble": {
+        "status": "conflict",
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true
+      },
+      "recovery": {
+        "status": "recovered",
+        "handles_before": 553,
+        "handles_after": 553,
+        "handles_unchanged": true,
+        "geometry_properties_unchanged": true,
+        "tagged_objects_after": 0
+      }
+    }
+  },
+  "review": {
+    "critical": 0,
+    "important": 3,
+    "minor": 0,
+    "fixed": 3
+  },
+  "basic_tests_after_review": {
+    "passed": 280,
+    "seconds": 269.18
+  }
+}
