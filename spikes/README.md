@@ -1,6 +1,6 @@
-# T0 사전 검증 실험 (제품 코드 아님)
+# T0·T6·T7·B0 사전 검증 실험 (제품 코드 아님)
 
-0단계 실행 계획 T0의 실험 스크립트다. 결과는 `docs/spike-report.md`에 있다. 여기 코드는 제품 코드로 옮기지 않는다.
+0단계 실행 계획 T0·T6·T7과 0-B 실행 계획 B0의 실험 스크립트다. 결과는 `docs/spike-report.md`에 있다. 여기 코드는 제품 코드로 옮기지 않는다.
 
 ## 실행
 
@@ -40,3 +40,4 @@ $env:PYTHONIOENCODING = "utf-8"
 | `e7_xdata.py` | XDATA 조회 속도, 최소 DXF 삽입 속도 |
 | `e8_units_paths.py`, `_lisp_path_probe.py` | 단위, 한글·공백 경로 |
 | `e9_plot.py`, `e9b_plot_variants.py`, `e9_compare.py` | PDF 출력, 출력 범위 방식, 손 출력 비교 |
+| `b0_probe.py` | 0-B 사전 검증(E10~E17, saved 관찰) |
