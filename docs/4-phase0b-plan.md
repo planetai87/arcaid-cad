@@ -104,12 +104,16 @@ GstarCAD에서 한다. 실험 코드는 `spikes/b0_*.py`, 결과는 `docs/spike-
 - **관찰**: T9·T10에서 본 Export 뒤 saved True→False 경고의 원인.
 - **완료 기준**: 항목별 결과와 결정(상한, 삭제 포함 여부, 적용 기록 방식, 거부 규칙)을 기록한다. E10이 실패하면 삭제를 빼는 결정 문서 변경안을 사용자에게 보인다.
 
+완료: 2026-10-17([PR #25](https://github.com/planetai87/arcaid-cad/pull/25)). 결과는 `docs/spike-report.md`의 'B0 사전 확인'에 있다. 삭제 복귀 통과, 1,000개까지 모든 작업 120초 안, UNDO는 XRECORD를 되돌리지 않음, saved 경고 원인은 COM Export.
+
 ### B1 · 변경 명세와 판정
 
 엔진 작업이다(`src/engine/changes.py`, CAD 불필요).
 
 - **내용**: 명세 읽기·검증(`CHG_*`), 고르기 전개, 변경 판정용 상태, before·after 계산, 적용 기록 읽기, 판정표 구현.
 - **테스트**: 판정표의 모든 칸. 정렬 문자 두 기준점·속성 위치 이동, 0.009/0.011mm 경계. 같은 객체 중복 지정, 지원 밖·반응자 객체 거부, 없는 레이어·속성 태그, 상한 초과. MCP·COM 모듈을 불러오지 않는다.
+
+완료: 2026-10-17([PR #27](https://github.com/planetai87/arcaid-cad/pull/27)). `src/engine/changes.py`와 시험. B0 결과(상한 1,000개, 정렬점 비교, 트루컬러의 ACI는 파생값)를 반영했고, GstarCAD가 쓴 적용 기록을 읽는 시험을 포함한다. 전체 시험 419개 통과.
 
 ### B2 · apply_changes 보호된 경로
 
