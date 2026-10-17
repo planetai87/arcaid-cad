@@ -11,6 +11,7 @@
 | 로드맵 | `docs/1-roadmap.md` | https://claude.ai/artifact/GFbKbZVqSELL7Nu93KFhqh |
 | 구조 결정(D1~D9) | `docs/2-decisions.md` | https://claude.ai/artifact/9zCNeUvqjGNbgLFoy84oYc |
 | 0단계 실행 계획(T0~T10) | `docs/3-phase0-plan.md` | https://claude.ai/artifact/K4wE78SmhsBUaxn5xexHd4 |
+| 0-B 실행 계획(B0~B6) | `docs/4-phase0b-plan.md` | https://claude.ai/artifact/YUiX4XGEB3nipxPFUL4GXB |
 | 사전 검증 결과(T0) | `docs/spike-report.md` | 저장소가 원본 |
 
 - 계획과 다르게 구현하거나 결정을 바꿔야 하면 코드보다 문서를 먼저 고친다. 바꿀 내용을 사용자에게 먼저 보여 주고, 확인되면 원본과 사본을 함께 고친다.
