@@ -2,7 +2,7 @@
 
 계획: [2026-10-16-t10-dangsan-acceptance.md](plans/2026-10-16-t10-dangsan-acceptance.md)
 
-상태: **T10 · GstarCAD 2021의 0-A 통과, 2026-10-16.** [PR #22](https://github.com/planetai87/arcaid-cad/pull/22)은 T9 PR #21 기반이며 병합 전이다. 공개 API·프로파일 변경 없음. BricsCAD 호환·0-B는 후속 작업이다.
+상태: **T10 · GstarCAD 2021의 0-A 통과, 2026-10-16.** [PR #21](https://github.com/planetai87/arcaid-cad/pull/21)·[PR #22](https://github.com/planetai87/arcaid-cad/pull/22)는 2026-10-17 main에 병합했다. 공개 API·프로파일 변경 없음. BricsCAD 호환·0-B는 후속 작업이다.
 
 - 2026-10-16: T9 `3af52ec`에서 `t10-dangsan-acceptance` 생성. PR #21은 open/unmerged이므로 T9 기반으로 진행.
 - 기존 `AGENTS.md`는 사용자의 미추적 파일로 보존한다.
@@ -81,4 +81,6 @@ GstarCAD 2021의 독립 사본 A/B에서 **각각 17,919개 = 기준 553 + 객�
 - 네이티브 CAD 캡처가 현재 화면 배율에서 전체 도면을 담지 못해 전체 검토용 벡터 미리보기를 함께 제공했다. 원래 캡처도 보관한다.
 - 표준 검사 범위 밖: 블록 내부 정의·의미적 레이어 적합성, 해치 패턴/CTB, 치수·버블 간격의 자동 판정, 설계 적정성, 레이아웃·Xref 내부. 형상·축·주석 독립 대조는 별도의 통과 근거다.
 - 현재 비교본 927개, 이전 기록 943개: 16개 차이. 상세를 기본 객체로 전개하므로 최종 객체 수는 이 숫자와 직접 비교하지 않는다.
-- Claude Docs 원본은 편집 연결이 없어 로컬 계획 사본만 갱신했다.
+- 작도 명세는 비교본(10월 12일 결과)에서 준비 도구가 변환해 만들었다. 이 시험은 새 툴 경로(명세 → draw_batch → check_standard)가 기준층 전체를 보호된 경로로 재현함을 보인다. AI가 스킬만으로 27실 명세를 직접 쓰는 과정은 검증하지 않았다(합성 평면은 T9 리허설).
+- 병합 전 재확인(2026-10-17, Claude): 강화 비교기로 실제 CAD 시험을 처음부터 다시 실행해 1 passed(563초). 17,919개, A/B 일치, 충돌 5종 conflict, 실패 recovered, 원본·사용자 상태 보존. 기본 전체 280 passed, T9 리허설 CAD 2 passed.
+- Claude Docs 원본은 병합 뒤 같은 내용으로 갱신했다(2026-10-17).

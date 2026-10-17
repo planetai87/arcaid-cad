@@ -24,7 +24,7 @@
 - `src/cad_controller.py`: COM 계층. MCP만 쓴다. CAD마다 다른 동작은 여기서만 나눈다.
 - `src/colors.py`: 색 이름 해석. 중국어 색 이름은 기능 키워드라 번역하지 않는다.
 - `spikes/`: 사전 검증(T0) 실험 코드. 제품 코드로 옮기지 않는다.
-- `skills/cad-drawing-standard/`: 회사 도면 표준 스킬의 원본.
+- `skills/cad-drawing-standard/`: 회사 도면 표준 스킬의 원본. claude.ai 업로드 zip은 `tools/skills/package_skill.py -o <zip>`로 만든다(템플릿·상대 링크·zip 무결성 확인).
 - `src/snapshot_service.py`: 스냅샷 조율(MCP 쪽). CAD 내보내기(`cad_controller.export_dxf`·`export_closed_file`) + 엔진 메타(`engine/snapshot.py`). 도면 판독은 `engine/read.py`.
 - `src/engine/check.py`: 표준 검사(`check_standard`). 위반 코드·고칠 목록의 기준. 검사 항목을 바꾸면 `tests/engine/check_cases.py`의 시험 도면과 골든 파일(`tests/engine/golden/`, `ARCAID_UPDATE_GOLDEN=1`로 다시 만든 뒤 한 줄씩 대조)을 함께 고친다.
 - `src/engine/spec.py`·`layout.py`·`write.py`: 객체 명세(JSON) → 검증 → 배치 규칙 전개 → R2013 DXF(`build_dxf`). 명세 형식의 원본은 `spec.py` docstring. 대칭·회전은 `layout.py`가 직접 계산한다(ezdxf `transform()`은 대칭을 OCS로 표현해 읽기·검사가 위치를 잘못 읽음). 생성 DXF는 쓰는 정의만 담고 저장 뒤 `check_standard`로 자체 검사한다.
@@ -33,7 +33,8 @@
 - `src/egress.py` + `config/egress.yaml`: MCP·CLI 공용 외부 반환 필터(D8, MCP·COM 모듈 금지). `egress.load_policy`는 인자(cwd 기준) → 환경 변수 → 설정 → 기본 정책(나머지는 저장소 기준) 순으로 찾는다. 새 결과 필드가 경로·문자·속성이면 `fields`에, 상태·코드처럼 늘 보낼 것이면 `always`에 넣는다. 정책을 바꿔도 출력 스키마가 깨지지 않게 값만 같은 타입으로 바꾼다.
 - 새 저수준(보호되지 않는) 툴을 만들면 `server.py`의 `UNPROTECTED_TOOLS`와 `tests/mcp/test_tool_descriptions.py`에 넣는다.
 - DXF 사본은 COM `Export`로만 만든다. `save_drawing`으로 DXF를 저장하지 않는다(열린 문서가 DXF로 바뀜). DXFOUT도 쓰지 않는다(미저장 표시를 지움).
-- `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다(`tools/standards/gen_references.py`), 손으로 고치지 않는다.
+- `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다. 손으로 고치지 않고 `python tools/standards/gen_references.py --write`로 만든 뒤 `--check`로 확인한다.
+- `tools/acceptance/t10_dangsan.py`: T10 당산동 통과 시험의 로컬 준비·비교 도구(고정 입력 전용).
 - 템플릿 DWG를 고치면 `tools/template/export_template_dxf.py`(GstarCAD 필요)로 `template.dxf`와 해시를 다시 만든다. 안 하면 엔진 테스트가 실패한다.
 
 ## 규칙
@@ -43,6 +44,9 @@
 - CAD 시험은 사용자의 실제 도면이 아닌 새 시험 도면에서만 한다. 시험 작업 폴더는 `C:\arcaid\work`(한글·공백 없는 로컬 경로).
 - 기준 CAD는 GstarCAD 2021. BricsCAD는 호환 확인, AutoCAD·ZWCAD는 미검증.
 - 작업 하나 = 브랜치 하나 = PR 하나.
+- 생성 도면·시험 로그·로컬 증거는 git이 무시하는 `output/`에 둔다. 실무 DWG와 전체 명세는 커밋하지 않는다.
+- 커밋 메시지는 `범위: 변경`을 간결한 한국어로 쓴다(예: `문서: T8 완료 반영`, `시험: …`). PR에는 변경과 검증 결과를 적고, 화면이 바뀌면 CAD 캡처를 붙인다.
+- `AGENTS.md`는 Codex용 요약 사본이다. 이 파일의 규칙을 바꾸면 함께 고친다.
 
 ## 테스트
 
@@ -51,7 +55,7 @@
 $env:ARCAID_CAD_TESTS="1"; .venv\Scripts\python.exe -m pytest tests/cad   # CAD 연동(GstarCAD 실행 중)
 ```
 
-- `tests/engine/`: CAD 없이 도는 엔진 테스트. GitHub Actions(Linux)에서 매 커밋 돈다.
+- `tests/engine/`: CAD 없이 도는 엔진 테스트. GitHub Actions에서 매 커밋 돈다(Ubuntu Python 3.10·3.12는 엔진·CLI 시험과 CLI 실행 단계, Windows Python 3.12는 `tests/mcp`·`tests/cli`·`tests/engine`).
 - `tests/cli/`: CAD 없이 하위 프로세스로 CLI를 실행한다(Linux·Windows). 결과 동일성·파일 쓰기·필터·UTF-8·종료 코드를 확인한다.
 - `tests/mcp/`: Windows 전용(pywin32), CAD 불필요. MCP 툴 목록 고정 테스트 — 툴을 더하거나 빼면 여기도 고친다.
 - `tests/cad/`: 실행 중인 CAD가 필요하다. `ARCAID_CAD_TESTS=1`일 때만 모은다.
