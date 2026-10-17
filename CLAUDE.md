@@ -30,6 +30,7 @@
 - `src/engine/check.py`: 표준 검사(`check_standard`). 위반 코드·고칠 목록의 기준. 검사 항목을 바꾸면 `tests/engine/check_cases.py`의 시험 도면과 골든 파일(`tests/engine/golden/`, `ARCAID_UPDATE_GOLDEN=1`로 다시 만든 뒤 한 줄씩 대조)을 함께 고친다.
 - `src/engine/spec.py`·`layout.py`·`write.py`: 객체 명세(JSON) → 검증 → 배치 규칙 전개 → R2013 DXF(`build_dxf`). 명세 형식의 원본은 `spec.py` docstring. 대칭·회전은 `layout.py`가 직접 계산한다(ezdxf `transform()`은 대칭을 OCS로 표현해 읽기·검사가 위치를 잘못 읽음). 생성 DXF는 쓰는 정의만 담고 저장 뒤 `check_standard`로 자체 검사한다.
 - `src/engine/state.py`·`apply.py`: 태그·기준 상태와 보호된 적용 판정(재실행·정의 충돌·넣은 결과·복귀·고칠 대상). `src/apply_service.py`: `draw_batch`·`check_standard(fix)` 조율(COM 스레드). Undo 묶음 안에서는 COM 호출만 쓴다(명령·LISP·자체 묶음을 여는 `draw_*` 금지, T0 E6). 복귀는 스냅샷 핸들 집합으로 확인한다.
+- `src/engine/changes.py`: 0-B 변경 명세(`apply_changes`)·대상 확정·before/after·판정·적용 기록 형식. 형식의 원본은 docstring. 판정 비교는 반올림 없는 `change_state`로 하고 0-A 태그의 `state_hash`는 바꾸지 않는다. 적용 기록은 B2가 Undo 묶음 밖에서 마지막에 쓴다(B0 E13).
 - `src/tools_service.py`: `new_from_template`·`get_selection`·`plot` 조율. `plot`은 사용자 도면 레이아웃을 바꾸지 않도록 Export한 DXF 사본에서 출력한다(원래 출력기·CTB가 이 PC에 없으면 되돌릴 수 없음, T7 사전 확인). `src/engine/sheet.py`: 도곽 → 출력 창·k.
 - `src/egress.py` + `config/egress.yaml`: MCP·CLI 공용 외부 반환 필터(D8, MCP·COM 모듈 금지). `egress.load_policy`는 인자(cwd 기준) → 환경 변수 → 설정 → 기본 정책(나머지는 저장소 기준) 순으로 찾는다. 새 결과 필드가 경로·문자·속성이면 `fields`에, 상태·코드처럼 늘 보낼 것이면 `always`에 넣는다. 정책을 바꿔도 출력 스키마가 깨지지 않게 값만 같은 타입으로 바꾼다.
 - 새 저수준(보호되지 않는) 툴을 만들면 `server.py`의 `UNPROTECTED_TOOLS`와 `tests/mcp/test_tool_descriptions.py`에 넣는다.
