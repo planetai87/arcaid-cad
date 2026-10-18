@@ -10,7 +10,7 @@
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import ezdxf
 from pydantic import BaseModel, ConfigDict, Field
@@ -104,6 +104,7 @@ class _Collector:
     def __init__(self):
         self.items: List[Tuple[Violation, Optional[str], Any]] = []   # (위반, 고칠 속성, 고칠 값)
         self.unchecked: Counter = Counter()
+        self.unchecked_handles: Dict[Tuple[str, str], Optional[Set[str]]] = {}
 
     def add(self, code: str, message: str, e=None, current: Any = None, expected: Any = None,
             fix: Optional[str] = None, fix_value: Any = None):
@@ -112,8 +113,15 @@ class _Collector:
                       fixable=fix is not None)
         self.items.append((v, fix, expected if fix_value is None else fix_value))
 
-    def skip(self, item: str, reason: str):
-        self.unchecked[(item, reason)] += 1
+    def skip(self, item: str, reason: str, e=None):
+        key = (item, reason)
+        self.unchecked[key] += 1
+        if e is None:
+            self.unchecked_handles[key] = None
+        else:
+            handles = self.unchecked_handles.setdefault(key, set())
+            if handles is not None:
+                handles.add(e.dxf.handle)
 
 
 def _allowed_heights(std: Standard, s: float) -> Dict[str, List[float]]:
@@ -158,18 +166,19 @@ def _check_text(c: _Collector, std: Standard, e, layer_name: str, heights: Dict[
     if style.casefold() != want.casefold():
         c.add("TEXT_STYLE", "문자 스타일이 표준이 아님", e, style, want, "style")
     if not mm:
+        # 단위 문제는 특정 객체가 아닌 도면 전체의 검사 전제다.
         c.skip("문자 높이", "도면 단위가 mm가 아님")
         return
     if e.dxftype() == "MTEXT":
         if "\\H" in e.text:
-            c.skip("서식 코드로 높이를 바꾼 MTEXT", "문자 안 높이 서식(\\H)은 읽지 않음")
+            c.skip("서식 코드로 높이를 바꾼 MTEXT", "문자 안 높이 서식(\\H)은 읽지 않음", e)
             return
         height = e.dxf.char_height
     else:
         height = e.dxf.height
     candidates = heights.get(layer_name.casefold())
     if not candidates:
-        c.skip("높이 규칙이 없는 레이어의 문자", "text.yaml에 그 레이어의 문자 높이가 없음")
+        c.skip("높이 규칙이 없는 레이어의 문자", "text.yaml에 그 레이어의 문자 높이가 없음", e)
     elif not any(_close(height, h, REL_TOL) for h in candidates):
         if len(candidates) == 1:
             c.add("TEXT_HEIGHT", f"{layer_name} 문자 높이가 표준과 다름", e, _num(height), candidates[0], "height")
@@ -203,7 +212,7 @@ def _check_dimension(c: _Collector, std: Standard, e, layer_name: str, k: int, a
         overrides = dict(override.dimstyle_attribs)
         dimscale = override.get("dimscale")
     except Exception:  # noqa: BLE001
-        c.skip("재정의를 읽지 못한 치수", "치수 스타일 재정의(XDATA)를 읽지 못함")
+        c.skip("재정의를 읽지 못한 치수", "치수 스타일 재정의(XDATA)를 읽지 못함", e)
         return
     if not annotative:
         expected = k * std.profile.scale.dimscale_per_k
@@ -269,11 +278,15 @@ def _truncate(result: CheckResult, limit: int) -> CheckResult:
 
 
 def check_standard(dxf_path: Path, std: Standard, k: Optional[int] = None, snapshot: Optional[SnapshotMeta] = None,
-                   full_out: Optional[Path] = None, limit: Optional[int] = None) -> CheckResult:
+                   full_out: Optional[Path] = None, limit: Optional[int] = None, *,
+                   _unchecked_handles: Optional[Dict[Tuple[str, str], Optional[Set[str]]]] = None) -> CheckResult:
     """DXF 사본을 표준과 대조한다. k = A3 축척 분모(없으면 기본값으로 가정)
 
     limit: 코드별로 돌려줄 위반 수(None = 전부). full_out에는 항상 전부를 쓴다.
+    _unchecked_handles: 내부 호출 전용 미검사 핸들 출력(None 값은 전역 항목). 공개 결과에는 넣지 않는다.
     """
+    if _unchecked_handles is not None:
+        _unchecked_handles.clear()
     dxf_path = Path(dxf_path)
     scope = Scope(target=str(dxf_path), supported=["도면 단위·LTSCALE", "정의(레이어·문자 스타일·치수 스타일·표준 블록)",
                                                    "레이어", "ByLayer 색·선종류·선굵기", "문자 스타일·높이",
@@ -345,13 +358,15 @@ def check_standard(dxf_path: Path, std: Standard, k: Optional[int] = None, snaps
             counts["문자"] += 1
             _check_text(c, std, e, layer_name, heights, mm)
         elif t in UNREAD_TEXT_TYPES:
-            c.skip(f"{t} 문자", "0단계는 TEXT·MTEXT 문자만 검사")
+            c.skip(f"{t} 문자", "0단계는 TEXT·MTEXT 문자만 검사", e)
 
     violations = sorted((v for v, _, _ in c.items), key=_sort_key)
     order = {id(v): i for i, v in enumerate(violations)}
     items = sorted(c.items, key=lambda it: order[id(it[0])])
     fixes = _fixes(items)
     unchecked = [Unchecked(item=item, reason=reason, count=n) for (item, reason), n in sorted(c.unchecked.items())]
+    if _unchecked_handles is not None:
+        _unchecked_handles.update(c.unchecked_handles)
     paperspace = sum(len(layout) for layout in doc.layouts if not layout.is_modelspace)
     out_of_scope = [
         OutOfScope(item="레이아웃", reason=f"종이 공간 객체 {paperspace}개는 검사하지 않음"),

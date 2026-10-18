@@ -8,6 +8,7 @@ import os
 from collections import Counter
 from pathlib import Path
 
+import ezdxf
 import pytest
 
 from check_cases import CASES, clean
@@ -125,3 +126,30 @@ def test_unreadable_file_fails(tmp_path, std):
     bad.write_text("not a dxf", encoding="utf-8")
     r = check_standard(bad, std, k=100)
     assert r.status is Status.FAILED and not r.is_complete()
+
+
+def test_unchecked_handles_are_internal_and_keep_public_result(tmp_path, std):
+    path, labels = clean(tmp_path / "unchecked.dxf")
+    doc = ezdxf.readfile(path)
+    texts = [doc.modelspace().add_text("미검사", dxfattribs={"layer": "0"}) for _ in range(2)]
+    doc.saveas(path)
+    handles = {}
+    public = check_standard(path, std, k=100)
+    internal = check_standard(path, std, k=100, _unchecked_handles=handles)
+    assert internal.model_dump(mode="json") == public.model_dump(mode="json")
+    (u,) = internal.unchecked
+    assert u.item == "높이 규칙이 없는 레이어의 문자" and u.count == 2
+    key = (u.item, u.reason)
+    assert handles[key] == {e.dxf.handle for e in texts}
+    assert len(handles[key] & {texts[0].dxf.handle}) == 1
+    assert not handles[key] & {labels["room"]}
+    assert set(public.model_dump()["unchecked"][0]) == {"item", "reason", "count"}
+
+
+def test_units_unchecked_is_global_in_internal_handles(tmp_path, std):
+    path, _ = clean(tmp_path / "global.dxf", insunits=6)
+    handles = {}
+    r = check_standard(path, std, k=100, _unchecked_handles=handles)
+    (u,) = r.unchecked
+    assert handles[(u.item, u.reason)] is None
+    assert u.count == 2

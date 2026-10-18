@@ -106,7 +106,7 @@ oid와 의미 path는 다르다. [합성 작성 예제](examples/synthetic-plan.
 
 기록은 적용·사후 확인이 끝난 뒤 Undo 묶음 밖에서 마지막에 쓴다. 기록 쓰기·재읽기 실패도 `unverified`다. 복귀 또는 적용 기록을 확인하지 못했으므로 자동 재전송·저장 등 후속 변경을 중단한다. 사용자 확인·명시적 재개 뒤에만 `resume_after_unverified=true`를 쓴다.
 
-`applied`는 동작별 개수다. `new_violations`는 변경 대상의 위반 차분이며 전체 도면 검사가 아니다. `unchecked`가 있으면 완료로 보고하지 않는다. `warnings`와 `ids.request_id`(op)·도면·적용 직전 스냅샷을 보고한다. 원래 기준 ID도 구분한다. 성공 뒤 `check_standard(scale=k)` → DWG 저장·보고는 [스킬 절차](../SKILL.md)를 따른다.
+`applied`는 동작별 개수다. `unchecked`는 변경 대상(종속 속성 포함)에 해당하는 미검사 항목만 담고(전역 항목·검사 실패·잘림은 유지), `new_violations`는 미검사가 있어도 검사한 규칙의 대상 위반 차분을 담으며 전체 도면 검사가 아니다. `unchecked`가 있으면 완료로 보고하지 않는다. `warnings`와 `ids.request_id`(op)·도면·적용 직전 스냅샷을 보고한다. 원래 기준 ID도 구분한다. 성공 뒤 `check_standard(scale=k)` → DWG 저장·보고는 [스킬 절차](../SKILL.md)를 따른다.
 
 ## 변경 예제 실행
 
