@@ -1,0 +1,230 @@
+{
+  "status": "passed",
+  "cad_executed": true,
+  "mcp_executed": true,
+  "manifest_sha256": "72781c3b74451fe7110ddd1a2d770f6624b1dd312fc0c0644504ef319c27c58f",
+  "input_sha256": {
+    "engine-A-snapshot.dxf": "82d4abfe0554aabf4b5224c466854f54cd3b2e29f589e4ba75fcda778fe39eaf",
+    "engine-A-snapshot.json": "1181ef227cec000f8f78bacde498c28e200576f80610db957ffa8581a34aeec9",
+    "human-source-snapshot.dxf": "19c07023127e9e1ba41b60af9d413878630089b4e797529a4aa46846bd15009b",
+    "t10-rooms.json": "da71b2486b8e8b61c9a620c2ffaa619b2c62623aa35730394381cc012864d386",
+    "t10-annotations.json": "4934e63902de9eb15644123f8127a1214a22f3fe77b612a566b14bf39505c2ac",
+    "engine-dwg": "e1094433b97871994f8592721719615cb8fd37a8c22c1c1ce358b491a2a16697"
+  },
+  "engine_counts": {
+    "modelspace": 17919,
+    "tagged": 17366
+  },
+  "selection": {
+    "move_room": 0,
+    "edit_room": 1,
+    "delta": [
+      55500.0,
+      0.0
+    ],
+    "move_bounds": [
+      [
+        9759.037495,
+        27360.827655,
+        0.0
+      ],
+      [
+        13159.037495,
+        33443.523655,
+        0.0
+      ]
+    ],
+    "edit_bounds": [
+      [
+        9759.037495,
+        19543.827655,
+        0.0
+      ],
+      [
+        13159.037495,
+        25626.523655,
+        0.0
+      ]
+    ],
+    "deletes": [
+      {
+        "path": "room/1/shape3[0]/",
+        "expected": 43
+      },
+      {
+        "path": "room/1/shape5[0]/",
+        "expected": 16
+      }
+    ],
+    "text": {
+      "oid": "t10-annotations:text-401E",
+      "old": "객실(A)",
+      "new": "객실(B5-1)"
+    },
+    "bubble": {
+      "oid": "t10-annotations:X1",
+      "tag": "축열",
+      "old": "X1",
+      "new": "X1-B5"
+    },
+    "human": [
+      {
+        "id": "human-lwpolyline",
+        "select": {
+          "handles": [
+            "20F2"
+          ]
+        },
+        "action": "move",
+        "delta": [
+          600.0,
+          -300.0
+        ]
+      },
+      {
+        "id": "human-line",
+        "select": {
+          "handles": [
+            "20F4"
+          ]
+        },
+        "action": "delete"
+      },
+      {
+        "id": "human-text",
+        "select": {
+          "handles": [
+            "2170"
+          ]
+        },
+        "action": "set",
+        "props": {
+          "text": "ST B5"
+        }
+      }
+    ]
+  },
+  "requests": [
+    {
+      "op": "b5-room-move",
+      "count": 637,
+      "kinds": {
+        "ARC": 162,
+        "CIRCLE": 5,
+        "LINE": 400,
+        "LWPOLYLINE": 70
+      },
+      "layers": {
+        "DOR": 22,
+        "FUR": 47,
+        "TOL": 550,
+        "WAL1": 2,
+        "WIN": 16
+      }
+    },
+    {
+      "op": "b5-annot-edit",
+      "count": 61,
+      "kinds": {
+        "INSERT": 1,
+        "LINE": 9,
+        "LWPOLYLINE": 50,
+        "TEXT": 1
+      },
+      "layers": {
+        "DIM": 1,
+        "FUR": 43,
+        "ROM": 1,
+        "WIN": 16
+      }
+    },
+    {
+      "op": "b5-human-edit",
+      "count": 3,
+      "kinds": {
+        "LINE": 1,
+        "LWPOLYLINE": 1,
+        "TEXT": 1
+      },
+      "layers": {
+        "A-OPEN-ABOV": 1,
+        "A-ROOM": 1,
+        "G-SITE": 1
+      }
+    }
+  ],
+  "date": "2026-10-18",
+  "results": {
+    "cad": {
+      "platform": "GstarCAD 2021",
+      "steps": 657,
+      "seconds": 2750.22,
+      "success_apply": 30,
+      "skip": 6,
+      "conflict": 10,
+      "recovered": 11,
+      "apply_seconds_copy_A": {
+        "b5-room-move": 55.3,
+        "b5-annot-edit": 31.1,
+        "b5-human-edit": 6.9
+      },
+      "replay_seconds_copy_A": {
+        "b5-room-move": 8.7,
+        "b5-annot-edit": 9.0,
+        "b5-human-edit": 2.1
+      },
+      "exports": {
+        "count": 160,
+        "min": 0.6,
+        "max": 6.3,
+        "mean": 2.6
+      },
+      "human_unchecked": [
+        {
+          "item": "높이 규칙이 없는 레이어의 문자",
+          "count": 1
+        }
+      ],
+      "save_reopen_float_tolerated": {
+        "engine": 0,
+        "human": 2,
+        "max_abs_diff": 4.0245584642661925e-16
+      },
+      "a_b_equal": {
+        "engine": true,
+        "human": true
+      },
+      "user_unchanged": true,
+      "originals_unchanged": true
+    },
+    "mcp_stdio": {
+      "steps": 86,
+      "tool_seconds": 190.7,
+      "apply_seconds": {
+        "b5-room-move": 54.9,
+        "b5-annot-edit": 31.0,
+        "b5-human-edit": 6.0
+      },
+      "replay_skip": true,
+      "reopen_equal": true,
+      "user_unchanged": true,
+      "originals_unchanged": true
+    },
+    "runs": [
+      {
+        "run": 1,
+        "result": "failed",
+        "cause": "apply_changes unchecked가 도면 전체 미검사를 보고(PR #37로 수정)"
+      },
+      {
+        "run": 2,
+        "result": "failed",
+        "cause": "DWG 왕복 실수 끝자리(판정기 허용오차 추가)"
+      },
+      {
+        "run": 3,
+        "result": "passed"
+      }
+    ]
+  }
+}
