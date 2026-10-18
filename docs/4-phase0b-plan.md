@@ -124,6 +124,8 @@ MCP 작업이다(`src/apply_service.py`, `src/cad_controller.py`).
 - **0-A 보강**: 모든 unverified 반환(draw_batch·fix의 사후 스냅샷 실패 포함)에서 GUARD를 건다. 재실행 충돌 문구의 '새 op로 보내거나' 안내를 지운다.
 - **테스트**(`tests/cad`): 실패 주입 시 삭제를 포함해 recovered, 이전 작업 보존. 첫 호출 실패 때 UNDO를 보내지 않음. 적용 전 사람 수정이 끼어들면 conflict. 재전송은 skip, 같은 op·다른 입력은 conflict. 잠김·동결 레이어 거부. 모든 확인 불가 경로에서 GUARD(draw_batch·fix 회귀 포함).
 
+완료: 2026-10-18([PR #29](https://github.com/planetai87/arcaid-cad/pull/29)). CAD 시험 33개 통과. GstarCAD 추가 관찰 3건(SEQEND 재번호, INSERT 태그 UNDO 미복귀, GetXRecordData 출력 인자)은 spike-report에 기록.
+
 ### B3 · MCP 툴과 저수준 툴 보호
 
 `src/server.py`, `config/egress.yaml`.
