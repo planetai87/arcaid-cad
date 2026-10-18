@@ -58,7 +58,7 @@ class ApplyMeta(_Model):
 
 
 class ApplyResult(EngineResult):
-    """draw_batch·check_standard(fix) 결과: D2 공통 항목 + 적용 정보"""
+    """draw_batch·check_standard(fix)·apply_changes 결과: D2 공통 항목 + 적용 정보"""
     meta: Optional[ApplyMeta] = None
     new_violations: Dict[str, int] = Field(default_factory=dict, description="이번 적용으로 생긴 위반(코드별)")
     remaining_fixes: Dict[str, int] = Field(default_factory=dict, description="고치지 않고 남긴 고칠 목록(속성별)")
@@ -94,7 +94,7 @@ def judge_rerun(doc, op: str, spec_hash: str, expected_oids: Set[str]) -> RerunD
     entities = [e for es in found.values() for e in es]
     other = sorted({oid for oid, es in found.items() for e in es if arcaid_tags(e).get("in") != spec_hash})
     if other:
-        return RerunDecision(action="conflict", reason="같은 op에 다른 입력(명세가 바뀜). 새 op로 보내거나 이전 객체를 정리할 것",
+        return RerunDecision(action="conflict", reason="같은 op에 다른 입력(명세가 바뀜). 이전 적용과 요청을 확인할 것",
                              details=_cut(other))
     missing, extra = sorted(expected_oids - set(found)), sorted(set(found) - expected_oids)
     if missing or extra:

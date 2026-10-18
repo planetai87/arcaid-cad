@@ -1612,13 +1612,15 @@ class CADController:
                 "full_name": str(self._safe_attr(doc, "FullName") or ""),
                 "saved": None if saved is None else bool(saved)}
 
-    def export_dxf(self, out_no_ext: str) -> Dict[str, Any]:
+    def export_dxf(self, out_no_ext: str, raise_on_error: bool = False) -> Dict[str, Any]:
         """현재 문서를 DXF 사본으로 내보낸다(COM Export)
 
-        T0 E2에서 고른 방법이다. 문서 이름·경로·미저장 상태를 바꾸지 않고, 핸들이 원본과 같다(출력은 R2018).
+        T0 E2에서 고른 방법이다. 문서 이름·경로·디스크 파일은 그대로이고 핸들이 원본과 같다(출력은 R2018).
+        B0에서 COM Export 자체가 Saved를 True→False로 바꾸는 부작용을 확인했다.
         SaveAs(문서가 DXF로 바뀜)와 DXFOUT(미저장 표시를 지움)은 쓰지 않는다.
         파일 이름에 확장자를 붙이면 Export가 실패하므로 확장자 없이 주고, 실패해도 오류가 없을 수 있어 파일 존재로 확인한다.
         돌려주는 값: {"ok", "path", "error"}
+        보호 경로는 raise_on_error=True로 COM 예외의 종류·HRESULT를 유지한다.
         """
         out_no_ext = os.path.abspath(out_no_ext)
         path = out_no_ext + ".dxf"
@@ -1637,6 +1639,8 @@ class CADController:
             self._call_attr(self.doc, "Export", out_no_ext, "DXF", selection)
         except Exception as e:
             logger.error(f"DXF 내보내기 실패: {str(e)}")
+            if raise_on_error:
+                raise
             return {"ok": False, "path": path, "error": str(e)}
         finally:
             if selection is not None:
@@ -1778,8 +1782,8 @@ class CADController:
         if lineweight is not None:
             self._call(setattr, obj, "Lineweight", lineweight)
 
-    def delete_handles(self, handles) -> Tuple[int, List[str]]:
-        """핸들 목록의 객체를 지운다. (지운 수, 지우지 못한 핸들)"""
+    def delete_handles(self, handles, raise_on_error: bool = False) -> Tuple[int, List[str]]:
+        """핸들 목록의 객체를 지운다. B2는 원래 예외를 보존해 시간 초과·연결 끊김을 구별한다."""
         deleted, failed = 0, []
         for h in handles:
             try:
@@ -1787,9 +1791,64 @@ class CADController:
                 self._call_attr(obj, "Delete")
                 deleted += 1
             except Exception as e:  # noqa: BLE001
+                if raise_on_error:
+                    raise
                 logger.error(f"객체 {h}를 지우지 못함: {str(e)}")
                 failed.append(str(h))
         return deleted, failed
+
+    def move_handles(self, handles, delta) -> None:
+        """핸들 묶음을 COM Move로 이동한다. 실패를 삼키지 않으며 자체 Undo 묶음은 열지 않는다."""
+        start, end = self._pt((0, 0, 0)), self._pt((delta[0], delta[1], 0))
+        for handle in handles:
+            obj = self._call_attr(self.doc, "HandleToObject", str(handle))
+            self._call_attr(obj, "Move", start, end)
+
+    def set_change_props(self, handle: str, layer=None, color=None, linetype=None, lineweight=None,
+                         text=None, attribs=None) -> None:
+        """B2 속성 쓰기(COM만). 트루컬러는 해당 객체의 TrueColor 객체를 통해 쓴다(B0)."""
+        obj = self._call_attr(self.doc, "HandleToObject", str(handle))
+        # 속성 누락·중복·상수는 값 쓰기 전에 다시 거부한다. 정의의 상수 ATTDEF 검사는 엔진이 맡는다.
+        selected = []
+        if attribs is not None:
+            attributes = self._call_attr(obj, "GetAttributes") or []
+            for name, value in attribs.items():
+                found = [a for a in attributes if str(self._call(getattr, a, "TagString")).casefold() == name.casefold()]
+                if len(found) != 1 or bool(self._call(getattr, found[0], "Constant")):
+                    raise RuntimeError(f"없거나 중복·상수 속성 태그: {name}")
+                selected.append((found[0], value))
+        for name, value in (("Layer", layer), ("Linetype", linetype), ("Lineweight", lineweight), ("TextString", text)):
+            if value is not None:
+                self._call(setattr, obj, name, value)
+        if color is not None:
+            if isinstance(color, dict):
+                true_color = self._call(getattr, obj, "TrueColor")
+                self._call_attr(true_color, "SetRGB", *color["rgb"])
+                self._call(setattr, obj, "TrueColor", true_color)
+            else:
+                self._call(self._write_color, obj, color)
+        for attr, value in selected:
+            self._call(setattr, attr, "TextString", value)
+
+    def create_change_record(self, op: str, root_exists: bool):
+        """사후 사본에서 확인한 루트를 쓰고, 중복 op 검사와 AddXRecord를 같은 COM 작업에서 한다.
+
+        GstarCAD는 AddXRecord의 중복 이름을 허용한다(B0). Item의 모든 예외를 '없음'으로 삼키지 않는다.
+        root_exists가 틀리면 생성 실패로 보고한다. 기록 변경은 UNDO로 복귀하지 않으므로 묶음 밖 전용이다.
+        """
+        dictionaries = self._call(getattr, self.doc, "Dictionaries")
+        root = self._call_attr(dictionaries, "Item" if root_exists else "Add", "ARCAID")
+        for i in range(self._call(getattr, root, "Count")):
+            entry = self._call_attr(root, "Item", i)
+            if str(self._call_attr(root, "GetName", entry)).casefold() == op.casefold():
+                raise RuntimeError(f"같은 op 적용 기록이 이미 있음: {op}")
+        return self._call_attr(root, "AddXRecord", op)
+
+    def write_change_record(self, record, strings: List[str]) -> None:
+        """이미 생성한 XRECORD에 그룹 1 문자열들을 쓴다(생성과 쓰기의 실패를 구분한다)."""
+        types = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_I2, [1] * len(strings))
+        values = win32com.client.VARIANT(pythoncom.VT_ARRAY | pythoncom.VT_VARIANT, strings)
+        self._call_attr(record, "SetXRecordData", types, values)
 
     # ==================== 선택·출력·시험 도면(T7) ====================
 

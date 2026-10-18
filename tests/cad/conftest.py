@@ -17,6 +17,24 @@ GRID_Y = {"Y1": 0, "Y2": 6000}
 ROOMS = {"객실 101": (3000, 3000), "객실 102": (9000, 3000)}
 
 
+@pytest.fixture(autouse=True)
+def reset_guard():
+    from src import apply_service
+
+    apply_service.GUARD.reason = None
+    yield
+    apply_service.GUARD.reason = None
+
+
+@pytest.fixture
+def opened(cad, synthetic_dwg, tmp_path):
+    from src.engine.standards import load_standard
+
+    ctl, _ = cad
+    assert ctl.open_drawing(str(synthetic_dwg))
+    return ctl, tmp_path / "work", load_standard()
+
+
 @pytest.fixture
 def cad(tmp_path):
     """실행 중인 CAD에 붙는다. 끝나면 임시 폴더에서 연 문서를 닫고 사용자 활성 도면으로 돌아간다"""

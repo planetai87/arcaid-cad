@@ -66,6 +66,135 @@ def line(doc):
     return doc.modelspace().add_line((0, 0), (100, 0), dxfattribs={"layer": "WAL"})
 
 
+def test_fingerprint_covers_raw_geometry_xdata_and_children(doc):
+    circle = doc.modelspace().add_circle((0, 0), 3)
+    before = changes.fingerprint(circle)
+    circle.dxf.radius += 0.000001
+    assert changes.fingerprint(circle) != before
+    before = changes.fingerprint(circle)
+    tag(circle)
+    assert changes.fingerprint(circle) != before
+    insert, attr, _ = block(doc)
+    before = changes.fingerprint(insert)
+    attr.dxf.text = "새 속성"
+    assert changes.fingerprint(insert) != before
+    hatch = doc.modelspace().add_hatch()
+    hatch.paths.add_polyline_path([(0, 0), (1, 0), (1, 1)])
+    before = changes.fingerprint(hatch)
+    hatch.paths[0].vertices[1] = (2, 0, 0)
+    assert changes.fingerprint(hatch) != before
+
+
+def test_verify_applied_checks_after_tags_and_non_targets(doc, std):
+    target = line(doc)
+    tag(target, custom="보존")
+    other = doc.modelspace().add_circle((0, 0), 5)
+    plan = resolve(changes, doc, std, [target])
+    now = copy.deepcopy(doc)
+    moved = now.entitydb[target.dxf.handle]
+    moved.translate(10, 20, 0)
+    tag(moved, custom="보존")
+    assert changes.verify_applied(plan, doc, now) == []
+    now.entitydb[other.dxf.handle].dxf.radius = 6
+    assert any(other.dxf.handle in p for p in changes.verify_applied(plan, doc, now))
+    now.entitydb[other.dxf.handle].dxf.radius = 5
+    tag(moved, custom="손상")
+    assert changes.verify_applied(plan, doc, now)
+
+
+def test_verify_restored_checks_state_and_attribute_handles(doc, std):
+    insert, attr, _ = block(doc)
+    tag(insert)
+    plan = resolve(changes, doc, std, [insert])
+    now = copy.deepcopy(doc)
+    assert changes.verify_restored(plan, doc, now) == []
+    tag(now.entitydb[insert.dxf.handle], state="옛 태그 아님")
+    assert changes.verify_restored(plan, doc, now)
+    now = copy.deepcopy(doc)
+    now.entitydb[insert.dxf.handle].attribs[0].dxf.handle = "FFFFF"
+    assert changes.verify_restored(plan, doc, now)
+
+
+@pytest.mark.parametrize("restored", [False, True])
+@pytest.mark.parametrize("target_insert", [False, True])
+def test_verify_ignores_reassigned_seqend_handles(doc, std, restored, target_insert):
+    insert, _, definition = block(doc)
+    other = doc.modelspace().add_blockref(definition.name, (30, 40))
+    other.add_attrib("번호", "X2", (31, 42))
+    polyline = doc.modelspace().add_polyline2d([(0, 0), (10, 0)])
+    target = insert if target_insert else line(doc)
+    plan = resolve(changes, doc, std, [target])
+    now = copy.deepcopy(doc)
+    if not restored:
+        now.entitydb[target.dxf.handle].translate(10, 20, 0)
+    # B2 CAD 실측처럼 대상·대상 밖 INSERT와 POLYLINE의 SEQEND만 새 핸들로 바꾼다.
+    for parent in (insert, other, polyline):
+        seqend = now.entitydb[parent.dxf.handle].seqend
+        assert now.entitydb.reset_handle(seqend, now.entitydb.next_handle())
+    verify = changes.verify_restored if restored else changes.verify_applied
+    assert verify(plan, doc, now) == []
+
+
+@pytest.mark.parametrize("restored", [False, True])
+@pytest.mark.parametrize("child_kind", ["target_attrib", "other_attrib", "vertex"])
+def test_verify_rejects_reassigned_attrib_and_vertex_handles(doc, std, restored, child_kind):
+    insert, attr, _ = block(doc)
+    polyline = doc.modelspace().add_polyline2d([(0, 0), (10, 0)])
+    target = insert if child_kind == "target_attrib" else line(doc)
+    plan = resolve(changes, doc, std, [target])
+    now = copy.deepcopy(doc)
+    if not restored:
+        now.entitydb[target.dxf.handle].translate(10, 20, 0)
+    child = now.entitydb[polyline.vertices[0].dxf.handle if child_kind == "vertex" else attr.dxf.handle]
+    old_handle = child.dxf.handle
+    new_handle = now.entitydb.next_handle()
+    assert now.entitydb.reset_handle(child, new_handle)
+    verify = changes.verify_restored if restored else changes.verify_applied
+    problems = verify(plan, doc, now)
+    assert f"핸들 집합 불일치: 없음 {old_handle}" in problems
+    assert f"핸들 집합 불일치: 추가 {new_handle}" in problems
+    if child_kind == "target_attrib":
+        assert f"{insert.dxf.handle}: 종속 핸들 연결 불일치" in problems
+    else:
+        parent = polyline if child_kind == "vertex" else insert
+        assert f"{parent.dxf.handle}: 대상이 아닌 객체 변경" in problems
+
+
+def test_verify_preserves_attribute_tags_and_parent_handle_binding(doc, std):
+    insert, attr, _ = block(doc)
+    tag(attr)
+    plan = resolve(changes, doc, std, [insert])
+    now = copy.deepcopy(doc)
+    tag(now.entitydb[attr.dxf.handle], state="수정된 속성 태그")
+    assert changes.verify_restored(plan, doc, now)
+    now.entitydb[insert.dxf.handle].translate(10, 20, 0)
+    assert changes.verify_applied(plan, doc, now)
+
+
+def test_verify_detects_non_target_paperspace_change(doc, std):
+    target = line(doc)
+    other = doc.layouts.new("검증 레이아웃").add_circle((0, 0), 3)
+    plan = resolve(changes, doc, std, [target])
+    now = copy.deepcopy(doc)
+    now.entitydb[target.dxf.handle].translate(10, 20, 0)
+    assert changes.verify_applied(plan, doc, now) == []
+    now.entitydb[other.dxf.handle].dxf.radius = 4
+    assert changes.verify_applied(plan, doc, now)
+
+
+def test_verify_deletion_requires_absence_and_exact_handle_set(doc, std):
+    insert, attr, _ = block(doc)
+    data = request([insert.dxf.handle], action="delete")
+    del data["changes"][0]["delta"]
+    plan = changes.resolve(changes.parse_changes(data), doc, std, "snap-1")
+    now = copy.deepcopy(doc)
+    assert changes.verify_applied(plan, doc, now)
+    now.modelspace().delete_entity(now.entitydb[insert.dxf.handle])
+    assert changes.verify_applied(plan, doc, now) == []
+    now.modelspace().add_line((1, 2), (3, 4))
+    assert changes.verify_applied(plan, doc, now)
+
+
 def block(doc):
     b = doc.blocks.new("B1_TEST")
     b.add_attdef("번호", (1, 2), dxfattribs={"height": 2})
