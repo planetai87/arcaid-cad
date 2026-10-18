@@ -11,10 +11,12 @@ from src.engine.check import check_standard
 from src.engine.read import read_drawing
 from src.engine.results import Status
 from src.engine.standards import load_standard
+from src.engine.state import arcaid_tags
 from src.snapshot_service import snapshot_active
 
 EXAMPLE = (Path(__file__).resolve().parents[2] / "skills" / "cad-drawing-standard"
            / "references" / "examples" / "synthetic-plan.json")
+CHANGE_EXAMPLE = EXAMPLE.with_name("synthetic-change.json")
 
 
 @pytest.fixture
@@ -97,3 +99,44 @@ def test_protected_fix_rollback_then_success(fresh):
     final, _ = snap(ctl, work)
     checked = check_standard(Path(final.dxf_path), std, 100)
     assert checked.violations == [] and checked.unchecked == []
+
+
+def test_documented_change_example_replay_check_and_save(fresh):
+    ctl, work, std = fresh
+    initial, _ = snap(ctl, work)
+    spec = json.loads(EXAMPLE.read_text(encoding="utf-8"))
+    spec["target"] = {"drawing_id": initial.drawing_id, "snapshot_id": initial.snapshot_id}
+    drawn = apply_service.draw_batch(ctl, work, std, spec)
+    assert drawn.status is Status.SUCCESS and drawn.unchecked == [], drawn.summary
+
+    # 그린 뒤 얻은 실제 기준을 한 번만 채운다. 재전송에도 이 명세를 그대로 쓴다.
+    base, base_doc = snap(ctl, work)
+    data = json.loads(CHANGE_EXAMPLE.read_text(encoding="utf-8"))
+    assert data["target"]["snapshot_id"] == "<export_snapshot의 snapshot_id>"
+    data["target"]["snapshot_id"] = base.snapshot_id
+    result = apply_service.apply_changes(ctl, work, std, data, k=spec["scale"])
+    assert result.status is Status.SUCCESS and result.meta.decision == "apply", result.summary
+    assert {a.action: a.count for a in result.applied} == {"move": 1, "set": 2, "delete": 1}
+    assert result.new_violations == {} and result.unchecked == []
+    assert result.ids.request_id == data["op"]
+    again = apply_service.apply_changes(ctl, work, std, data, k=spec["scale"])
+    assert again.status is Status.SUCCESS and again.meta.decision == "skip", again.summary
+    assert again.unchecked == []
+
+    final, doc = snap(ctl, work)
+    read = read_drawing(Path(final.dxf_path), std)
+    assert {r.text: tuple(r.position) for r in read.rooms} == {
+        "객실 101": (2100, 2000), "회의실 102": (4500, 2000), "객실 103": (1500, 8000)}
+    bubbles = [e for e in doc.modelspace().query("INSERT") if e.dxf.name == "축열버블-상"]
+    assert [e.get_attrib_text("축열") for e in bubbles] == ["X1", "X2", "X3-변경"]
+    deleted = next(e.dxf.handle for e in base_doc.modelspace()
+                   if (arcaid_tags(e) or {}).get("oid") == "skill-synthetic-plan:room[3]/label")
+    assert handles(doc) == handles(base_doc) - {deleted}
+    for kind in ("LWPOLYLINE", "HATCH"):
+        assert len(doc.modelspace().query(kind)) == 4
+    checked = check_standard(Path(final.dxf_path), std, spec["scale"])
+    assert checked.status is Status.SUCCESS
+    assert checked.violations == [] and checked.unchecked == []
+    saved = work.parent / "synthetic-changed.dwg"
+    assert ctl.save_drawing(str(saved))
+    assert saved.is_file()

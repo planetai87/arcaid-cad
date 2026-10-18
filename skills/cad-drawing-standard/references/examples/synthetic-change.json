@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "standard": "heo-2026@2026.1",
+  "op": "skill-synthetic-change",
+  "target": {"snapshot_id": "<export_snapshot의 snapshot_id>"},
+  "changes": [
+    {
+      "id": "move-label-101",
+      "select": {"oids": ["skill-synthetic-plan:room[0]/label"]},
+      "action": "move",
+      "delta": [600, 0]
+    },
+    {
+      "id": "rename-label-102",
+      "select": {"oids": ["skill-synthetic-plan:room[1]/label"]},
+      "action": "set",
+      "props": {"text": "회의실 102"}
+    },
+    {
+      "id": "rename-bubble-x3",
+      "select": {"oids": ["skill-synthetic-plan:bubble[2]/b"]},
+      "action": "set",
+      "props": {"attribs": {"축열": "X3-변경"}}
+    },
+    {
+      "id": "delete-label-104",
+      "select": {"oids": ["skill-synthetic-plan:room[3]/label"]},
+      "action": "delete"
+    }
+  ]
+}
