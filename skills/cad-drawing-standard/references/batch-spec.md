@@ -63,3 +63,5 @@ arcaid read output/skill-example.dxf
 ```
 
 CLI는 파일만 작성한다. 열린 도면 적용·재전송 보호 확인은 MCP `draw_batch`로 한다. `check_standard` 상세가 잘리면 violation_counts·full_path를 확인하며, 새 객체 위반 집계를 도면 전체 검사로 해석하지 않는다.
+
+그린 뒤 기존 객체를 바꾸려면 [변경 명세와 예제 실행](change-spec.md)을 따른다.

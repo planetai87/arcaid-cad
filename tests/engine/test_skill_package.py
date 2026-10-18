@@ -4,7 +4,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from tools.skills.package_skill import package_skill
+from tools.skills.package_skill import SOURCE, package_skill
 
 
 @pytest.fixture
@@ -49,3 +49,14 @@ def test_broken_relative_link_is_not_deployed(source, tmp_path):
     (source / "SKILL.md").write_text("[없는 예제](references/missing.json)\n", encoding="utf-8")
     with pytest.raises(ValueError, match="링크"):
         package_skill(source, tmp_path / "skill.zip")
+
+
+def test_repository_package_includes_change_reference_and_example(tmp_path):
+    output = tmp_path / "cad-drawing-standard.zip"
+    names = package_skill(SOURCE, output)
+    with ZipFile(output) as archive:
+        assert archive.testzip() is None
+        for relative in ("references/change-spec.md", "references/examples/synthetic-change.json"):
+            name = f"cad-drawing-standard/{relative}"
+            assert name in names
+            assert archive.read(name) == (SOURCE / relative).read_bytes()
