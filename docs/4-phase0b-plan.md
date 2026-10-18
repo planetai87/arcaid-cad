@@ -148,6 +148,8 @@ MCP 작업이다(`src/apply_service.py`, `src/cad_controller.py`).
 
 아래 '0-B 통과 시험(B5)' 절에 적는다.
 
+완료: 2026-10-18([PR #38](https://github.com/planetai87/arcaid-cad/pull/38)). GstarCAD CAD 시험 1건(657단계, 45분 50초)과 공개 MCP stdio 통과. 성공 적용은 독립 기대 도면과 일치, 재전송 skip 6, 충돌 10, 실패 주입 recovered 11, A/B 일치, 사용자 도면·원본 불변. 637개 객실 이동 55초. 사람 요청은 원본 문자 레이어에 높이 규칙이 없어 미검사 1종(문자 높이)이 남는다(엔진 요청은 0). 실행 중 apply_changes 미검사를 대상 범위로 한정([PR #37](https://github.com/planetai87/arcaid-cad/pull/37)). 결과는 `docs/b5-acceptance.md`.
+
 ### B6 · BricsCAD 호환
 
 - 0-A 시험(`tests/cad`, T10)과 B5를 BricsCAD V26에서 다시 돌린다. 이 PC에 설치돼 있다.
