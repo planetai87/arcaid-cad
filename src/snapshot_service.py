@@ -24,7 +24,10 @@ def snapshot_active(ctl, work: Path) -> Tuple[SnapshotMeta, List[str]]:
         raise SnapshotError(f"내보내기 실패: {result['error']}")
     after = ctl.doc_state(doc)
     if after != before:
-        warnings.append(f"내보내기 전후 문서 상태가 다름: {before} → {after}")
+        if before.get("saved") is True and after == dict(before, saved=False):
+            warnings.append("saved만 True→False로 바뀜: B0에서 관찰한 COM Export 부작용과 일치")
+        else:
+            warnings.append(f"내보내기 전후 문서 상태가 다름: {before} → {after}")
     meta = finalize(work, sid, Path(result["path"]), method="open_document", source_name=before["name"],
                     source_path=before["full_name"] or before["name"], source_saved=before["saved"])
     return meta, warnings

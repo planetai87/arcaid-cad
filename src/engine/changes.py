@@ -42,6 +42,7 @@
 - 기록이 없으면 모두 before일 때만 apply한다. 엔진 태그 state와 기존 state_hash가 다르면
   manual에 핸들을 담고 기본 거부한다. overwrite_manual도 읽은 뒤 바뀐 객체는 허용하지 않는다.
   apply 직전 recheck로 현재 레이어·선종류·관계·속성을 다시 검사한다. 기록은 묶음 밖에서 마지막에 쓴다.
+- B2 CAD 실측: GstarCAD는 수정·복귀 뒤 Export에서 SEQEND 핸들을 재발급하므로 핸들·연결·지문 비교에서 제외한다.
 """
 import copy
 import hashlib
@@ -50,6 +51,8 @@ import math
 from typing import Annotated, Any, Dict, Iterable, List, Literal, Optional, Tuple, Union
 
 from ezdxf.lldxf.const import VALID_DXF_LINEWEIGHTS
+from ezdxf.entities import DXFGraphic
+from ezdxf.lldxf.tagwriter import TagCollector
 from pydantic import BaseModel, ConfigDict, Field, StrictInt, ValidationError, field_validator, model_validator
 
 from .apply import _cut
@@ -337,6 +340,100 @@ def same_state(a: Optional[dict], b: Optional[dict], tol: float = 0.01) -> bool:
 def state_digest(state: Optional[dict]) -> str:
     """원시 상태 정준 JSON 해시. after_hash에는 B2가 사후 사본에서 읽은 실제 change_state를 쓴다."""
     return _digest(state)
+
+
+# ---------- 적용·복귀 직접 확인 ----------
+
+def _raw(value):
+    if isinstance(value, bytes):
+        return value.hex()
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return [_raw(v) for v in value]
+
+
+def fingerprint(e) -> str:
+    """SEQEND를 제외한 DXF 속성·XDATA·속성/정점을 종류 제한·반올림 없이 지문화한다."""
+    # TagCollector에는 HATCH 경계처럼 dxf 이름공간 밖의 데이터도 포함된다.
+    tags, seqend = [], False
+    for t in TagCollector.dxftags(e):
+        if t.code == 0:
+            seqend = t.value == "SEQEND"
+        if not seqend:
+            tags.append((t.code, _raw(t.value)))
+    return _digest(tags)
+
+
+def entity_tree(e) -> list:
+    """SEQEND를 뺀 대상과 종속 속성·정점(삭제 때 없어져야 할 핸들)."""
+    entities = [e] + list(e.all_sub_entities() if hasattr(e, "all_sub_entities") else [])
+    return [x for x in entities if x.dxftype() != "SEQEND"]
+
+
+def drawing_entities(doc) -> dict:
+    """SEQEND를 뺀 공간·블록 정의 전체의 도형과 종속 핸들. 사전·표는 변경 기록과 구분한다."""
+    out = {}
+    for e in doc.entitydb.values():
+        if e.is_alive and isinstance(e, DXFGraphic):
+            out.update((x.dxf.handle, x) for x in entity_tree(e) if x.is_alive)
+    return out
+
+
+def _arcaid_data(e, include_state: bool):
+    if not e.has_xdata("ARCAID"):
+        return None
+    return [(t.code, _raw(t.value)) for t in e.get_xdata("ARCAID")
+            if include_state or not (t.code == 1000 and str(t.value).startswith("state="))]
+
+
+def _verify_changes(plan: ChangePlan, base_doc, now_doc, restored: bool) -> List[str]:
+    base, now = drawing_entities(base_doc), drawing_entities(now_doc)
+    target_handles = {x.dxf.handle for t in plan.targets for x in entity_tree(base[t.handle])}
+    deleted = {x.dxf.handle for t in plan.targets if t.action == "delete"
+               for x in entity_tree(base[t.handle])} if not restored else set()
+    problems = []
+    expected = set(base) - deleted
+    if expected != set(now):
+        problems.extend(f"핸들 집합 불일치: 없음 {h}" for h in sorted(expected - set(now)))
+        problems.extend(f"핸들 집합 불일치: 추가 {h}" for h in sorted(set(now) - expected))
+    msp = {e.dxf.handle: e for e in now_doc.modelspace()}
+    for t in plan.targets:
+        e = msp.get(t.handle)
+        if not restored and t.action == "delete":
+            original = now_doc.entitydb.get(t.handle)
+            if original is not None and original.is_alive:
+                problems.append(f"{t.handle}: 삭제 대상이 남음")
+            continue
+        wanted = change_state(base[t.handle]) if restored else t.after
+        fields = diff_fields(wanted, change_state(e) if e is not None else None)
+        if fields:
+            problems.append(f"{t.handle}: 상태 불일치 {', '.join(fields)}")
+        if e is not None:
+            if _arcaid_data(base[t.handle], restored) != _arcaid_data(e, restored):
+                problems.append(f"{t.handle}: ARCAID 태그 불일치")
+            original_children, current_children = entity_tree(base[t.handle])[1:], entity_tree(e)[1:]
+            if [x.dxf.handle for x in original_children] != [x.dxf.handle for x in current_children]:
+                problems.append(f"{t.handle}: 종속 핸들 연결 불일치")
+            for child in original_children:
+                current = now.get(child.dxf.handle)
+                if current is not None and _arcaid_data(child, True) != _arcaid_data(current, True):
+                    problems.append(f"{child.dxf.handle}: 종속 객체 ARCAID 태그 불일치")
+            if not restored and arcaid_tags(base[t.handle]) and (arcaid_tags(e) or {}).get("state") != state_hash(e):
+                problems.append(f"{t.handle}: 기준 상태 미갱신")
+    for h in sorted((set(base) & set(now)) - target_handles):
+        if fingerprint(base[h]) != fingerprint(now[h]):
+            problems.append(f"{h}: 대상이 아닌 객체 변경")
+    return problems
+
+
+def verify_applied(plan: ChangePlan, base_doc, now_doc) -> List[str]:
+    """기록 없이 after·삭제 부재·태그·대상 밖 지문·전체 도형 핸들을 직접 확인한다."""
+    return _verify_changes(plan, base_doc, now_doc, False)
+
+
+def verify_restored(plan: ChangePlan, base_doc, now_doc) -> List[str]:
+    """before·전체 ARCAID 태그(state 포함)·종속 핸들·대상 밖 지문으로 복귀를 확인한다."""
+    return _verify_changes(plan, base_doc, now_doc, True)
 
 
 # ---------- 대상·거부 검사 ----------

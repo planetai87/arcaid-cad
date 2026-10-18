@@ -194,3 +194,11 @@ E16 전체 경로는 변경 → `SetXData` → 기록 → 묶음 안 Export → 
 - E13 원자성: 묶음 안 기록은 `UNDO 1` 뒤에도 남는다(원본 JSON·복귀 Export 사본으로 확인). 기록을 묶음 밖 마지막 단계로 옮기는 0-B 계획 변경을 사용자 확인 뒤 반영한다.
 - 연관 해치 경계 이동 때 해치 갱신은 관찰하지 못했다. 새 해치의 경계 식별에 실패해 이동·삭제 시나리오는 실행하지 못했다. 감지는 바탕 도면의 연관 해치로 확인했다. 거부 대상이라 0-B에는 영향이 없다.
 - BricsCAD 재확인은 B6에서 한다.
+
+### B2 CAD 시험에서 추가로 확인한 것 (2026-10-18)
+
+| 관찰 | 처리 |
+|---|---|
+| 도면을 고친 뒤 Export하면 속성 블록의 **SEQEND** 핸들이 새로 붙는다(바꾸지 않은 블록 포함). 모형 공간 객체·ATTRIB 핸들은 그대로다 | `changes.verify_applied`·`verify_restored`의 핸들 집합·종속 연결·지문 비교에서 SEQEND를 뺀다 |
+| 속성값을 바꾸고 INSERT에 SetXData(state 갱신)를 한 묶음을 `UNDO 1`로 되돌리면 속성값은 돌아오지만 **INSERT의 ARCAID state 태그는 남는다** | 되돌린 뒤 형상·속성이 before와 같고 state만 다른 대상은 태그만 원래 값으로 다시 쓴다(경고로 보고) |
+| COM `GetXRecordData`의 출력 인자(VT_BYREF VARIANT)는 pywin32에서 값을 돌려주지 않는다 | 적용 기록 재읽기는 Export 사본의 `read_records`로 한다(B0 E13 방식) |

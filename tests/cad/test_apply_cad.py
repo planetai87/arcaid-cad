@@ -39,20 +39,6 @@ SPEC = {
 COUNT = 9
 
 
-@pytest.fixture(autouse=True)
-def reset_guard():
-    apply_service.GUARD.reason = None
-    yield
-    apply_service.GUARD.reason = None
-
-
-@pytest.fixture
-def opened(cad, synthetic_dwg, tmp_path):
-    ctl, _ = cad
-    assert ctl.open_drawing(str(synthetic_dwg))
-    return ctl, tmp_path / "work", load_standard()
-
-
 def snap(ctl, tmp_path, name):
     r = ctl.export_dxf(str(tmp_path / name))
     assert r["ok"], r
