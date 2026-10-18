@@ -14,7 +14,8 @@
   props는 layer, color(ACI 1~256 또는 {"rgb": [0~255, 0~255, 0~255]}), linetype,
   lineweight(DXF 선굵기 정수 또는 -3/-2/-1), text, attribs{태그: 문자열} 중 하나 이상이다.
   null은 받지 않는다. 빈 text·속성값은 지우기를 뜻한다. 속성 태그는 대소문자를 가리지 않는다.
-- 모형 공간 LINE·LWPOLYLINE·TEXT·INSERT만, extrusion=(0,0,1)만 다룬다. 펼친 상한은 1,000개다.
+- 모형 공간 LINE·LWPOLYLINE·CIRCLE·ARC·TEXT·INSERT, extrusion=(0,0,1).
+  원·호의 set은 공통 표시 속성(레이어·색·선종류·선굵기)만. 펼친 상한은 1,000개다.
   내장 MTEXT가 있는 여러 줄 속성은 MTEXT 범위 밖이므로 CHG_KIND로 거부한다.
   관계·레이어·속성 검사는 요청 전체에 적용한다. 표준 대조는 Standard.ref로 한다.
   snapshot_id를 반드시 대조한다. drawing_id는 B2가 사본 출처와 함께 검사할 보조 정보다.
@@ -25,11 +26,14 @@
   true_color가 None이 아니면 color는 None으로 정규화한다(ACI는 CAD가 정하는 파생값).
   공통 표시 속성·extrusion, 형상, 문자·속성의 정렬·내용·속성 flags,
   INSERT 변환·행/열 개수·간격, state 외 ARCAID 태그를 담는다.
+  원·호는 3D center·radius·thickness, 호는 start_angle·end_angle도 원시값으로 담는다.
   문자·속성은 왼쪽 정렬(0,0)이면 insert, fit/aligned(halign 3/5)이면 두 점,
   나머지 정렬이면 align_point만 담는다(insert는 CAD가 계산하는 파생값).
-  move는 이 모든 점에 delta를 더한다. Z·폭·bulge·정렬은 보존한다.
+  move는 이 모든 점과 원·호의 center에 delta를 더한다. Z·폭·bulge·정렬·반지름·각도·두께는 보존한다.
 - same_state/diff_fields는 점의 유클리드 거리와 길이 값에 tol(mm, 기본 0.01)을 쓴다.
-  각도는 360도 순환 차에 tol(도), 배율·문자 폭비·bulge는 1e-9, 이산값·문자열·태그는 정확히 비교한다.
+  원·호의 중심은 3D 거리, 반지름·두께는 길이로 비교한다. 호의 각도는 각 끝점의 WCS 위치 차에
+  tol(mm)을 쓴다(0/360 경계 포함). 문자·블록 각도는 360도 순환 차에 tol(도),
+  배율·문자 폭비·bulge는 1e-9, 이산값·문자열·태그는 정확히 비교한다.
   레이어·선종류·블록·스타일 이름만 CAD 관례에 따라 casefold한다. diff_fields는 최상위 필드명 목록이다.
   state_digest는 원시 상태 정준 JSON의 sha256 앞 16자이며 기존 state.state_hash와 별개다.
 - 기록은 그룹 1 문자열 ["arcaid-change-record/1", JSON의 250자 조각...]이다.
@@ -64,7 +68,7 @@ from .state import TAG_KEYS, arcaid_tags, state_hash
 MAX_CHANGE_OBJECTS = 1000
 RECORD_HEADER = "arcaid-change-record/1"
 OP_PATTERN = r"^[A-Za-z0-9._-]{1,64}$"
-KINDS = ("LINE", "LWPOLYLINE", "TEXT", "INSERT")
+KINDS = ("LINE", "LWPOLYLINE", "CIRCLE", "ARC", "TEXT", "INSERT")
 Action = Literal["move", "delete", "set"]
 Name = Annotated[str, Field(min_length=1)]
 Handle = Annotated[str, Field(pattern=r"^[0-9A-Fa-f]+$")]
@@ -242,6 +246,10 @@ def change_state(e) -> dict:
     elif kind == "LWPOLYLINE":
         out.update(points=[list(map(float, p)) for p in e.get_points("xyseb")], closed=bool(e.closed),
                    const_width=float(e.dxf.get("const_width", 0)), elevation=float(e.dxf.get("elevation", 0)))
+    elif kind in ("CIRCLE", "ARC"):
+        out.update(center=_point(e.dxf.center), radius=float(e.dxf.radius), thickness=float(e.dxf.get("thickness", 0)))
+        if kind == "ARC":
+            out.update(start_angle=float(e.dxf.start_angle), end_angle=float(e.dxf.end_angle))
     elif kind == "TEXT":
         out.update(_text_state(e))
     elif kind == "INSERT":
@@ -265,7 +273,7 @@ def apply_to_state(before: dict, change: Change) -> Optional[dict]:
         dx, dy = change.delta
 
         def move_points(state):
-            for key in ("start", "end", "insert", "align_point"):
+            for key in ("start", "end", "center", "insert", "align_point"):
                 if key in state:
                     state[key][0] += dx
                     state[key][1] += dy
@@ -308,7 +316,7 @@ def _equal(a, b, key: str, tol: float) -> bool:
     if isinstance(a, list) and isinstance(b, list):
         if len(a) != len(b):
             return False
-        if key in ("start", "end", "insert", "align_point"):
+        if key in ("start", "end", "center", "insert", "align_point"):
             return _within(math.dist(a, b), tol)
         if key == "points":
             return all(len(p) == len(q) and _within(math.dist(p[:2], q[:2]), tol)
@@ -320,16 +328,35 @@ def _equal(a, b, key: str, tol: float) -> bool:
             return _within(abs((a - b + 180) % 360 - 180), tol)
         if key in ("xscale", "yscale", "zscale", "width"):
             return _within(abs(a - b), 1e-9)
-        if key in ("height", "const_width", "elevation", "row_spacing", "column_spacing"):
+        if key in ("height", "const_width", "elevation", "radius", "thickness", "row_spacing", "column_spacing"):
             return _within(abs(a - b), tol)
     return a == b
+
+
+def _arc_endpoint(state: dict, angle_key: str) -> list:
+    """extrusion=(0,0,1)인 호의 원시 중심·반지름·각도로 WCS 끝점을 계산한다."""
+    angle = math.radians(state[angle_key] % 360)
+    x, y, z = state["center"]
+    radius = state["radius"]
+    return [x + radius * math.cos(angle), y + radius * math.sin(angle), z]
 
 
 def diff_fields(a: Optional[dict], b: Optional[dict], tol: float = 0.01) -> List[str]:
     """허용오차 밖인 최상위 필드명. 부재 여부가 다르면 ['entity']."""
     if a is None or b is None:
         return [] if a is b else ["entity"]
-    return sorted(k for k in a.keys() | b.keys() if k not in a or k not in b or not _equal(a[k], b[k], k, tol))
+    fields = []
+    for key in sorted(a.keys() | b.keys()):
+        if key not in a or key not in b:
+            fields.append(key)
+        elif a.get("type") == b.get("type") == "ARC" and key in ("start_angle", "end_angle"):
+            # 큰 반지름의 삼각함수·좌표 계산에서 생기는 이진 반올림 오차만 보완한다.
+            roundoff = 4 * max(math.ulp(v) for state in (a, b) for v in (*state["center"], state["radius"]))
+            if not _within(math.dist(_arc_endpoint(a, key), _arc_endpoint(b, key)), tol + roundoff):
+                fields.append(key)
+        elif not _equal(a[key], b[key], key, tol):
+            fields.append(key)
+    return fields
 
 
 def same_state(a: Optional[dict], b: Optional[dict], tol: float = 0.01) -> bool:

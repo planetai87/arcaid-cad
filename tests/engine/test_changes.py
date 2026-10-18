@@ -2,6 +2,7 @@
 import copy
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import ezdxf
@@ -301,10 +302,10 @@ def test_resolve_rejects_duplicate_targets_and_change_ids(chg, doc, std):
     rejected(chg, doc, std, data, "CHG_DUPLICATE")
 
 
-@pytest.mark.parametrize("kind", ["circle", "hatch", "extrusion", "text_on_line", "attribs_on_line"])
+@pytest.mark.parametrize("kind", ["ellipse", "hatch", "extrusion", "text_on_line", "attribs_on_line"])
 def test_resolve_rejects_entire_request_on_unsupported_kind(chg, doc, std, kind):
     good = line(doc)
-    bad = {"circle": lambda: doc.modelspace().add_circle((0, 0), 1),
+    bad = {"ellipse": lambda: doc.modelspace().add_ellipse((0, 0), major_axis=(2, 0)),
            "hatch": lambda: doc.modelspace().add_hatch(),
            "extrusion": lambda: doc.modelspace().add_line((0, 0), (1, 0), dxfattribs={"extrusion": (0, 0, -1)})}
     data = request([good.dxf.handle, bad[kind]().dxf.handle]) if kind in bad else request([good.dxf.handle])
@@ -828,7 +829,7 @@ def test_record_python_field_name_serializes_to_wire_alias(chg):
     assert payload["in"] == "0123456789abcdef" and "input_hash" not in payload
 
 
-@pytest.mark.parametrize("kind", ["text", "insert", "polyline"])
+@pytest.mark.parametrize("kind", ["text", "insert", "polyline", "CIRCLE", "ARC"])
 def test_explicit_cad_numeric_defaults_keep_record_digest(chg, doc, kind):
     if kind == "text":
         e = doc.modelspace().add_text("문자", dxfattribs={"height": 2})
@@ -836,12 +837,170 @@ def test_explicit_cad_numeric_defaults_keep_record_digest(chg, doc, kind):
     elif kind == "insert":
         e, _, _ = block(doc)
         defaults = {"xscale": 1, "yscale": 1, "zscale": 1, "rotation": 0, "row_spacing": 0, "column_spacing": 0}
-    else:
+    elif kind == "polyline":
         e = doc.modelspace().add_lwpolyline([(0, 0), (1, 0)])
         defaults = {"const_width": 0, "elevation": 0}
+    else:
+        e = curve(doc, kind)
+        e.dxf.discard("thickness")
+        defaults = {"thickness": 0}
     before = chg.change_state(e)
     for field, value in defaults.items():
         setattr(e.dxf, field, value)
     after = chg.change_state(e)
     assert chg.same_state(before, after)
     assert chg.state_digest(before) == chg.state_digest(after)
+
+
+def curve(doc, kind):
+    center = (1000.000123, -2000.000456, 7.000789)
+    attrs = {"layer": "WAL", "thickness": 2.000123}
+    if kind == "CIRCLE":
+        return doc.modelspace().add_circle(center, 1250.000123, dxfattribs=attrs)
+    return doc.modelspace().add_arc(center, 1250.000123, 359.999999, 123.456789, dxfattribs=attrs)
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+def test_curve_move_keeps_raw_3d_geometry_and_judges_after(chg, doc, std, kind):
+    e = curve(doc, kind)
+    tag(e)
+    original = chg.fingerprint(e)
+    plan = resolve(chg, doc, std, [e])
+    t = plan.targets[0]
+    assert t.before["center"] == [1000.000123, -2000.000456, 7.000789]
+    assert t.after["center"] == [1010.000123, -1980.000456, 7.000789]
+    assert t.before["radius"] == t.after["radius"] == 1250.000123
+    assert t.before["thickness"] == t.after["thickness"] == 2.000123
+    assert t.after["extrusion"] == [0, 0, 1]
+    if kind == "ARC":
+        assert t.before["start_angle"] == t.after["start_angle"] == 359.999999
+        assert t.before["end_angle"] == t.after["end_angle"] == 123.456789
+    assert chg.fingerprint(e) == original
+    assert chg.judge_changes(plan, doc, {}).action == "apply"
+    e.translate(10, 20, 0)
+    tag(e)
+    assert chg.same_state(t.after, chg.change_state(e))
+    assert chg.judge_changes(plan, doc, {}).action == "conflict"
+    rec = record(chg, plan)
+    assert chg.judge_changes(plan, doc, {plan.spec.op: rec}).action == "skip"
+    e.dxf.center += (0, 0, .011)
+    assert chg.judge_changes(plan, doc, {plan.spec.op: rec}).action == "conflict"
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+@pytest.mark.parametrize("field", ["center_x", "center_y", "center_z", "radius", "thickness"])
+@pytest.mark.parametrize("distance,want", [(.009, True), (.01, True), (.011, False)])
+def test_curve_lengths_use_mm_tolerance(chg, doc, kind, field, distance, want):
+    e = curve(doc, kind)
+    a = chg.change_state(e)
+    if field.startswith("center_"):
+        point = list(e.dxf.center)
+        point["xyz".index(field[-1])] += distance
+        e.dxf.center = point
+    else:
+        setattr(e.dxf, field, getattr(e.dxf, field) + distance)
+    assert chg.same_state(a, chg.change_state(e)) is want
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+def test_curve_center_uses_3d_distance(chg, doc, kind):
+    e = curve(doc, kind)
+    before = chg.change_state(e)
+    e.dxf.center += (.006, .006, .006)
+    assert not chg.same_state(before, chg.change_state(e))
+    assert "center" in chg.diff_fields(before, chg.change_state(e))
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+@pytest.mark.parametrize("field", ["center", "radius", "thickness"])
+@pytest.mark.parametrize("distance,want", [(.009, "apply"), (.011, "conflict")])
+def test_curve_judgement_uses_raw_length_tolerance(chg, doc, std, kind, field, distance, want):
+    e = curve(doc, kind)
+    plan = resolve(chg, doc, std, [e])
+    if field == "center":
+        e.dxf.center += (0, 0, distance)
+    else:
+        setattr(e.dxf, field, getattr(e.dxf, field) + distance)
+    assert chg.judge_changes(plan, doc, {}).action == want
+
+
+@pytest.mark.parametrize("field", ["start_angle", "end_angle"])
+@pytest.mark.parametrize("radius", [1, 100000])
+@pytest.mark.parametrize("distance,want", [(.009, True), (.01, True), (.011, False)])
+def test_arc_angles_compare_wcs_endpoints_in_mm(chg, doc, field, radius, distance, want):
+    e = doc.modelspace().add_arc((0, 0, 7), radius, 0, 180)
+    before = chg.change_state(e)
+    # 현 길이로 각도를 정한다. 작은 반지름의 큰 각도와 큰 반지름의 작은 각도를 함께 검증한다.
+    setattr(e.dxf, field, getattr(e.dxf, field) + math.degrees(2 * math.asin(distance / (2 * radius))))
+    after = chg.change_state(e)
+    assert chg.same_state(before, after) is want
+    assert chg.diff_fields(before, after) == ([] if want else [field])
+
+
+@pytest.mark.parametrize("angles", [(0, 360), (359.999999, -.000001), (-90, 270)])
+def test_arc_angles_wrap_at_zero(chg, doc, angles):
+    e = doc.modelspace().add_arc((0, 0, 7), 100000, angles[0], 90)
+    before = chg.change_state(e)
+    e.dxf.start_angle = angles[1]
+    assert chg.same_state(before, chg.change_state(e))
+
+
+def test_arc_endpoint_includes_center_and_radius_changes(chg, doc):
+    e = doc.modelspace().add_arc((0, 0, 7), 1000, 0, 90)
+    before = chg.change_state(e)
+    e.dxf.center = (0, .006, 7)
+    e.dxf.start_angle = math.degrees(.006 / 1000)
+    assert "start_angle" in chg.diff_fields(before, chg.change_state(e))
+    e.dxf.center = (.006, 0, 7)
+    e.dxf.start_angle = 0
+    e.dxf.radius += .006
+    assert "start_angle" in chg.diff_fields(before, chg.change_state(e))
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+@pytest.mark.parametrize("color", [2, {"rgb": [17, 83, 201]}])
+def test_curves_set_common_display_properties_only_and_delete(chg, doc, std, kind, color):
+    e = curve(doc, kind)
+    data = request([e.dxf.handle], action="set", props=dict(layer="CON", color=color, linetype="BYLAYER", lineweight=50))
+    data["changes"][0].pop("delta")
+    t = chg.resolve(chg.parse_changes(data), doc, std, "snap-1").targets[0]
+    assert (t.after["layer"], t.after["linetype"], t.after["lineweight"]) == ("con", "bylayer", 50)
+    assert (t.after["color"], t.after["true_color"]) == ((2, None) if color == 2 else (None, 0x1153C9))
+    for field in ("center", "radius", "thickness", "extrusion", "start_angle", "end_angle"):
+        if field in t.before:
+            assert t.after[field] == t.before[field]
+    data["changes"][0].update(action="delete")
+    data["changes"][0].pop("props")
+    plan = chg.resolve(chg.parse_changes(data), doc, std, "snap-1")
+    assert plan.targets[0].after is None
+    rec = record(chg, plan)
+    doc.modelspace().delete_entity(e)
+    assert chg.judge_changes(plan, doc, {}).action == "conflict"
+    assert chg.judge_changes(plan, doc, {plan.spec.op: rec}).action == "skip"
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+@pytest.mark.parametrize("props", [{"text": "문자"}, {"attribs": {"태그": "값"}}])
+def test_curve_text_and_attribs_reject_entire_request(chg, doc, std, kind, props):
+    good, e = line(doc), curve(doc, kind)
+    data = request([good.dxf.handle, e.dxf.handle], action="set", props=props)
+    data["changes"][0].pop("delta")
+    violations = rejected(chg, doc, std, data, "CHG_KIND")
+    assert any(v.handle == e.dxf.handle for v in violations)
+
+
+@pytest.mark.parametrize("kind", ["CIRCLE", "ARC"])
+@pytest.mark.parametrize("extrusion", [(0, 0, -1), (0, 1, 1)])
+@pytest.mark.parametrize("action", ["move", "delete", "set"])
+def test_curve_negative_or_tilted_extrusion_is_rejected(chg, doc, std, kind, extrusion, action):
+    e = curve(doc, kind)
+    data = request([e.dxf.handle], action=action)
+    if action != "move":
+        data["changes"][0].pop("delta")
+    if action == "set":
+        data["changes"][0]["props"] = {"layer": "CON"}
+    plan = chg.resolve(chg.parse_changes(data), doc, std, "snap-1")
+    e.dxf.extrusion = extrusion
+    rejected(chg, doc, std, data, "CHG_KIND")
+    assert any(v.code == "CHG_KIND" for v in chg.recheck(plan, doc))
+    assert chg.judge_changes(plan, doc, {}, overwrite_manual=True).action == "conflict"

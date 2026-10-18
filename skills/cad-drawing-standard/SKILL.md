@@ -38,7 +38,7 @@ AI는 요구와 배치 규칙을 명세로 표현하고, 엔진은 표준 적용
 4. **결과 확인.** `status=success` + `meta.decision=skip`이면 이미 완료된 요청이다. `conflict`면 멈추고 보고한다. 새 op·저수준 도구로 우회하지 않는다. `failed`의 `CHG_*`는 코드에 따라 명세를 고친다. 잠긴 레이어 등 도면 상태 문제는 사용자에게 알린다. `unverified`는 복귀 또는 적용 기록을 확인하지 못한 상태다. 자동 재전송·저장 등 후속 작업을 중단한다. 사용자 확인·명시적 재개 뒤에만 `resume_after_unverified=true`를 쓴다.
 5. **검사·저장·보고.** 성공 결과의 `applied`, `new_violations`, `unchecked`, `warnings`를 확인한다. `unchecked`가 있으면 완료로 보고하지 않는다. `check_standard(scale=k)`로 전체 도면을 검사하고, 확인된 결과만 DWG로 저장한다. 아래 보고 계약을 따른다.
 
-이 절차의 `apply_changes`는 모형 공간 LINE·LWPOLYLINE·TEXT·INSERT만 다룬다. 펼친 대상 상한은 1,000개다. 회전·대칭·배율, 원·호·해치·치수·MTEXT, 블록 정의 내부, 속성 단독 핸들은 지원하지 않는다. 미지원으로 보고하고 저수준 도구로 우회하지 않는다.
+이 절차의 `apply_changes` 대상은 모형 공간 LINE·LWPOLYLINE·CIRCLE·ARC·TEXT·INSERT, extrusion=(0,0,1). 원·호의 set은 공통 표시 속성(레이어·색·선종류·선굵기)만. 펼친 대상 상한은 1,000개다. 회전·대칭·배율, 해치·치수·MTEXT, 블록 정의 내부, 속성 단독 핸들은 지원하지 않는다. 미지원으로 보고하고 저수준 도구로 우회하지 않는다.
 
 `op` + `path_prefix`에 해치 등 지원 밖 객체가 섞이면 요청 전체가 거부된다. 요청한 대상이 모두 지원 객체일 때만 `oids`로 정확히 좁힌다. '객실 전체 이동'에 해치가 포함됐다면 일부만 옮겨 완료 처리하지 않는다. 미지원 범위를 보고하고 사용자 판단을 받는다. 연관 해치 경계는 해치를 빼고 골라도 `CHG_RELATION`이다.
 
