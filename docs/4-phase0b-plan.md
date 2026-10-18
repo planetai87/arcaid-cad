@@ -142,6 +142,8 @@ MCP 작업이다(`src/apply_service.py`, `src/cad_controller.py`).
 - **변경 절차**: `export_snapshot`·`read_drawing` 또는 `get_selection`(잘리면 limit을 올리거나 op+path_prefix로 고름) → 변경 명세 → `apply_changes` → `check_standard` → 보고.
 - 충돌·확인 불가에서는 멈춘다. 예제와 zip을 갱신한다.
 
+완료: 2026-10-18([PR #33](https://github.com/planetai87/arcaid-cad/pull/33)). 변경 절차·변경 명세 문서·변경 예제. CAD 리허설 3개 통과, 행동 평가 5건 통과. zip 12개 파일.
+
 ### B5 · 0-B 통과 시험
 
 아래 '0-B 통과 시험(B5)' 절에 적는다.
