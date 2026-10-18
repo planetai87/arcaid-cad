@@ -135,6 +135,8 @@ MCP 작업이다(`src/apply_service.py`, `src/cad_controller.py`).
 - **만드는 저수준 툴**(copy·mirror·배열·offset, 원본 유지): 새 객체의 ARCAID 태그만 지우고 다른 앱 XDATA는 남긴다. 태그 제거에 실패하면 실패로 보고한다.
 - **한계**: `send_command`·`run_lisp`·undo·redo는 통제하지 못한다. 툴 설명과 스킬에 적는다.
 
+완료: 2026-10-18([PR #31](https://github.com/planetai87/arcaid-cad/pull/31)). 툴 46개. CAD 보호 시험 36개·회귀 33개 통과. GstarCAD에서 ObjectIDToObject가 서버 오류를 내 OwnerID 비교로 공간 판정.
+
 ### B4 · 스킬 개정
 
 - **변경 절차**: `export_snapshot`·`read_drawing` 또는 `get_selection`(잘리면 limit을 올리거나 op+path_prefix로 고름) → 변경 명세 → `apply_changes` → `check_standard` → 보고.
