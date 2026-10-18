@@ -16,7 +16,7 @@ from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Set
 
 import ezdxf
 
@@ -322,13 +322,50 @@ def _rollback_changes(ctl, folder, plan, base_doc, failure, group_closed, scope,
                    warnings=warnings + problems[:LIST_LIMIT])
 
 
+@dataclass
+class _TargetUnchecked:
+    """변경 대상 미검사와 전후 합집합을 구할 핸들(None은 전역 항목)."""
+    unchecked: Unchecked
+    handles: Optional[Set[str]]
+
+
 def _target_violations(path, std, handles, k, snapshot):
-    checked = check_standard(Path(path), std, k=k, snapshot=snapshot)
-    unchecked = list(checked.unchecked)
+    unchecked_handles = {}
+    checked = check_standard(Path(path), std, k=k, snapshot=snapshot, _unchecked_handles=unchecked_handles)
+    unchecked = []
+    for u in checked.unchecked:
+        item_handles = unchecked_handles.get((u.item, u.reason))
+        if item_handles is None:
+            unchecked.append(_TargetUnchecked(u, None))
+        else:
+            overlap = item_handles & handles
+            if overlap:
+                unchecked.append(_TargetUnchecked(u.model_copy(update={"count": len(overlap)}), overlap))
     if checked.status is not Status.SUCCESS or checked.truncated:
-        unchecked.append(Unchecked(item="대상 새 위반 차분", reason=f"표준 검사 {checked.status.value} 또는 결과 잘림"))
+        unchecked.append(_TargetUnchecked(Unchecked(item="대상 새 위반 차분",
+                                         reason=f"표준 검사 {checked.status.value} 또는 결과 잘림"), None))
     violations = Counter((v.code, v.handle) for v in checked.violations if v.handle in handles)
     return violations, unchecked
+
+
+def _merge_target_unchecked(*checks) -> List[Unchecked]:
+    """같은 항목·이유는 대상 핸들의 합집합으로 센다. 전역 개수는 전후를 더하지 않는다."""
+    merged = {}
+    for check in checks:
+        for entry in check:
+            u = entry.unchecked
+            key = (u.item, u.reason)
+            previous = merged.get(key)
+            if previous is None:
+                merged[key] = entry
+            elif previous.handles is not None and entry.handles is not None:
+                union = previous.handles | entry.handles
+                merged[key] = _TargetUnchecked(u.model_copy(update={"count": len(union)}), union)
+            else:
+                counts = (previous.unchecked.count, u.count)
+                count = None if None in counts else max(counts)
+                merged[key] = _TargetUnchecked(u.model_copy(update={"count": count}), None)
+    return [merged[key].unchecked for key in sorted(merged)]
 
 
 def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, hooks: Optional[Hooks] = None,
@@ -389,8 +426,10 @@ def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, ho
             return _result(Status.CONFLICT, f"{parsed.op}: {decision.reason}", scope, ids, meta, folder,
                            violations=_conflicts(decision.reason, decision.details), warnings=warnings)
         handles = {t.handle for t in plan.targets}
+        check_handles = handles | {a.dxf.handle for h in handles if pre.entitydb[h].dxftype() == "INSERT"
+                                   for a in pre.entitydb[h].attribs}
         meta.k = std.profile.scale.default_k if k is None else k
-        before_v, unchecked = _target_violations(pre_meta.dxf_path, std, handles, meta.k, pre_meta)
+        before_v, before_unchecked = _target_violations(pre_meta.dxf_path, std, check_handles, meta.k, pre_meta)
         clock.lap("check_before")
 
         # 판정 뒤 사람 편집은 막을 수 없다. 묶음 전에 주입해야 UNDO가 그 편집을 지우지 않는다.
@@ -455,8 +494,8 @@ def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, ho
             return _rollback(ctl, folder, None, parsed.op, _CheckFailed(problems, "적용 뒤 확인 불일치"), True, scope, ids, meta,
                              warnings + problems[:LIST_LIMIT], change_plan=plan, base_doc=pre, hooks=hooks,
                              writes_attempted=writes_attempted, target_doc=doc)
-        after_v, after_unchecked = _target_violations(post_meta.dxf_path, std, handles, meta.k, post_meta)
-        unchecked += after_unchecked
+        after_v, after_unchecked = _target_violations(post_meta.dxf_path, std, check_handles, meta.k, post_meta)
+        unchecked = _merge_target_unchecked(before_unchecked, after_unchecked)
         new_violations = dict(Counter(code for (code, _), n in (after_v - before_v).items() for _ in range(n)))
         clock.lap("check_after")
 
@@ -490,11 +529,13 @@ def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, ho
                            scope, ids, meta, folder, warnings=warnings, unchecked=unchecked, assumptions=assumptions)
         clock.lap("record")
         counts = Counter(t.action for t in plan.targets)
-        check_text = "새 위반 수 확인 못함" if unchecked else f"새 위반 {sum(new_violations.values())}건"
+        check_text = f"새 위반 {sum(new_violations.values())}건"
+        if unchecked:
+            check_text += f", 미검사 {len(unchecked)}종"
         return _result(Status.SUCCESS, f"{parsed.op}: {len(handles)}개 변경, {check_text}", scope, ids, meta, folder,
                        applied=[Applied(action=a, count=n, handles=[t.handle for t in plan.targets if t.action == a][:LIST_LIMIT])
                                 for a, n in counts.items()], checked=[Checked(item="변경 대상", count=len(handles))],
-                       new_violations={} if unchecked else new_violations, unchecked=unchecked, warnings=warnings,
+                       new_violations=new_violations, unchecked=unchecked, warnings=warnings,
                        assumptions=assumptions)
     except BaseException as error:
         return _unexpected_result(error, scope, ids, meta, writes_attempted)

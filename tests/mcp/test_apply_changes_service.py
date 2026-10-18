@@ -401,24 +401,132 @@ def test_new_violations_are_target_differences(prepared):
     assert r.status is Status.SUCCESS and r.new_violations == {}
 
 
-@pytest.mark.parametrize("point", ["before", "after"])
-def test_incomplete_standard_check_does_not_claim_zero(prepared, monkeypatch, point):
+@pytest.mark.parametrize("point", ["before", "after", "both"])
+@pytest.mark.parametrize("incomplete", ["failed", "truncated"])
+def test_incomplete_standard_check_reports_unchecked(prepared, monkeypatch, point, incomplete):
     from src.engine.check import CheckResult
     from src.engine.results import Scope
 
     original = service.check_standard
+    prepared[3]["changes"][0] = dict(id="set", select={"handles": [prepared[4]]}, action="set", props={"color": 1})
     n = 0
 
     def check(*args, **kw):
         nonlocal n
         n += 1
-        if n == (1 if point == "before" else 2):
-            return CheckResult(status=Status.FAILED, summary="검사 실패", scope=Scope(target="시험"))
+        if point == "both" or n == (1 if point == "before" else 2):
+            if incomplete == "failed":
+                return CheckResult(status=Status.FAILED, summary="검사 실패", scope=Scope(target="시험"))
+            return original(*args, **kw).model_copy(update={"truncated": True})
         return original(*args, **kw)
 
     monkeypatch.setattr(service, "check_standard", check)
     r = run(prepared)
-    assert r.status is Status.SUCCESS and r.unchecked and "새 위반 0" not in r.summary
+    assert r.status is Status.SUCCESS and not r.is_complete()
+    (u,) = r.unchecked
+    assert u.item == "대상 새 위반 차분" and u.count is None
+    expected = {} if incomplete == "failed" and point in ("after", "both") else {"COLOR_NOT_BYLAYER": 1}
+    assert r.new_violations == expected
+    assert f"새 위반 {sum(expected.values())}건, 미검사 1종" in r.summary
+
+
+@pytest.mark.parametrize("target_text", [False, True])
+def test_unchecked_text_outside_targets_is_omitted(prepared, target_text):
+    ctl, work, std, spec, _, _ = prepared
+    for _ in range(2):
+        ctl.doc.modelspace().add_text("대상 밖", dxfattribs={"layer": "0"})
+    if target_text:
+        text = ctl.doc.modelspace().add_text("대상", dxfattribs={"layer": "ROM", "height": 135,
+                                                                "style": std.text.style.name})
+        base, _ = snapshot_active(ctl, work)
+        spec["target"] = {"snapshot_id": base.snapshot_id}
+        spec["changes"][0]["select"] = {"handles": [text.dxf.handle]}
+    r = run(prepared)
+    assert r.status is Status.SUCCESS and r.unchecked == [] and r.is_complete()
+    assert r.new_violations == {} and "새 위반 0건" in r.summary
+
+
+@pytest.mark.parametrize("action", ["move", "delete", "set"])
+def test_target_unchecked_text_is_counted_once_and_keeps_new_violations(prepared, action):
+    ctl, work, _, spec, _, _ = prepared
+    texts = [ctl.doc.modelspace().add_text("문자", dxfattribs={"layer": "0"}) for _ in range(2)]
+    base, _ = snapshot_active(ctl, work)
+    change = dict(id="text", select={"handles": [texts[0].dxf.handle]}, action=action)
+    if action == "move":
+        change["delta"] = [10, 20]
+    elif action == "set":
+        change["props"] = {"color": 1}
+    spec.update(target={"snapshot_id": base.snapshot_id}, changes=[change])
+    r = run(prepared)
+    assert r.status is Status.SUCCESS and not r.is_complete(), r.summary
+    assert [u.model_dump() for u in r.unchecked] == [dict(item="높이 규칙이 없는 레이어의 문자",
+                                                         reason="text.yaml에 그 레이어의 문자 높이가 없음", count=1)]
+    assert r.new_violations == ({"COLOR_NOT_BYLAYER": 1} if action == "set" else {})
+    assert f"새 위반 {int(action == 'set')}건, 미검사 1종" in r.summary
+
+
+def test_unchecked_before_after_counts_union_of_target_handles(prepared):
+    ctl, work, std, spec, _, _ = prepared
+    ms = ctl.doc.modelspace()
+    first = ms.add_text("규칙 없음", dxfattribs={"layer": "0"})
+    second = ms.add_text("규칙 있음", dxfattribs={"layer": "ROM", "height": 135, "style": std.text.style.name})
+    base, _ = snapshot_active(ctl, work)
+    spec.update(target={"snapshot_id": base.snapshot_id}, changes=[
+        dict(id="to-standard", select={"handles": [first.dxf.handle]}, action="set", props={"layer": "ROM"}),
+        dict(id="from-standard", select={"handles": [second.dxf.handle]}, action="set", props={"layer": "0"})])
+    r = run(prepared)
+    assert r.status is Status.SUCCESS, r.summary
+    (u,) = r.unchecked
+    assert u.item == "높이 규칙이 없는 레이어의 문자" and u.count == 2
+    assert r.new_violations == {"LAYER_NOT_DRAWABLE": 1, "TEXT_HEIGHT": 1}
+
+
+def test_global_unchecked_is_retained_once(prepared, monkeypatch):
+    from src.engine.results import Unchecked
+    original = service.check_standard
+
+    def check(*args, **kwargs):
+        result = original(*args, **kwargs)
+        key = ("전역", "도면 전체의 검사 전제")
+        kwargs["_unchecked_handles"][key] = None
+        result.unchecked.append(Unchecked(item=key[0], reason=key[1], count=2))
+        return result
+
+    monkeypatch.setattr(service, "check_standard", check)
+    r = run(prepared)
+    assert r.status is Status.SUCCESS and not r.is_complete()
+    assert [(u.item, u.reason, u.count) for u in r.unchecked] == [("전역", "도면 전체의 검사 전제", 2)]
+
+
+def test_insert_target_includes_attribute_check_results(prepared, monkeypatch):
+    """검사기 경계에 속성 결과를 주입해 종속 핸들의 검사 범위를 확인한다."""
+    from src.engine.results import Unchecked, Violation
+    ctl, work, _, spec, _, outside = prepared
+    block = ctl.doc.blocks.new("SCOPE_ATTRIBUTE")
+    block.add_attdef("ID", (0, 0), text="옛 값", height=135)
+    entity = ctl.doc.modelspace().add_blockref(block.name, (0, 0))
+    entity.add_auto_attribs({"ID": "옛 값"})
+    attribute = entity.attribs[0].dxf.handle
+    base, _ = snapshot_active(ctl, work)
+    spec.update(target={"snapshot_id": base.snapshot_id}, changes=[
+        dict(id="attrib", select={"handles": [entity.dxf.handle]}, action="set", props={"attribs": {"ID": "새 값"}})])
+    original = service.check_standard
+
+    def check(path, *args, **kwargs):
+        result = original(path, *args, **kwargs)
+        key = ("속성 검사", "속성 규칙 없음")
+        kwargs["_unchecked_handles"][key] = {attribute, outside}
+        result.unchecked.append(Unchecked(item=key[0], reason=key[1], count=2))
+        doc = ezdxf.readfile(path)
+        if doc.entitydb[attribute].dxf.text == "새 값":
+            result.violations.append(Violation(code="TEXT_HEIGHT", message="속성 문자 높이", handle=attribute))
+        return result
+
+    monkeypatch.setattr(service, "check_standard", check)
+    r = run(prepared)
+    assert r.status is Status.SUCCESS and not r.is_complete(), r.summary
+    assert [(u.item, u.count) for u in r.unchecked] == [("속성 검사", 1)]
+    assert r.new_violations == {"TEXT_HEIGHT": 1}
 
 
 def test_undo_failure_stays_guarded_after_inverse(prepared, monkeypatch):
