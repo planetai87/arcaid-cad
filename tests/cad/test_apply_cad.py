@@ -83,7 +83,9 @@ def test_insert_rerun_and_conflicts(opened, tmp_path):
     assert r.status is Status.CONFLICT and "다른 입력" in r.summary
     assert handles(snap(ctl, tmp_path, "after4")) == before
 
-    ctl.erase_entity(handle_of(snap(ctl, tmp_path, "s5"), f"{OP}:room[1]/floor"))
+    # 저수준 삭제는 이제 엔진 객체를 거절한다. 수동 삭제 상황은 시험에서 COM으로 직접 만든다.
+    removed = handle_of(snap(ctl, tmp_path, "s5"), f"{OP}:room[1]/floor")
+    ctl._call_attr(ctl._call_attr(ctl.doc, "HandleToObject", removed), "Delete")
     r = draw_batch(ctl, work, std, SPEC)
     assert r.status is Status.CONFLICT and "일부만" in r.summary
 

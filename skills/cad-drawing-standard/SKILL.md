@@ -26,12 +26,14 @@ AI는 요구와 배치 규칙을 명세로 표현하고, 엔진은 표준 적용
 3. **읽기.** `export_snapshot()` → 반환 `snapshot.snapshot_id`로 `read_drawing(snapshot_id=...)`. 단위·그리드·실명·기존 객체 범위를 확인하고 `ids.drawing_id`와 스냅샷 ID를 보관한다. mm가 아니면 쓰기를 중단하고 단위와 실제 좌표의 의미를 확인한다. DXF 사본은 항상 `export_snapshot`을 쓰며 `save_drawing`으로 DXF를 저장하지 않는다.
 4. **명세 작성.** 조회한 `standard`, 고유한 `op`, `scale`, 대상 ID, 그리드와 `items`를 담는다. 반복·대칭·회전은 `group.place`, 문자는 `role`·`align`, 블록 속성은 태그별 `attribs`, 해치 섬은 `holes`, 치수는 `dim`·`dim_chain`으로 표현한다. 레이어·용도는 허용된 조합을 쓴다. 색·선굵기·문자 높이·블록 배율·DIMSCALE을 직접 넣지 않는다.
 5. **적용.** `draw_batch(spec=...)` 결과를 확인한다. 재전송은 **같은 op와 같은 명세**로 한다. 이미 완료된 요청은 건너뛴다. 충돌을 피하려고 op를 바꿔 중복 삽입하거나 누락분을 저수준 도구로 보충하지 않는다.
-6. **검사·수정.** `check_standard(scale=k)`로 최신 활성 도면을 검사한다. `fixes`는 제안 목록이다. 자동 수정 가능한 레이어·색·선종류·선굵기는 `check_standard(snapshot_id=<검사 결과 ids.snapshot_id>, scale=k, fix=true)`로 적용한다. `fix`는 활성 도면에만 쓰며 `file_path`와 함께 쓰지 않는다. 남은 위반·미검사를 확인한다. 형상 변경·이동·삭제는 현재 보호된 수정 범위에 없다.
+6. **검사·수정.** `check_standard(scale=k)`로 최신 활성 도면을 검사한다. `fixes`는 제안 목록이다. 자동 수정 가능한 레이어·색·선종류·선굵기는 `check_standard(snapshot_id=<검사 결과 ids.snapshot_id>, scale=k, fix=true)`로 적용한다. `fix`는 활성 도면에만 쓰며 `file_path`와 함께 쓰지 않는다. 남은 위반·미검사를 확인한다. 회전·대칭·배율은 보호된 수정 범위에 없다.
 7. **저장·보고.** 확인된 대상에 `save_drawing(file_path=<DWG 절대경로>)`을 호출하고 성공을 확인한다. `screenshot`은 외관 확인용, `plot`은 요청된 PDF 출력용이다. 수치 검사는 `check_standard` 결과로 보고한다.
 
 ## 보호 규칙과 상태별 행동
 
 ARCAID 태그가 붙은 엔진 객체는 저수준 그리기·편집 도구, `send_command`, `run_lisp`, 수동 Undo로 고치지 않는다. 정해진 표준 수정은 보호된 `check_standard(fix=true)`를 사용한다. 적용·실패 복구는 엔진이 담당한다.
+저수준 이동·삭제·회전·배율은 엔진 객체(INSERT·종속 ATTRIB 포함)와 태그 읽기 실패를 거절한다. 복사·대칭·Offset·배열은 새 객체의 ARCAID만 제거하고 확인하며, 실패하면 생성 핸들을 보고하므로 다시 시도하지 말고 확인한다. 편집 9종은 모형·종이 공간의 객체만 받는다. 기존 객체 이동·삭제·속성 변경은 기준 스냅샷을 담은 보호된 `apply_changes`를 사용한다.
+`send_command`·`run_lisp`·`undo`·`redo`·`insert_block`·`create_block`은 엔진 객체를 통제하지 못한다. 통제하지 못한 변경은 대상·기준·기록에 따라 다음 보호된 경로에서 충돌로 잡힐 수 있으나, 태그 제거·op 전체 삭제·블록 정의 변경은 검출하지 못할 수 있다. CAD 화면에서 동시에 편집하는 경우는 보장 범위 밖이다.
 
 | status | 다음 행동 |
 |---|---|

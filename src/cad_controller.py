@@ -10,6 +10,7 @@ import tempfile
 import uuid
 import concurrent.futures
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 # 설정 싱글턴을 공통으로 쓴다(예전처럼 모듈마다 config.json을 다시 읽지 않는다)
@@ -144,6 +145,15 @@ class COMExecutor:
             # anyio가 없으면 동기 실행으로 대체한다(일어나면 안 되는 경우)
             return self.submit(fn, *args, **kwargs)
         return await anyio.to_thread.run_sync(lambda: self.submit(fn, *args, **kwargs))
+
+
+@dataclass
+class EditResult:
+    """저수준 편집 결과. 부분 생성·태그 제거 실패에도 핸들을 잃지 않는다."""
+    ok: bool = False
+    new_handles: List[str] = field(default_factory=list)
+    tag_left: List[str] = field(default_factory=list)
+    error: Optional[str] = None
 
 
 class CADController:
@@ -392,14 +402,14 @@ class CADController:
         return self._call(getattr, self.doc, "ModelSpace")
 
     @contextmanager
-    def _undo_group(self):
+    def _undo_group(self, doc=None):
         """이번 도구 작업을 독립된 실행 취소 그룹으로 묶는다(UNDO 1이 정확히 한 단계를 취소하게)
 
         AutoCAD는 명령행이 쉬는 동안의 모든 COM 수정을 하나의 실행 취소 그룹으로 합친다.
         표시를 하지 않으면 UNDO 한 번에 그린 것 전체가 취소될 수 있다.
         중첩해서 써도 안전하다(예: draw_rectangle→draw_polyline). 안쪽 그룹은 바깥 그룹에 들어간다.
         """
-        doc = self.doc
+        doc = self.doc if doc is None else doc
         # 표시 호출도 바쁜 CAD에 거부될 수 있어 재시도
         self._call_attr(doc, "StartUndoMark")
         try:
@@ -1312,141 +1322,196 @@ class CADController:
             raise ValueError(f"핸들 {handle}인 객체를 찾지 못함")
         return entity
 
-    def erase_entity(self, handle: str) -> bool:
-        """지정한 객체를 지운다"""
-        if not self.is_running():
-            return False
-        try:
-            # 독립 실행 취소 그룹: UNDO 1이 이번 지우기만 정확히 취소한다
-            with self._undo_group():
-                self._call_attr(self._get_entity_by_handle(handle), "Delete")
-            return True
-        except Exception as e:
-            logger.error(f"객체 지우기 실패: {str(e)}")
-            return False
+    def _read_engine_tag(self, entity) -> Tuple[bool, Dict[str, str]]:
+        """원시 ARCAID 존재와 파싱값을 분리한다. 읽기 실패는 전파해 편집을 막는다."""
+        raw = self._call_attr(entity, "GetXData", "ARCAID")
+        if not isinstance(raw, (tuple, list)) or len(raw) != 2:
+            return True, {}
+        types, values = raw
+        if types is None and values is None:
+            return False, {}
+        if not isinstance(types, (tuple, list)) or not isinstance(values, (tuple, list)):
+            return True, {}
+        if not types and not values:
+            return False, {}
+        tags = {}
+        for code, value in zip(types, values):
+            if code == 1000 and isinstance(value, str) and "=" in value:
+                key, _, val = value.partition("=")
+                tags[key] = val
+        # 길이 불일치·부분 태그·파싱 불가도 원시가 남아 있으면 보호한다.
+        return True, tags
 
-    def move_entity(self, handle: str, displacement: List[float]) -> bool:
-        """객체를 이동한다(이동 벡터 [dx, dy, dz])"""
-        if not self.is_running():
-            return False
-        try:
-            entity = self._get_entity_by_handle(handle)
-            # Move(기준점, 두 번째 점)로 평행 이동한다: 기준점은 원점, 두 번째 점이 곧 이동 벡터
-            with self._undo_group():
-                self._call_attr(entity, "Move", self._pt((0, 0, 0)), self._pt(displacement))
-            return True
-        except Exception as e:
-            logger.error(f"객체 이동 실패: {str(e)}")
-            return False
+    def engine_tag(self, handle: str) -> Tuple[bool, Dict[str, str]]:
+        """핸들의 (원시 ARCAID 존재, 파싱값). GetXData 실패는 예외로 알린다."""
+        return self._read_engine_tag(self._get_entity_by_handle(handle))
 
-    def rotate_entity(self, handle: str, base_point: List[float], angle_degrees: float) -> bool:
-        """기준점을 중심으로 객체를 회전한다(각도 단위: 도, 반시계 방향이 양수)"""
-        if not self.is_running():
-            return False
+    def _layout_block_ids(self, doc) -> set[int]:
+        """ID 역조회 없이 모형·종이 공간의 블록 레코드 ID를 모은다."""
+        # 모형 공간 확인 실패는 전파한다. 선택적인 레이아웃 읽기 실패로 누락되면 안 된다.
+        model_space = self._call(getattr, doc, "ModelSpace")
+        ids = {self._call(getattr, model_space, "ObjectID")}
         try:
-            entity = self._get_entity_by_handle(handle)
-            with self._undo_group():
-                self._call_attr(entity, "Rotate", self._pt(base_point), math.radians(angle_degrees))
-            return True
-        except Exception as e:
-            logger.error(f"객체 회전 실패: {str(e)}")
-            return False
+            paper_space = self._call(getattr, doc, "PaperSpace")
+            ids.add(self._call(getattr, paper_space, "ObjectID"))
+        except Exception:
+            pass
+        try:
+            layouts = self._call(getattr, doc, "Layouts")
+            count = self._call(getattr, layouts, "Count")
+        except Exception:
+            return ids
+        for index in range(count):
+            try:
+                layout = self._call_attr(layouts, "Item", index)
+                block = self._call(getattr, layout, "Block")
+                ids.add(self._call(getattr, block, "ObjectID"))
+            except Exception:
+                continue
+        return ids
 
-    def scale_entity(self, handle: str, base_point: List[float], scale_factor: float) -> bool:
-        """기준점을 중심으로 객체 크기를 바꾼다"""
-        if not self.is_running():
-            return False
-        try:
-            entity = self._get_entity_by_handle(handle)
-            with self._undo_group():
-                self._call_attr(entity, "ScaleEntity", self._pt(base_point), scale_factor)
-            return True
-        except Exception as e:
-            logger.error(f"객체 크기 조정 실패: {str(e)}")
-            return False
+    def _edit_family(self, doc, entity) -> List[Any]:
+        """모형·종이 공간만 허용하고 INSERT와 그 소유 ATTRIB를 함께 돌려준다."""
+        kind = self._call(getattr, entity, "ObjectName")
+        if kind in ("AcDbAttribute", "AcDbAttributeReference"):
+            raise ValueError("속성은 블록 참조 핸들로 편집한다(속성 단독 편집은 지원하지 않음)")
+        if self._call(getattr, entity, "OwnerID") not in self._layout_block_ids(doc):
+            raise ValueError("모형·종이 공간의 객체만 편집할 수 있음(블록 정의 내부·속성은 거절)")
+        family = [entity]
+        if kind in ("AcDbBlockReference", "AcDbMInsertBlock"):
+            if self._call(getattr, entity, "HasAttributes"):
+                root_id = self._call(getattr, entity, "ObjectID")
+                # 상수 속성은 CAD에 따라 정의 내부 객체다. 참조가 소유한 ATTRIB만 대상으로 삼는다.
+                for method in ("GetAttributes", "GetConstantAttributes"):
+                    for attr in self._call_attr(entity, method) or ():
+                        if self._call(getattr, attr, "OwnerID") == root_id:
+                            family.append(attr)
+        return family
 
-    def copy_entity(self, handle: str, displacement: List[float]):
-        """객체를 복사해 지정한 만큼 옮기고, 새 객체를 돌려준다"""
+    def _edit_existing(self, handle: str, method: str, *args) -> EditResult:
+        """태그 검사와 편집을 같은 COM 작업에서 수행한다. CAD UI 동시 편집은 잠그지 못한다."""
+        result = EditResult()
         if not self.is_running():
-            return None
+            result.error = "CAD 미연결"
+            return result
+        doc = self.doc
         try:
-            entity = self._get_entity_by_handle(handle)
-            # 복사+이동을 하나의 실행 취소 그룹으로 묶는다(Copy와 Move는 따로 재시도하며 둘 다 멱등이라 안전)
-            with self._undo_group():
-                copy = self._call_attr(entity, "Copy")
-                if copy is not None and displacement:
-                    self._call_attr(copy, "Move", self._pt((0, 0, 0)), self._pt(displacement))
-            return copy
-        except Exception as e:
-            logger.error(f"객체 복사 실패: {str(e)}")
-            return None
+            entity = self._call_attr(doc, "HandleToObject", str(handle))
+            for member in self._edit_family(doc, entity):
+                try:
+                    present, tags = self._read_engine_tag(member)
+                except Exception as error:
+                    raise RuntimeError(f"엔진 태그 읽기 실패로 편집하지 않음: {error}") from error
+                if present:
+                    if method in ("Rotate", "ScaleEntity"):
+                        raise ValueError("엔진 객체는 보호된 경로에서 회전·배율을 지원하지 않음")
+                    raise ValueError(f"엔진 객체(op={tags.get('op', '?')}·oid={tags.get('oid', '?')})라 고치지 않음. "
+                                     "이동·삭제는 apply_changes를 쓴다")
+            with self._undo_group(doc):
+                self._call_attr(entity, method, *args)
+            result.ok = True
+        except Exception as error:
+            result.error = str(error)
+            logger.error(f"저수준 편집 실패: {error}")
+        return result
 
-    def mirror_entity(self, handle: str, point1: List[float], point2: List[float]):
-        """두 점으로 정한 대칭축을 기준으로 객체를 대칭 복사하고, 새로 생긴 객체를 돌려준다(원본 유지)"""
-        if not self.is_running():
-            return None
-        try:
-            entity = self._get_entity_by_handle(handle)
-            with self._undo_group():
-                mirrored = self._call_attr(entity, "Mirror", self._pt(point1), self._pt(point2))
-            return mirrored
-        except Exception as e:
-            logger.error(f"객체 대칭 실패: {str(e)}")
-            return None
+    def erase_entity(self, handle: str) -> EditResult:
+        """사람 객체를 지운다. 엔진 객체와 태그를 읽지 못한 객체는 거절한다."""
+        return self._edit_existing(handle, "Delete")
 
-    def offset_entity(self, handle: str, distance: float) -> List[Any]:
-        """객체를 간격 띄우기 하고(양수/음수로 방향 결정), 새 객체 목록을 돌려준다"""
-        if not self.is_running():
-            return []
-        try:
-            entity = self._get_entity_by_handle(handle)
-            with self._undo_group():
-                # Offset은 새 객체 배열을 돌려준다(비어 있을 수 있음)
-                result = self._call_attr(entity, "Offset", distance)
-            return list(result) if result else []
-        except Exception as e:
-            logger.error(f"객체 간격 띄우기 실패: {str(e)}")
-            return []
+    def move_entity(self, handle: str, displacement: List[float]) -> EditResult:
+        """사람 객체를 이동한다(이동 벡터 [dx, dy, dz])."""
+        return self._edit_existing(handle, "Move", self._pt((0, 0, 0)), self._pt(displacement))
 
-    def array_linear_entity(self, handle: str, count: int, displacement: List[float]) -> List[Any]:
-        """직선 배열: 이동 벡터 방향으로 count-1개를 복사한다(원본 포함 총 count개)"""
-        if not self.is_running():
-            return []
-        try:
-            src = self._get_entity_by_handle(handle)
-            dx, dy = float(displacement[0]), float(displacement[1])
-            dz = float(displacement[2]) if len(displacement) > 2 else 0.0
-            copies = []
-            # 배열 전체를 하나의 실행 취소 그룹으로 묶는다. 반복 안에서는 호출마다 재시도해 일부만 끝난 뒤 중복되는 것을 막는다
-            with self._undo_group():
-                for i in range(1, count):
-                    copy = self._call_attr(src, "Copy")
-                    self._call_attr(copy, "Move", self._pt((0, 0, 0)), self._pt((dx * i, dy * i, dz * i)))
-                    copies.append(copy)
-            return copies
-        except Exception as e:
-            logger.error(f"직선 배열 실패: {str(e)}")
-            return []
+    def rotate_entity(self, handle: str, base_point: List[float], angle_degrees: float) -> EditResult:
+        """사람 객체를 기준점 중심으로 회전한다(도 단위)."""
+        return self._edit_existing(handle, "Rotate", self._pt(base_point), math.radians(angle_degrees))
 
-    def array_polar_entity(self, handle: str, count: int, center: List[float], total_angle_degrees: float = 360.0) -> List[Any]:
-        """원형 배열: 중심점을 기준으로 total_angle 범위 안에 count-1개를 복사한다"""
+    def scale_entity(self, handle: str, base_point: List[float], scale_factor: float) -> EditResult:
+        """사람 객체의 크기를 기준점 중심으로 바꾼다."""
+        return self._edit_existing(handle, "ScaleEntity", self._pt(base_point), scale_factor)
+
+    def _detag_created(self, doc, entities, result: EditResult) -> None:
+        """생긴 핸들을 먼저 보존한 뒤 새 참조·ATTRIB의 ARCAID만 지우고 원시 부재를 확인한다."""
+        for entity in entities:
+            result.new_handles.append(str(self._call(getattr, entity, "Handle")))
+        for entity in entities:
+            handle = str(self._call(getattr, entity, "Handle"))
+            try:
+                family = self._edit_family(doc, entity)
+            except Exception:
+                result.tag_left.append(handle)
+                continue
+            for member in family:
+                member_handle = str(self._call(getattr, member, "Handle"))
+                try:
+                    present, _ = self._read_engine_tag(member)
+                    if present:
+                        types, values = self.xdata_variants("ARCAID", [])
+                        self._call_attr(member, "SetXData", types, values)
+                        present, _ = self._read_engine_tag(member)
+                    if present:
+                        result.tag_left.append(member_handle)
+                except Exception:
+                    # 읽거나 지운 결과를 확인할 수 없는 경우도 잔존 가능성으로 보고한다.
+                    result.tag_left.append(member_handle)
+        if result.tag_left:
+            raise RuntimeError("새 객체에 엔진 태그가 남음(같은 oid 중복). 다시 시도하지 말고 확인")
+
+    def _create_entities(self, handle: str, method: str, args=(), transforms=None) -> EditResult:
+        """복제·배열 공통 경로. 생성·태그 제거·변환이 한 Undo 묶음 안에서 진행된다."""
+        result = EditResult()
         if not self.is_running():
-            return []
+            result.error = "CAD 미연결"
+            return result
+        doc = self.doc
         try:
-            src = self._get_entity_by_handle(handle)
-            step = math.radians(total_angle_degrees / count)
-            center_pt = self._pt(center)
-            copies = []
-            # 배열 전체를 하나의 실행 취소 그룹으로 묶는다. 반복 안에서는 호출마다 재시도해 일부만 끝난 뒤 중복되는 것을 막는다
-            with self._undo_group():
-                for i in range(1, count):
-                    copy = self._call_attr(src, "Copy")
-                    self._call_attr(copy, "Rotate", center_pt, step * i)
-                    copies.append(copy)
-            return copies
-        except Exception as e:
-            logger.error(f"원형 배열 실패: {str(e)}")
-            return []
+            entity = self._call_attr(doc, "HandleToObject", str(handle))
+            self._edit_family(doc, entity)
+            with self._undo_group(doc):
+                for transform in transforms if transforms is not None else [None]:
+                    created = self._call_attr(entity, method, *args)
+                    objects = list(created) if method == "Offset" else [created]
+                    if not objects or any(e is None for e in objects):
+                        raise RuntimeError("새 객체가 반환되지 않음")
+                    self._detag_created(doc, objects, result)
+                    if transform is not None:
+                        name, transform_args = transform
+                        for obj in objects:
+                            self._call_attr(obj, name, *transform_args)
+            result.ok = True
+        except Exception as error:
+            result.error = str(error)
+            logger.error(f"저수준 복제 실패: {error}")
+        return result
+
+    def copy_entity(self, handle: str, displacement: List[float]) -> EditResult:
+        """복사본의 엔진 태그를 제거한 뒤 이동한다(원본 유지)."""
+        return self._create_entities(handle, "Copy", transforms=[
+            ("Move", (self._pt((0, 0, 0)), self._pt(displacement)))])
+
+    def mirror_entity(self, handle: str, point1: List[float], point2: List[float]) -> EditResult:
+        """대칭 복사본의 엔진 태그를 제거한다(원본 유지)."""
+        return self._create_entities(handle, "Mirror", (self._pt(point1), self._pt(point2)))
+
+    def offset_entity(self, handle: str, distance: float) -> EditResult:
+        """Offset이 반환하는 모든 새 객체의 엔진 태그를 제거한다."""
+        return self._create_entities(handle, "Offset", (distance,))
+
+    def array_linear_entity(self, handle: str, count: int, displacement: List[float]) -> EditResult:
+        """직선 배열의 복사본마다 생성 직후 태그를 제거한다(원본 포함 count개)."""
+        dx, dy = float(displacement[0]), float(displacement[1])
+        dz = float(displacement[2]) if len(displacement) > 2 else 0.0
+        transforms = [("Move", (self._pt((0, 0, 0)), self._pt((dx * i, dy * i, dz * i))))
+                      for i in range(1, count)]
+        return self._create_entities(handle, "Copy", transforms=transforms)
+
+    def array_polar_entity(self, handle: str, count: int, center: List[float],
+                           total_angle_degrees: float = 360.0) -> EditResult:
+        """원형 배열의 복사본마다 생성 직후 태그를 제거한다."""
+        step, center_pt = math.radians(total_angle_degrees / count), self._pt(center)
+        transforms = [("Rotate", (center_pt, step * i)) for i in range(1, count)]
+        return self._create_entities(handle, "Copy", transforms=transforms)
 
     def undo(self) -> bool:
         """직전 작업을 실행 취소한다"""

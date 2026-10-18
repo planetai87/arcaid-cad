@@ -17,7 +17,7 @@ sys.dont_write_bytecode = True
 # 1. 패키지로 import(pip install 후 모듈 이름은 src.server)
 # 2. src/server.py를 직접 실행(기존 Claude/Cursor 설정을 그대로 쓸 수 있게)
 if __package__:
-    from .cad_controller import CADController
+    from .cad_controller import CADController, EditResult
     from .config import get_config
     from .models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
                          ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
@@ -35,7 +35,7 @@ if __package__:
     from .engine.apply import ApplyMeta, ApplyResult, CheckFixResult
 else:
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from cad_controller import CADController
+    from cad_controller import CADController, EditResult
     from config import get_config
     from models import (ToolResult, ListEntitiesResult, ListLayersResult, EntityPropertiesResult,
                         ListBlocksResult, CommandResult, LispResult, ListDrawingsResult, StandardResult)
@@ -183,12 +183,15 @@ SERVER_INSTRUCTIONS = """arcaid-cad: MCP 도구로 Windows의 GstarCAD / BricsCA
 - 마무리 표준 검사는 check_standard(scale에 A3 축척 분모 k)로 한다. list_entities로 객체를 세어 검사하지 않는다.
 - 여러 객체를 도면에 넣을 때는 draw_batch(객체 명세 JSON: 배치 규칙·그리드 기준)를 쓴다. 보호된 경로라 실패하면
   되돌리고 확인한다. 같은 op를 다시 보내면 '이미 완료'로 건너뛰고, 명세가 바뀌었거나 사람이 고친 객체가 있으면 멈춘다.
+- 기존 객체 이동·삭제·속성 변경은 export_snapshot의 기준 snapshot_id를 담아 apply_changes로 적용한다(보호된 경로).
 - 표준 위반 중 레이어·색·선종류·선굵기는 check_standard(fix=true)로 고친다(보호된 경로). 사람이 고친 엔진 객체는
   overwrite_manual=true일 때만 고친다. status가 unverified면 사용자에게 도면 확인을 요청한다(이후 보호된 변경이 멈춤)
   결과의 fixes는 고칠 목록이고 check_standard는 도면을 고치지 않는다. status가 success이고 unchecked가 비어야 '완료'
 - 새 도면은 new_from_template(회사 템플릿 복사), 표준 레이어는 ensure_standard_layers(표준 색·선종류)로 만든다.
   PDF 출력은 plot(도곽 또는 창 범위, 회사 CTB, A3, 1/k), 사용자가 CAD에서 고른 객체는 get_selection으로 읽는다
-- 저수준 그리기·편집·명령 툴은 보호되지 않는 경로다(설명문에 표시). 여러 객체는 draw_batch를 쓴다
+- 저수준 편집은 엔진 객체의 이동·삭제·회전·배율을 거절하고, 복제본은 엔진 태그를 제거한다. 여러 객체는 draw_batch,
+  기존 객체 변경은 apply_changes를 쓴다. 명령·LISP·Undo·Redo·블록 정의/삽입은 통제하지 못한다(각 설명문의 한계 참고).
+  CAD 화면에서 동시에 편집하는 경우는 보장 범위 밖이다
 - get_standard는 회사 표준(레이어 용도·색·선종류, 문자 높이, 치수 스타일·간격, 블록)을 CAD 연결 없이 조회한다.
   scale에 A3 축척 분모 k(예: 100, 200)를 주면 문자 높이·간격·블록 배율을 그 축척의 실제 값으로 함께 돌려준다
 """
@@ -529,19 +532,6 @@ async def _entity_result(entity, ok_message: str, fail_message: str) -> ToolResu
                       entity_handles=[str(handle)] if handle else [])
 
 
-def _extract_handles_sync(entities: List[Any]) -> List[str]:
-    """COM 스레드에서 객체 핸들을 한꺼번에 뽑는다"""
-    return [str(h) for h in (CADController._safe_attr(e, "Handle") for e in entities) if h]
-
-
-async def _entities_result(entities: List[Any], ok_message: str, fail_message: str) -> ToolResult:
-    """COM 객체 목록을 공통 도구 결과로 감싼다(핸들은 COM 스레드에서 읽는다)"""
-    if not entities:
-        return ToolResult(success=False, message=fail_message)
-    handles = await com(_extract_handles_sync, entities)
-    return ToolResult(success=True, message=ok_message, entity_handles=handles)
-
-
 async def _ensure_running(ctx: Context) -> bool:
     """CAD가 실행 중인지 보장한다: 연결이 없으면 진행 알림을 먼저 보내고 자동으로 시작한다(첫 시작은 느릴 수 있음)
 
@@ -788,13 +778,22 @@ async def screenshot(ctx: Context):
 
 # ---------- 편집 도구(핸들로 기존 객체 조작) ----------
 
+def _edit_result(result: EditResult, ok_message: str, fail_message: str) -> ToolResult:
+    """COM 작업 안에서 확정한 결과만 변환한다(추가 COM 호출 없음)."""
+    handles = list(dict.fromkeys(result.new_handles + result.tag_left))
+    message = ok_message if result.ok else f"{fail_message}: {result.error or '작업 실패'}"
+    if not result.ok and handles and "다시 시도하지 말고 확인" not in message:
+        message += ". 일부 객체가 생성됨. 다시 시도하지 말고 확인"
+    return ToolResult(success=result.ok, message=message, entity_handles=handles, error=result.error)
+
+
 @mcp.tool(annotations=ToolAnnotations(destructiveHint=True))
 async def erase_entity(ctx: Context, handle: str) -> ToolResult:
     """지정한 핸들의 객체를 지운다"""
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.erase_entity, handle)
-    return ToolResult(success=ok, message="객체를 지웠습니다" if ok else f"핸들 {handle} 지우기 실패")
+    result = await com(cad_service.controller.erase_entity, handle)
+    return _edit_result(result, "객체를 지웠습니다", f"핸들 {handle} 지우기 실패")
 
 
 @mcp.tool()
@@ -802,8 +801,8 @@ async def move_entity(ctx: Context, handle: str, displacement: Point) -> ToolRes
     """객체를 이동한다(displacement는 이동 벡터 [dx, dy, dz])"""
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.move_entity, handle, displacement)
-    return ToolResult(success=ok, message="객체를 이동했습니다" if ok else f"핸들 {handle} 이동 실패")
+    result = await com(cad_service.controller.move_entity, handle, displacement)
+    return _edit_result(result, "객체를 이동했습니다", f"핸들 {handle} 이동 실패")
 
 
 @mcp.tool()
@@ -811,8 +810,8 @@ async def rotate_entity(ctx: Context, handle: str, base_point: Point, angle_degr
     """기준점을 중심으로 객체를 회전한다(각도 단위: 도, 반시계 방향이 양수)"""
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.rotate_entity, handle, base_point, angle_degrees)
-    return ToolResult(success=ok, message="객체를 회전했습니다" if ok else f"핸들 {handle} 회전 실패")
+    result = await com(cad_service.controller.rotate_entity, handle, base_point, angle_degrees)
+    return _edit_result(result, "객체를 회전했습니다", f"핸들 {handle} 회전 실패")
 
 
 @mcp.tool()
@@ -820,8 +819,8 @@ async def scale_entity(ctx: Context, handle: str, base_point: Point, scale_facto
     """기준점을 중심으로 객체 크기를 바꾼다(scale_factor>1이면 확대, <1이면 축소)"""
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
-    ok = await com(cad_service.controller.scale_entity, handle, base_point, scale_factor)
-    return ToolResult(success=ok, message="객체 크기를 바꿨습니다" if ok else f"핸들 {handle} 크기 조정 실패")
+    result = await com(cad_service.controller.scale_entity, handle, base_point, scale_factor)
+    return _edit_result(result, "객체 크기를 바꿨습니다", f"핸들 {handle} 크기 조정 실패")
 
 
 @mcp.tool()
@@ -830,7 +829,7 @@ async def copy_entity(ctx: Context, handle: str, displacement: Point) -> ToolRes
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     copy = await com(cad_service.controller.copy_entity, handle, displacement)
-    return await _entity_result(copy, "객체를 복사했습니다", f"핸들 {handle} 복사 실패")
+    return _edit_result(copy, "객체를 복사했습니다", f"핸들 {handle} 복사 실패")
 
 
 @mcp.tool()
@@ -839,7 +838,7 @@ async def mirror_entity(ctx: Context, handle: str, point1: Point, point2: Point)
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     mirrored = await com(cad_service.controller.mirror_entity, handle, point1, point2)
-    return await _entity_result(mirrored, "객체를 대칭 복사했습니다", f"핸들 {handle} 대칭 실패")
+    return _edit_result(mirrored, "객체를 대칭 복사했습니다", f"핸들 {handle} 대칭 실패")
 
 
 @mcp.tool()
@@ -848,7 +847,7 @@ async def offset_entity(ctx: Context, handle: str, distance: float) -> ToolResul
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.offset_entity, handle, distance)
-    return await _entities_result(entities, "객체를 간격 띄우기 했습니다", f"핸들 {handle} 간격 띄우기 실패")
+    return _edit_result(entities, "객체를 간격 띄우기 했습니다", f"핸들 {handle} 간격 띄우기 실패")
 
 
 @mcp.tool()
@@ -857,7 +856,7 @@ async def array_linear_entity(ctx: Context, handle: str, count: ArrayCount, disp
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.array_linear_entity, handle, count, displacement)
-    return await _entities_result(entities, f"{count}개 직선 배열 완료", f"핸들 {handle} 배열 실패")
+    return _edit_result(entities, f"{count}개 직선 배열 완료", f"핸들 {handle} 배열 실패")
 
 
 @mcp.tool()
@@ -867,7 +866,7 @@ async def array_polar_entity(ctx: Context, handle: str, count: ArrayCount, cente
     if not await _ensure_running(ctx):
         return ToolResult(success=False, message="CAD 미연결, 자동 시작 실패")
     entities = await com(cad_service.controller.array_polar_entity, handle, count, center, total_angle_degrees)
-    return await _entities_result(entities, f"{count}개 원형 배열 완료", f"핸들 {handle} 배열 실패")
+    return _edit_result(entities, f"{count}개 원형 배열 완료", f"핸들 {handle} 배열 실패")
 
 
 @mcp.tool()
@@ -1285,6 +1284,33 @@ async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
                      resume_after_unverified)
 
 
+@mcp.tool()
+async def apply_changes(ctx: Context, spec: Union[Dict[str, Any], str], overwrite_manual: bool = False,
+                        scale: Optional[int] = None, resume_after_unverified: bool = False) -> ApplyResult:
+    """기존 객체를 이동·삭제하거나 속성을 바꾼다(보호된 경로)
+
+    흐름: 기준 스냅샷 → 적용 직전 판정 → 적용 → 사후 확인 → 기록. export_snapshot의 snapshot_id가 필요하다.
+    get_selection 또는 read_drawing 전체 결과의 핸들, oid, op + path_prefix로 대상을 고른다.
+    같은 요청은 건너뛰고, 사람이 고쳤거나 입력이 다르면 conflict로 멈춘다. overwrite_manual은 기준에 포함된
+    수동 수정의 덮어쓰기를 허용한다. 기준 뒤 변경은 허용하지 않는다. unverified 뒤 사용자가 확인한 다음
+    resume_after_unverified=true로 다시 부른다. scale은 표준 검사에 쓰는 A3 축척 분모다.
+    회전·대칭·배율은 지원하지 않는다. CAD 화면에서 동시에 편집하는 경우는 보장 범위 밖이다.
+    """
+    try:
+        std = _standard()
+    except StandardError as error:
+        return ApplyResult(status=Status.FAILED, summary=str(error), scope=Scope(target="활성 도면"),
+                           meta=ApplyMeta(op="?"))
+    refused = apply_service.change_refusal(std, spec)
+    if refused is not None:
+        return refused
+    if not await _ensure_running(ctx):
+        return ApplyResult(status=Status.FAILED, summary="CAD 미연결, 자동 시작 실패", scope=Scope(target="활성 도면"),
+                           meta=ApplyMeta(op="?"))
+    return await com(apply_service.apply_changes, cad_service.controller, _work_dir(), std, spec,
+                     overwrite_manual, None, resume_after_unverified, scale)
+
+
 # ---------- 새 도면·레이어·선택·출력(T7) ----------
 
 @mcp.tool()
@@ -1377,9 +1403,15 @@ UNPROTECTED_TOOLS = (
     "offset_entity", "array_linear_entity", "array_polar_entity",
     "undo", "redo", "set_current_layer", "create_block", "insert_block", "send_command", "run_lisp",
 )
-UNPROTECTED_NOTE = ("\n\n보호되지 않는 경로: 실패해도 되돌리거나 확인하지 않는다. 엔진이 넣은 객체(ARCAID 태그)를 이것으로 고치면 "
-                    "다음 draw_batch에서 '손으로 고친 객체' 충돌로 잡힌다. 여러 객체는 draw_batch, 표준 위반 수정은 "
-                    "check_standard(fix=true)를 쓴다.")
+UNPROTECTED_NOTE = (
+    "\n\n보호되지 않는 경로: 실패해도 되돌리지 않는다. 저수준 이동·삭제·회전·배율은 엔진 객체(ARCAID)와 "
+    "태그 읽기 실패를 거절한다(INSERT·종속 ATTRIB 포함). 복사·대칭·Offset·배열은 새 객체만 태그 제거하고 "
+    "확인한다. 태그가 남으면 실패와 생성 핸들을 보고한다. 다시 시도하지 말고 확인한다. 편집 9종은 모형·종이 "
+    "공간의 객체만 받는다. send_command·run_lisp·undo·redo·insert_block·create_block은 엔진 객체를 "
+    "통제하지 못한다. 통제하지 못한 변경은 대상·기준·기록에 따라 다음 보호된 경로에서 충돌로 잡힐 수 있으나, "
+    "태그 제거·op 전체 삭제·블록 정의 변경은 검출하지 못할 수 있다. CAD 화면에서 동시에 편집하는 경우는 "
+    "보장 범위 밖이다. 여러 객체는 draw_batch, 기존 객체 이동·삭제·속성 변경은 apply_changes, "
+    "표준 위반 수정은 check_standard(fix=true)를 쓴다.")
 for _name in UNPROTECTED_TOOLS:
     _tool = mcp._tool_manager.get_tool(_name)
     _tool.description = (_tool.description or "").rstrip() + UNPROTECTED_NOTE

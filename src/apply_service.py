@@ -505,6 +505,23 @@ def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, ho
 DRAW_SCOPE = ["객체 명세 넣기(draw_batch)"]
 
 
+def change_refusal(std, spec) -> Optional[ApplyResult]:
+    """변경 명세 형식·표준이 다르면 CAD 연결 전에 거부한다."""
+    scope = Scope(target="활성 도면", supported=["기존 객체 이동·삭제·속성 변경(apply_changes)"])
+    ids, meta = ResultIds(standard=std.ref), ApplyMeta(op="?")
+    try:
+        parsed = parse_changes(spec)
+    except ChangeError as error:
+        return _result(Status.FAILED, "변경 명세 형식 오류(바꾸지 않음)", scope, ids, meta,
+                       violations=error.violations)
+    ids.request_id, meta.op, meta.spec_hash = parsed.op, parsed.op, change_hash(parsed)
+    if parsed.standard != std.ref:
+        return _result(Status.FAILED, "변경 명세의 표준이 다름(바꾸지 않음)", scope, ids, meta,
+                       violations=[Violation(code="CHG_STANDARD", message="standard: 표준이 다름",
+                                             current=parsed.standard, expected=std.ref)])
+    return None
+
+
 def spec_refusal(std, spec) -> Optional[ApplyResult]:
     """명세가 형식·표준에 맞지 않으면 실패 결과(CAD 없이 판단), 맞으면 None"""
     scope, ids = Scope(target="활성 도면", supported=DRAW_SCOPE), ResultIds(standard=std.ref)
