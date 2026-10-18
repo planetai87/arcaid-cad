@@ -202,3 +202,14 @@ E16 전체 경로는 변경 → `SetXData` → 기록 → 묶음 안 Export → 
 | 도면을 고친 뒤 Export하면 속성 블록의 **SEQEND** 핸들이 새로 붙는다(바꾸지 않은 블록 포함). 모형 공간 객체·ATTRIB 핸들은 그대로다 | `changes.verify_applied`·`verify_restored`의 핸들 집합·종속 연결·지문 비교에서 SEQEND를 뺀다 |
 | 속성값을 바꾸고 INSERT에 SetXData(state 갱신)를 한 묶음을 `UNDO 1`로 되돌리면 속성값은 돌아오지만 **INSERT의 ARCAID state 태그는 남는다** | 되돌린 뒤 형상·속성이 before와 같고 state만 다른 대상은 태그만 원래 값으로 다시 쓴다(경고로 보고) |
 | COM `GetXRecordData`의 출력 인자(VT_BYREF VARIANT)는 pywin32에서 값을 돌려주지 않는다 | 적용 기록 재읽기는 Export 사본의 `read_records`로 한다(B0 E13 방식) |
+
+### B0 이후 추가 확인 · 원·호 사전 관문 (2026-10-18 통과)
+
+B0 삭제 복귀 시험에는 CIRCLE·ARC가 포함되지 않았다. `tests/cad/test_apply_changes_cad.py`에 원·호 전용 합성 사본 시험을 추가해 GstarCAD 2021에서 실행했다(`C:rcaid\work5-gate-20261018-r1`, 파일 전체 24 passed, 906초). 이동 최대 오차: 원 중심 3.6e-12mm, 호 시작점 4.5e-6mm, 반지름·두께 0.
+
+- COM Move 뒤 Export 사본의 3D 중심·반지름·두께와 호 양 끝점의 WCS 위치 오차가 0.01mm 이내인지 확인한다. 실측 오차는 사본 폴더의 `curve-move-errors.json`에 쓴다.
+- 원·호에 레이어·트루컬러·선종류·선굵기를 모두 적용하고, 삭제를 포함한 성공 뒤 `UNDO 1` 한 번으로 같은 핸들·전체 ARCAID 태그·원시 상태가 복귀하는지 확인한다.
+- 이전 작업 표시선은 별도 COM Undo 묶음으로 먼저 만들며 성공·복귀 전후 지문을 대조한다. 삭제·이동·속성 쓰기 이후와 state 쓰기 직전의 실패 복구도 확인한다.
+- 성공 뒤 같은 명세의 재전송 `success`·`meta.decision=skip`은 UNDO 없이 별도 사본에서 확인한다.
+
+위 항목이 모두 통과해 B5 실제 도면 통과 시험으로 넘어간다.

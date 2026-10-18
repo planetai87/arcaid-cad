@@ -7,6 +7,16 @@ from src.engine import changes
 
 REFERENCE = (Path(__file__).resolve().parents[2] / "skills" / "cad-drawing-standard"
              / "references" / "change-spec.md")
+SKILL = REFERENCE.parents[1] / "SKILL.md"
+
+
+def test_change_supported_kinds_and_property_scope_match_engine():
+    for text in (REFERENCE.read_text(encoding="utf-8"), SKILL.read_text(encoding="utf-8"), changes.__doc__):
+        match = re.search(r"모형 공간 ([A-Z]+(?:·[A-Z]+)+)", text)
+        assert match is not None, "변경 지원 종류 목록이 없음"
+        assert tuple(match[1].split("·")) == changes.KINDS
+        assert "extrusion=(0,0,1)" in text
+        assert "원·호의 set은 공통 표시 속성(레이어·색·선종류·선굵기)만" in text
 
 
 def test_change_reference_lists_all_engine_rejection_codes():
