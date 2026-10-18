@@ -29,3 +29,7 @@ def test_unprotected_tools_are_marked():
     assert UNPROTECTED <= set(d)
     assert sorted(n for n in d if MARK in d[n]) == sorted(UNPROTECTED)
     assert "문자 높이를 재정의" in d["add_dimension"]
+    assert "보호된 경로" in d["apply_changes"] and MARK not in d["apply_changes"]
+    for name in UNPROTECTED:
+        for note in ("태그 제거", "통제하지 못", "검출하지 못할 수", "CAD 화면에서 동시에 편집"):
+            assert note in d[name]

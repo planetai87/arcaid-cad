@@ -115,6 +115,21 @@ def test_manifest_identity_is_always_returned(deny_policy):
     assert result == payload and not changed
 
 
+def test_apply_changes_deny_keeps_apply_result_valid(deny_policy):
+    from src.engine.apply import ApplyMeta, ApplyResult
+    from src.engine.results import Applied, Scope, Status
+
+    payload = ApplyResult(status=Status.SUCCESS, summary="변경 완료", scope=Scope(target="활성 도면"),
+                          meta=ApplyMeta(op="b3-change", drawing=r"D:\비밀\도면.dwg", decision="apply",
+                                         result_path=r"D:\비밀\변경.json"),
+                          applied=[Applied(action="move", count=1, handles=["1A"])]).model_dump(mode="json")
+    result, changed = egress.filter_payload("apply_changes", payload, deny_policy)
+    assert changed and "비밀" not in json.dumps(result, ensure_ascii=False)
+    assert result["status"] == "success" and result["meta"]["decision"] == "apply"
+    assert result["applied"][0]["handles"] == ["1A"]
+    jsonschema.validate(result, ApplyResult.model_json_schema())
+
+
 def _server(code, env):
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env={**os.environ, "PYTHONIOENCODING": "utf-8", **env},
                          capture_output=True, text=True, encoding="utf-8", timeout=120)

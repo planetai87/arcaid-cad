@@ -23,6 +23,7 @@
 - `src/engine/ops.py`: MCP·CLI 공용 검사 모델·상한(`check_file`)과 작성 결과 출력 상한(`limit_build`). 엔진 원본 manifest를 자르지 않는다.
 - `src/server.py`: MCP 서버. Claude Code에 이 경로로 등록돼 있으므로 위치·이름을 바꾸지 않는다. 패키지 import와 스크립트 직접 실행을 모두 지원한다.
 - `src/cad_controller.py`: COM 계층. MCP만 쓴다. CAD마다 다른 동작은 여기서만 나눈다.
+- `src/server.py`의 `apply_changes`는 B2 서비스를 공개한다. 저수준 편집 9종은 controller의 원시 XDATA·소유 공간 검사와 복제본 태그 제거를 거쳐 `EditResult`를 `ToolResult`로 변환한다.
 - `src/colors.py`: 색 이름 해석. 중국어 색 이름은 기능 키워드라 번역하지 않는다.
 - `spikes/`: 사전 검증(T0) 실험 코드. 제품 코드로 옮기지 않는다.
 - `skills/cad-drawing-standard/`: 회사 도면 표준 스킬의 원본. claude.ai 업로드 zip은 `tools/skills/package_skill.py -o <zip>`로 만든다(템플릿·상대 링크·zip 무결성 확인).

@@ -151,6 +151,7 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 
 **넣기**
 - `draw_batch`: 객체 명세(JSON, 반복·대칭·그리드 기준 배치 규칙)를 엔진이 표준 DXF로 만들어 활성 도면에 넣습니다. 보호된 경로입니다: 적용 직전 확인(단위 mm, 같은 이름 정의, 재실행 판정) → Undo 묶음 안에서 넣기 → 결과 확인 → 검사. 실패하면 되돌리고 확인해 `recovered`, 확인하지 못하면 `unverified`로 보고하고 이후 보호된 변경을 멈춥니다(`resume_after_unverified=true`로 해제). 같은 `op`를 다시 보내면 '이미 완료'로 건너뛰고, 같은 `op`에 다른 명세·일부만 남은 객체·사람이 고친 엔진 객체는 `conflict`로 멈춥니다.
+- `apply_changes`: 기존 객체의 이동·삭제·속성 변경을 보호된 경로로 적용합니다. `export_snapshot`의 기준 `snapshot_id`가 필요하며, `get_selection` 또는 `read_drawing` 전체 결과의 핸들·oid·op + path_prefix로 대상을 고릅니다. 기준 스냅샷 → 적용 직전 판정 → 적용 → 사후 확인 → 기록 순서이며 같은 요청은 건너뜁니다. 사람이 고쳤거나 입력이 다르면 `conflict`, 확인 불가 뒤에는 사용자 확인 후 `resume_after_unverified=true`로 재개합니다. `overwrite_manual`은 기준에 포함된 수동 수정만 허용하고, `scale`은 검사 축척입니다. 회전·대칭·배율은 지원하지 않습니다.
 
 **명령**
 - `send_command`: CAD 명령행에 명령 문자열을 그대로 보냅니다. 명령이 끝나거나 입력을 기다릴 때까지 기다리고, 아직 입력을 기다리면 `still_active=true`를 돌려줍니다.
@@ -160,11 +161,12 @@ claude mcp add arcaid-cad -s user -- "C:\path\to\arcaid-cad\.venv\Scripts\python
 ## 동작 원칙
 
 - **활성 도면에 작업합니다.** 도구를 호출할 때마다 CAD의 활성 도면을 확인하므로, CAD에서 탭을 바꾸면 그 도면에 작업합니다.
-- **엔진이 넣은 객체에는 태그(XDATA `ARCAID`: op·oid·path·ver·in·state)가 붙습니다.** 태그로 재실행과 사람의 수정을 구분합니다. 저수준 그리기·편집 도구와 `send_command`·`run_lisp`는 보호되지 않는 경로라, 태그가 붙은 객체를 고치면 다음 `draw_batch`에서 충돌로 잡힙니다.
+- **엔진이 넣은 객체에는 태그(XDATA `ARCAID`: op·oid·path·ver·in·state)가 붙습니다.** 태그로 재실행과 사람의 수정을 구분합니다. 저수준 이동·삭제·회전·배율은 태그 객체와 태그 읽기 실패를 거절합니다(INSERT·종속 ATTRIB 포함). 이동·삭제·속성 변경은 `apply_changes`를 씁니다. 복사·대칭·Offset·배열은 새 객체·ATTRIB의 ARCAID만 제거하고 확인하며, 다른 앱 XDATA와 원본은 유지합니다. 제거 실패 시 생성 핸들과 실패를 보고하므로 다시 시도하지 말고 확인합니다. 편집 9종은 모형·종이 공간만 허용하며 블록 정의 내부 핸들은 거절합니다.
 - **조회·편집 도구는 실행 중인 CAD에 자동으로 붙습니다.** 단 `undo`, `redo`, `close_drawing`, `save_drawing`은 연결 전에는 실행하지 않습니다. 사용자가 손으로 한 작업을 되돌리거나 열린 도면을 닫지 않기 위해서입니다.
 
 - **외부 반환 필터(D8)**: 모든 툴 결과는 AI로 돌아가기 전에 `config/egress.yaml` 정책을 거칩니다. 지금 정책은 A안(제한 없음, 2026-10-14 결정)이라 `run_lisp` 결과 안의 파일 경로만 `[경로]`로 가립니다. 항목을 `deny`로 바꾸면 그 값이 `[비공개]`로 나가고 원본은 작업 폴더 `egress\`에 남습니다.
 - **저수준 툴은 보호되지 않습니다.** 그리기·편집·`send_command`·`run_lisp` 등 25개 툴 설명문에 표시돼 있습니다.
+  `send_command`·`run_lisp`·`undo`·`redo`·`insert_block`·`create_block`은 엔진 객체를 통제하지 못합니다. 통제하지 못한 변경은 대상·기준·기록에 따라 다음 보호된 경로에서 충돌로 잡힐 수 있으나, 태그 제거·op 전체 삭제·블록 정의 변경은 검출하지 못할 수 있습니다. CAD 화면에서 동시에 편집하는 경우는 보장 범위 밖입니다.
 
 ## 구조
 
