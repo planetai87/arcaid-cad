@@ -155,6 +155,8 @@ MCP 작업이다(`src/apply_service.py`, `src/cad_controller.py`).
 - 0-A 시험(`tests/cad`, T10)과 B5를 BricsCAD V26에서 다시 돌린다. 이 PC에 설치돼 있다.
 - 버전, 엔진 결과, CAD 연결부의 호환 상태를 따로 기록한다(D7). 차이는 `cad_controller`에서만 고친다.
 
+보류(2026-10-19): 1단계 이후로 미룬다.
+
 ## 0-B 통과 시험(B5)
 
 당산동 결과 사본(엔진 객체)과 원본 사본(사람 객체)에서 실무형 변경 세 가지를 `apply_changes`만으로 재현하고, 보호 장치를 하나씩 시험한다.
