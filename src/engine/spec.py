@@ -13,6 +13,7 @@
 - 객체(kind): line(start, end) · polyline(points, bulges?, closed) · circle(center, radius) ·
   arc(center, radius, start_angle, end_angle) · text(layer, role, content, at, align, rotation) ·
   block(name, at, rotation, attribs) · hatch(layer, pattern, pattern_scale, pattern_angle, boundary, holes) ·
+  wall(layer, parts, openings?, hatch?: {layer, pattern, pattern_scale?, pattern_angle?}) ·
   dim(style, p1, p2, direction x|y, line_at) · dim_chain(style, points, direction, line_at) · group(items, place)
 - 표준이 정하는 값은 명세에 쓰지 않는다: 색·선굵기(ByLayer), 문자 스타일(돋움), 문자 높이(role = text.yaml의 id,
   높이 × s), 블록 레이어·배율(blocks.yaml), 치수 레이어(스타일의 레이어)·DIMSCALE(k/2).
@@ -21,6 +22,21 @@
   변환 순서는 대칭(지역 x 또는 y 좌표 부호 반전) → 회전 → 이동(at + i × step).
   vars와 {i}(그 배치 안의 번호, 0부터)는 content·attribs 값·id·path의 "{이름}"을 바꾼다.
 - id는 객체를 식별하는 이름이고(없으면 kind+순번), path는 층·실 같은 의미 경로다(D9).
+- wall은 parts·openings 중 하나 이상을 담는다. 다각형은 점 4개 이상의 단순 직교 다각형이며,
+  같은 op·같은 레이어·같은 방향의 조각을 합친 뒤 모든 개구부를 뺀다. 레이어가 다르면 합치지 않는다.
+  가장 긴 변 각도 mod 90도의 허용오차는 1e-6도(0/90도 경계 포함). 역회전한 좌표는 정렬한
+  묶음의 최솟값에서 1e-3 mm 이내끼리 그 최솟값으로 맞춘다(연쇄 맞춤 없음).
+  압축 격자는 묶음당 4,000,000칸까지(SPEC_LIMIT, 벽 op를 나눌 것). 칸 중심의 내부 판정으로
+  칠하고 경계 내부를 왼쪽에 두며 좌회전 우선으로 추적해 대각 접촉을 나눈다. 일직선 중간 점은
+  지우고 면적 부호로 바깥(반시계)·섬(시계)을 나눠, 섬은 포함하는 가장 작은 바깥에 배정한다.
+  WCS 입력은 중간 반올림 없이 유지하고 최종 고리만 소수 여섯 자리 반올림한다.
+  다른 방향 영역의 bbox 접촉·겹침은 합치지 않고 경고한다. 반복을 포함해 전개될 벽 조각·개구부의
+  합계도 20,000개까지 사전 검사한다(개구부만 있는 중첩 반복의 과도한 전개 방지, SPEC_LIMIT).
+  hatch는 요청 시만 같은 외곽으로 쓴다. 같은 레이어 wall의 hatch 설정은 모두 같아야 한다.
+  패턴 각도는 일반 hatch와 같은 group 회전 규칙을 따르며 떨어진 영역은 각자의 각도를 쓴다.
+  한 영역에 기여한 조각의 변환 후 패턴 각도가 다르면 SPEC_WALL로 거부한다(SOLID는 각도 무시).
+  결과는 closed polyline(outer·hole)과 선택 hatch이며 oid는 op:wall/레이어/번호/outer·hole1·hatch다.
+  path는 해당 영역에 기여한 조각 경로의 공통 앞부분(경로 구분자 / 기준), 없으면 wall이다.
 """
 import hashlib
 import json
@@ -33,10 +49,11 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from .results import Violation
 from .standards import Standard
+from . import walls
 
 MAX_OBJECTS = 20000
 MAX_DEPTH = 4
-KINDS = ("line", "polyline", "circle", "arc", "text", "block", "hatch", "dim", "dim_chain", "group")
+KINDS = ("line", "polyline", "circle", "arc", "text", "block", "hatch", "wall", "dim", "dim_chain", "group")
 ALIGNS = ("L", "C", "R", "ML", "MC", "MR", "TL", "TC", "TR", "BL", "BC", "BR")
 ID_PATTERN = r"^[^/:\[\]\s]{1,64}$"
 AXIS_PATTERN = r"^[A-Za-z0-9_.]{1,16}$"
@@ -129,6 +146,21 @@ class HatchItem(_Item):
     holes: List[List[Point]] = Field(default_factory=list)
 
 
+class WallHatch(_Model):
+    layer: str
+    pattern: str
+    pattern_scale: float = Field(default=1.0, gt=0)
+    pattern_angle: float = 0
+
+
+class WallItem(_Item):
+    kind: Literal["wall"]
+    layer: str
+    parts: List[List[Point]] = Field(default_factory=list)
+    openings: List[List[Point]] = Field(default_factory=list)
+    hatch: Optional[WallHatch] = None
+
+
 class DimItem(_Item):
     kind: Literal["dim"]
     style: str
@@ -171,7 +203,7 @@ class GroupItem(_Item):
 
 
 Item = Annotated[Union[LineItem, PolylineItem, CircleItem, ArcItem, TextItem, BlockItem, HatchItem, DimItem,
-                       DimChainItem, GroupItem], Field(discriminator="kind")]
+                       WallItem, DimChainItem, GroupItem], Field(discriminator="kind")]
 GroupItem.model_rebuild()
 
 
@@ -277,6 +309,7 @@ class _Checker:
         self.out: List[Violation] = []
         self.roles = {h.id: h for h in list(std.text.heights) + list(std.text.sheet_title)}
         self.dimstyles = {d.name.casefold() for d in std.dimensions.styles}
+        self.wall_polygons = 0
 
     def add(self, code, where, message, current=None, expected=None):
         self.out.append(spec_violation(code, where, message, current, expected))
@@ -320,7 +353,7 @@ class _Checker:
                      layer.object_linetypes)
         return layer
 
-    def walk(self, items, where: str, in_group: bool, mirrored: bool, depth: int) -> int:
+    def walk(self, items, where: str, in_group: bool, mirrored: bool, depth: int, multiplier: int = 1) -> int:
         """객체를 검사하고 펼쳤을 때의 객체 수를 돌려준다"""
         total = 0
         for n, item in enumerate(items):
@@ -335,14 +368,42 @@ class _Checker:
                     self.point(place.at, f"{w}.place[{p_n}].at", in_group)
                     instances += place.repeat.count
                 child_mirrored = mirrored or any(p.mirror for p in item.place)
-                total += instances * self.walk(item.items, f"{w}.items", True, child_mirrored, depth + 1)
+                total += instances * self.walk(item.items, f"{w}.items", True, child_mirrored, depth + 1,
+                                               multiplier * instances)
                 continue
-            total += len(item.points) - 1 if kind == "dim_chain" else 1
+            total += (len(item.parts) * (2 if item.hatch else 1) if kind == "wall" else
+                      len(item.points) - 1 if kind == "dim_chain" else 1)
             if kind in ("line", "polyline", "circle", "arc"):
                 self.layer(item.layer, item.linetype, w)
                 for p in {"line": lambda: [item.start, item.end], "polyline": lambda: item.points,
                           "circle": lambda: [item.center], "arc": lambda: [item.center]}[kind]():
                     self.point(p, w, in_group)
+            elif kind == "wall":
+                self.wall_polygons += multiplier * (len(item.parts) + len(item.openings))
+                self.layer(item.layer, None, w)
+                if not item.parts and not item.openings:
+                    self.add("SPEC_WALL", w, "parts·openings 중 하나 이상이 있어야 함")
+                if item.hatch:
+                    self.layer(item.hatch.layer, None, f"{w}.hatch")
+                    if item.hatch.pattern.upper() not in ISO_PATTERN:
+                        self.add("SPEC_HATCH", f"{w}.hatch", f"해치 패턴 이름이 아님: {item.hatch.pattern}")
+                for field in ("parts", "openings"):
+                    for poly_n, loop in enumerate(getattr(item, field)):
+                        poly_w = f"{w}.{field}[{poly_n}]"
+                        before = len(self.out)
+                        for p in loop:
+                            self.point(p, poly_w, in_group)
+                        if len(self.out) != before:
+                            continue
+                        points = []
+                        for p in loop:
+                            point = []
+                            for value, axis in zip(p, ("X", "Y")):
+                                name, offset = parse_coord(value)
+                                point.append((getattr(self.spec.grid, axis)[name] if name else 0) + offset)
+                            points.append(point)
+                        if not all(math.isfinite(v) for p in points for v in p) or not walls.valid_polygon(points):
+                            self.add("SPEC_WALL", poly_w, "벽 조각·개구부는 점 4개 이상의 단순 직교 다각형이어야 함")
             elif kind == "text":
                 layer = self.layer(item.layer, None, w)
                 role = self.roles.get(item.role)
@@ -398,4 +459,7 @@ def validate_spec(spec: Spec, std: Standard) -> List[Violation]:
     total = c.walk(spec.items, "items", in_group=False, mirrored=False, depth=0)
     if total > MAX_OBJECTS:
         c.add("SPEC_LIMIT", "items", f"펼친 객체가 {total}개(상한 {MAX_OBJECTS})", total, MAX_OBJECTS)
+    if c.wall_polygons > MAX_OBJECTS:
+        c.add("SPEC_LIMIT", "items", f"펼칠 벽 조각·개구부가 {c.wall_polygons}개(상한 {MAX_OBJECTS}), 벽 op를 나눌 것",
+              c.wall_polygons, MAX_OBJECTS)
     return c.out

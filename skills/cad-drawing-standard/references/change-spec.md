@@ -27,17 +27,19 @@
 | select | 고르는 기준 |
 |---|---|
 | `{"handles": ["A1", "F2"]}` | 16진 핸들 목록. 대문자로 정규화 |
-| `{"oids": ["skill-synthetic-plan:room[1]/wall"]}` | 엔진 객체의 oid 목록 |
+| `{"oids": ["skill-synthetic-plan:wall/WAL1/1/outer"]}` | 엔진 객체의 oid 목록 |
 | `{"op": "skill-synthetic-plan", "path_prefix": "synthetic/room/102/"}` | 같은 생성 op이며 의미 path가 접두사로 시작하는 모든 객체 |
 
 oid와 의미 path는 다르다. [합성 작성 예제](examples/synthetic-plan.json)의 같은 벽은 다음 두 값을 갖는다.
 
 | 구분 | 실제 값 |
 |---|---|
-| oid | `skill-synthetic-plan:room[1]/wall` |
-| path | `synthetic/room/102/wall` |
+| oid | `skill-synthetic-plan:wall/WAL1/1/outer` |
+| path | `synthetic/room` |
 
 `oids`는 oid 기준, `path_prefix`는 path 기준이다. 생성 op는 변경 요청의 새 `op`와 구분한다.
+
+합쳐진 벽 고리(LWPOLYLINE)는 `oids`로 골라 옮기거나 지울 수 있다. 고리는 공유벽을 포함한 외곽 단위이므로 실 하나의 벽만 따로 옮기지 못한다. wall.hatch는 apply_changes 지원 밖이다.
 
 - `get_selection`은 `handles`, `engine_objects[].oid`, 자체 `ids.snapshot_id`를 반환한다. 성공한 선택 결과의 스냅샷을 기준으로 써도 된다.
 - `get_selection.truncated=true`면 일부만 바꾸지 않는다. limit을 올려 다시 읽거나 엔진 객체 묶음을 생성 `op` + `path_prefix`로 확인한다. 요청 범위 전체를 확인한 뒤 명세를 만든다.

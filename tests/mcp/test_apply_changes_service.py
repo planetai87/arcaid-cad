@@ -132,6 +132,20 @@ def boom(*_, **__):
     raise RuntimeError("일부러 낸 실패")
 
 
+def test_draw_wall_direction_warnings_survive_apply_and_replay(prepared):
+    ctl, work, std = prepared[:3]
+    part = [[0, 0], [6000, 0], [6000, 200], [0, 200]]
+    wall = dict(kind="wall", layer="CON", parts=[part])
+    spec = dict(schema_version=1, standard=std.ref, op="draw-walls", scale=100, items=[
+        wall, dict(kind="group", items=[wall], place=[dict(rotation=23.76)])])
+    for decision in ("apply", "skip"):
+        result = service.draw_batch(ctl, work, std, spec)
+        assert result.status is Status.SUCCESS, result.summary
+        assert result.meta.decision == decision
+        assert len(result.warnings) == 1
+        assert "방향이 다른 벽 접합부는 합치지 않음" in result.warnings[0]
+
+
 def test_bad_schema_never_uses_cad(tmp_path):
     r = service.apply_changes(object(), tmp_path, load_standard(), "{bad")
     assert r.status is Status.FAILED and r.violations[0].code == "CHG_SCHEMA"

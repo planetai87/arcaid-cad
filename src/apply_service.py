@@ -616,6 +616,7 @@ def draw_batch(ctl, work: Path, std, spec, hooks: Optional[Hooks] = None, resume
         snap0, warnings = snapshot_active(ctl, work)
     except SnapshotError as e:
         return _result(Status.FAILED, f"적용 전 스냅샷 실패: {e}", scope, ids, meta, folder)
+    warnings = list(warnings) + built.warnings
     meta.snapshot_before, ids.snapshot_id, ids.drawing_id = snap0.snapshot_id, snap0.snapshot_id, snap0.drawing_id
     s0 = ezdxf.readfile(snap0.dxf_path)
     clock.lap("snapshot_before")

@@ -52,10 +52,10 @@ def test_documented_example_replay_conflict_and_recovery(fresh):
     spec = json.loads(EXAMPLE.read_text(encoding="utf-8"))
     spec["target"] = {"drawing_id": before.drawing_id, "snapshot_id": before.snapshot_id}
     result = apply_service.draw_batch(ctl, work, std, spec)
-    assert result.status is Status.SUCCESS and result.applied[0].count == 25, result.summary
+    assert result.status is Status.SUCCESS and result.applied[0].count == 27, result.summary
     after, doc = snap(ctl, work)
     expected_handles = handles(doc)
-    assert len(expected_handles) == 25
+    assert len(expected_handles) == 27
     read = read_drawing(Path(after.dxf_path), std)
     assert len(read.rooms) == 4 and len(read.grid) == 7
     checked = check_standard(Path(after.dxf_path), std, 100)
@@ -132,8 +132,8 @@ def test_documented_change_example_replay_check_and_save(fresh):
     deleted = next(e.dxf.handle for e in base_doc.modelspace()
                    if (arcaid_tags(e) or {}).get("oid") == "skill-synthetic-plan:room[3]/label")
     assert handles(doc) == handles(base_doc) - {deleted}
-    for kind in ("LWPOLYLINE", "HATCH"):
-        assert len(doc.modelspace().query(kind)) == 4
+    for kind, count in (("LWPOLYLINE", 6), ("HATCH", 4)):   # 합쳐진 벽 고리 6(바깥 2·섬 4), 바닥 해치 4
+        assert len(doc.modelspace().query(kind)) == count
     checked = check_standard(Path(final.dxf_path), std, spec["scale"])
     assert checked.status is Status.SUCCESS
     assert checked.violations == [] and checked.unchecked == []
