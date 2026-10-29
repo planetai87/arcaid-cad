@@ -14,7 +14,7 @@
 | 5-1 | 창호 부호(예: `AW-1`, `SD-1`), text의 small_tag 용도, 개구부 바깥쪽 옆 | WIN / DOR |
 | 6 | 계단: `stair.md` 순서대로(디딤선·난간 CIR → 보행선 DIM → 절단선 SYM1 → 화살표 DIM → UP/DN TXT). 승강기 | CIR / DIM / SYM1 / TXT |
 | 7 | 위생기구(TOL), 가구·집기(FUR), 상부 벽체선·가상선(HID) | TOL / FUR / HID |
-| 8 | 해치: RC 단면은 `SOLID`로 HAT 레이어에. 영역 구분은 HAT1, 바닥 패턴은 PAT | HAT / HAT1 / PAT |
+| 8 | 해치(요청 시만): 벽·기둥 단면 해치는 사용자가 요청할 때만 넣는다. 넣을 때 RC 단면은 `SOLID`로 HAT 레이어에. 영역 구분은 HAT1, 바닥 패턴은 PAT | HAT / HAT1 / PAT |
 | 9 | 외부 치수: first_row_from_cen_end·row_gap 간격으로 개구부 → 주열·최외벽 → 전체를 dim·dim_chain으로 작성 | DIM |
 | 10 | 축 버블: 가장 바깥 치수선 위 block 명세, attribs의 축열 태그로 번호 지정 | DIM |
 | 11 | 내부 치수 | DIM1 |
@@ -29,7 +29,7 @@
 - 벽 두께·크기 기준은 [설계 가정](design-assumptions.md)을 따른다.
 - 벽 중심선을 CEN에 먼저 긋고, 벽 양면은 중심에서 두께/2만큼 띄워 그린다.
 - 개구부로 끊긴 벽은 조각마다 닫힌 polyline 명세로 그린다.
-- 벽 해치는 hatch 명세의 boundary·holes로 작성한다. 섬 때문에 직사각형으로 분할할 필요는 없다.
+- 벽 해치는 사용자가 요청할 때만 hatch 명세의 boundary·holes로 작성한다(섬 때문에 직사각형으로 나누지 않는다). 해치가 붙은 벽은 apply_changes로 옮길 수 없음을 작성 전에 사용자에게 알린다.
 - 지시선은 TXT1로 그릴 수 있지만 TXT1 문자 role은 현재 미지원이다. 해당 재료 표기를 생략했다면 미지원 항목으로 보고한다.
 
 ## 입면도
@@ -59,7 +59,7 @@
 | 6 | 보이는 입면선(절단되지 않은 부분) | ELE |
 | 7 | 창호 | WIN / DOR |
 | 8 | 마감 | FIN |
-| 9 | 구조체 해치 | HAT |
+| 9 | 구조체 해치(요청 시만) | HAT |
 | 10 | 치수, 층고, 축 버블(상부만, `축열버블-상`) | DIM |
 | 11 | 레벨: 치수선 밖, 층마다 `입단면층레벨` 블록(annotation.md) | LEV |
 | 12 | 실명 | ROM |
