@@ -174,7 +174,7 @@ def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path) -> BuildRe
     """객체 명세를 검증·전개해 R2013 DXF로 쓴다. 명세가 틀리면 파일을 쓰지 않는다"""
     out = Path(out)
     scope = Scope(target=str(out), supported=["line", "polyline", "circle", "arc", "text", "block", "hatch", "dim",
-                                              "dim_chain", "group"])
+                                              "wall", "dim_chain", "group"])
     ids = ResultIds(standard=std.ref)
     try:
         parsed = parse_spec(spec)
@@ -188,8 +188,9 @@ def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path) -> BuildRe
         return _failed(scope, ids, f"명세가 표준과 맞지 않음 {len(problems)}건(쓰지 않음)", problems)
     k_assumed = parsed.scale is None
     k = std.profile.scale.default_k if k_assumed else parsed.scale
+    warnings: List[str] = []
     try:
-        prims = expand(parsed, std, k)
+        prims = expand(parsed, std, k, warnings=warnings)
     except SpecError as e:
         return _failed(scope, ids, f"명세를 펼치지 못함 {len(e.violations)}건(쓰지 않음)", e.violations)
 
@@ -210,7 +211,6 @@ def build_dxf(spec: Union[str, dict, Spec], std: Standard, out: Path) -> BuildRe
                      dxfversion=doc.dxfversion, object_count=len(prims), by_kind=by_kind, by_layer=by_layer,
                      target=parsed.target)
     manifest = [ManifestItem(oid=p.oid, path=p.path, kind=p.kind, layer=p.layer) for p in prims]
-    warnings: List[str] = []
     check = check_standard(out, std, k=k)
     if check.status is not Status.SUCCESS or check.violations:
         return BuildResult(status=Status.FAILED, summary=f"생성 DXF 자체 검사 실패(엔진 오류): {check.summary}",

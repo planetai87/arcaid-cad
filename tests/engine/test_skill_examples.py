@@ -29,6 +29,7 @@ def test_packaged_example_roundtrip_and_scaling(tmp_path, scale):
     path = tmp_path / "example.dxf"
     result = build_dxf(spec, std, path)
     assert result.status.value == "success", result.summary
+    assert result.meta.object_count == 27
     doc = ezdxf.readfile(path)
     msp = doc.modelspace()
     rooms = read_drawing(path, std).rooms
@@ -96,8 +97,13 @@ def test_packaged_change_example_resolves_only_intended_objects(tmp_path):
         "객실 101", "회의실 102", "객실 103"}
     untouched = set(before) - {t.handle for t in plan.targets}
     assert all(after[h] == before[h] for h in untouched)
-    for suffix in ("wall", "floor"):
-        preserved = [e for e in doc.modelspace() if (arcaid_tags(e) or {}).get("oid", "").endswith("/" + suffix)]
-        assert len(preserved) == 4
+    for kind, count in (("wall", 6), ("floor", 4)):
+        preserved = [e for e in doc.modelspace() if
+                     (":wall/WAL1/" in (arcaid_tags(e) or {}).get("oid", "") if kind == "wall" else
+                      (arcaid_tags(e) or {}).get("oid", "").endswith("/floor"))]
+        assert len(preserved) == count
         assert all(e.dxf.handle in untouched for e in preserved)
+        if kind == "wall":
+            assert all(e.dxftype() == "LWPOLYLINE" and e.closed for e in preserved)
+            assert sum(arcaid_tags(e)["oid"].endswith("/outer") for e in preserved) == 2
     assert {e.dxf.handle: changes.fingerprint(e) for e in doc.modelspace()} == fingerprints

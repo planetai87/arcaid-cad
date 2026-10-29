@@ -14,8 +14,9 @@ from typing import Dict, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .spec import Spec, SpecError, spec_violation, parse_coord
+from .spec import MAX_OBJECTS, Spec, SpecError, spec_violation, parse_coord
 from .standards import Standard
+from . import walls
 
 XDATA_STR_MAX = 255
 _VAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
@@ -88,9 +89,10 @@ class _T:
     def vec(self, v) -> Tuple[float, float]:
         return self.a * v[0] + self.b * v[1], self.c * v[0] + self.d * v[1]
 
-    def pt(self, p) -> List[float]:
+    def pt(self, p, rounded: bool = True) -> List[float]:
         x, y = self.vec(p)
-        return [_r(x + self.tx), _r(y + self.ty)]
+        point = [x + self.tx, y + self.ty]
+        return [_r(v) for v in point] if rounded else point
 
     def then(self, outer: "_T") -> "_T":
         """이 변환 뒤에 outer를 적용하는 변환"""
@@ -139,6 +141,9 @@ class _Expander:
         self.roles = {h.id: h for h in list(std.text.heights) + list(std.text.sheet_title)}
         self.dimstyles = {d.name.casefold(): d for d in std.dimensions.styles}
         self.out: List[Prim] = []
+        self.walls: List[walls.Fragment] = []
+        self.wall_hatches = {}
+        self.source_ids = set()
 
     # ---------- 값 풀기 ----------
 
@@ -181,6 +186,9 @@ class _Expander:
             path = self.subst(item.path, values, f"{w}.path") if item.path else \
                 (f"{parent_path}/{iid}" if parent_path else iid)
             oid = f"{self.spec.op}:{'/'.join(chain + [iid])}"
+            if oid in self.source_ids:
+                raise SpecError([spec_violation("SPEC_ID", oid, "같은 oid가 둘 이상(같은 단계의 id가 겹침)", oid)])
+            self.source_ids.add(oid)
             self.primitive(item, oid, path, t, values, w)
 
     def group(self, item, gid, t, chain, parent_path, values, where):
@@ -215,6 +223,20 @@ class _Expander:
             bulges = item.bulges or [0.0] * len(item.points)
             self.add(kind=kind, points=[t.pt(self.point(p)) for p in item.points],
                      bulges=[_r(-b if flip else b) for b in bulges], closed=item.closed, **common)
+        elif kind == "wall":
+            layer = self.layer_name(item.layer)
+            hatch = None if item.hatch is None else {
+                "layer": self.layer_name(item.hatch.layer), "pattern": item.hatch.pattern.upper(),
+                "pattern_scale": _r(item.hatch.pattern_scale), "pattern_angle": _deg(item.hatch.pattern_angle)}
+            if layer in self.wall_hatches and self.wall_hatches[layer] != hatch:
+                raise SpecError([spec_violation("SPEC_WALL", where, f"같은 레이어 {layer}의 wall.hatch 설정이 다름")])
+            self.wall_hatches[layer] = hatch
+            rot = _ang(t.vec(_dir(90))) - 90 if flip else _ang(t.vec(_dir(0)))
+            pattern_angle = _deg(item.hatch.pattern_angle + rot) if item.hatch else 0.0
+            for opening, polygons in ((False, item.parts), (True, item.openings)):
+                self.walls.extend(walls.Fragment(layer, [t.pt(self.point(p), rounded=False) for p in loop],
+                                                 opening, path, pattern_angle)
+                                  for loop in polygons)
         elif kind == "circle":
             self.add(kind=kind, center=t.pt(self.point(item.center)), radius=_r(item.radius), **common)
         elif kind == "arc":
@@ -266,10 +288,43 @@ class _Expander:
                          points=[t.pt(p1), t.pt(p2), t.pt(base)], angle=_r(_ang(t.vec(_dir(angle))) % 180.0))
 
 
-def expand(spec: Spec, std: Standard, k: int) -> List[Prim]:
+def expand(spec: Spec, std: Standard, k: int, warnings: Optional[List[str]] = None) -> List[Prim]:
     """검증한 명세를 기본 객체 목록으로 펼친다. oid가 겹치거나 태그가 너무 길면 SpecError(SPEC_ID)"""
     ex = _Expander(spec, std, k)
     ex.walk(spec.items, _T(), [], None, {}, "items")
+    try:
+        regions, wall_warnings = walls.merge(ex.walls)
+    except walls.WallError as e:
+        raise SpecError([spec_violation(e.code, e.path, str(e))]) from None
+    if warnings is not None:
+        warnings.extend(wall_warnings)
+    counts = {}
+    for region in sorted(regions, key=lambda r: (r.layer, min(x for x, y in r.outer), min(y for x, y in r.outer))):
+        counts[region.layer] = counts.get(region.layer, 0) + 1
+        oid = f"{spec.op}:wall/{region.layer}/{counts[region.layer]}"
+        paths = [p.split("/") for p in sorted({f.path for f in region.parts})]
+        prefix = []
+        for segments in zip(*paths):
+            if len(set(segments)) != 1:
+                break
+            prefix.append(segments[0])
+        path = "/".join(prefix) or "wall"
+        loops = [[[_r(x), _r(y)] for x, y in loop] for loop in [region.outer] + region.holes]
+        for i, loop in enumerate(loops):
+            ex.add(kind="polyline", layer=region.layer, oid=f"{oid}/{'outer' if i == 0 else f'hole{i}'}",
+                   path=path, points=loop, bulges=[0.0] * len(loop), closed=True)
+        hatch = ex.wall_hatches[region.layer]
+        if hatch:
+            if hatch["pattern"] != "SOLID":
+                angles = {f.pattern_angle for f in region.parts}
+                if len(angles) != 1:
+                    raise SpecError([spec_violation("SPEC_WALL", path,
+                                                    "합쳐진 벽 조각의 변환 후 해치 패턴 각도가 다름")])
+                hatch = {**hatch, "pattern_angle": next(iter(angles))}
+            ex.add(kind="hatch", oid=f"{oid}/hatch", path=path, loops=loops, **hatch)
+    if len(ex.out) > MAX_OBJECTS:
+        raise SpecError([spec_violation("SPEC_LIMIT", "items", f"펼친 실제 객체가 {len(ex.out)}개(상한 {MAX_OBJECTS})",
+                                        len(ex.out), MAX_OBJECTS)])
     seen, problems = set(), []
     for p in ex.out:
         if p.oid in seen:

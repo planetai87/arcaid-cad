@@ -3,6 +3,7 @@
 ## 프로젝트 구조와 모듈
 
 - `src/engine/`: CAD 없이 DXF를 읽고·생성하고·검사한다. ezdxf·pydantic·PyYAML과 표준 라이브러리만 사용한다.
+- `src/engine/walls.py`: 벽 조각 합치기. 표준 라이브러리만 사용한다.
 - `src/cli.py`: 파일 단위 CLI. 엔진·CLI·`src/egress.py`에는 MCP·COM 모듈을 가져오지 않는다.
 - `src/server.py`: MCP 진입점이므로 경로·이름과 직접 실행·패키지 가져오기를 유지한다. CAD별 차이는 `src/cad_controller.py`에서만 처리한다.
 - `standards/heo-2026/`: 표준 YAML·DXF. `skills/cad-drawing-standard/`: 스킬·DWG 자산. `tools/`: 유지보수 도구. `docs/`: 계획 사본. `spikes/`: 실험 전용이며 제품 코드로 옮기지 않는다.

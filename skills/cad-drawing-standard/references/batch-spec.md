@@ -26,6 +26,7 @@
 |---|---|
 | `line` | layer, start, end |
 | `polyline` | layer, points, 선택 bulges·closed |
+| `wall` | layer, parts, 선택 openings·hatch |
 | `circle` | layer, center, radius |
 | `arc` | layer, center, radius, start_angle, end_angle |
 | `text` | layer, role, content, at, 선택 align·rotation |
@@ -41,6 +42,10 @@
 
 해치는 바깥 `boundary`와 섬별 `holes`의 닫힌 좌표 목록을 준다. 선분 끝점을 첫 점에 반복하지 않아도 된다. 지원 패턴명은 엔진이 검증한다. `dim.direction="x"`의 `line_at`은 y, `"y"`면 x다. 치수 문자열 재정의·임의 문자 높이는 현재 계약에 없다.
 
+벽은 직교 다각형 조각 `parts`와 개구부 `openings`를 준다. 둘 중 하나 이상이 있어야 하며 문 group에는 openings만 둘 수 있다. 엔진이 같은 op·같은 레이어의 조각을 모두 합친 뒤 개구부를 뺀다(RC 기둥도 wall의 CON 조각이면 RC 벽과 합침). 다른 레이어와 op 사이는 합치지 않는다. 결과는 외곽·섬마다 닫힌 폴리선이고 oid는 `op:wall/레이어/번호/outer`, `…/hole1`이다. 번호는 영역 바깥 고리의 최소 x·최소 y 순서이며 path는 기여한 조각 경로의 공통 앞부분(없으면 `wall`)이다. 해치는 요청 시만 `wall.hatch={"layer":"HAT","pattern":"SOLID"}`로 넣으며 영역마다 `…/hatch` 하나가 같은 고리들을 쓴다. 선택 pattern_scale·pattern_angle은 일반 hatch와 같은 제약이고, 같은 레이어의 wall.hatch 설정은 생략 여부까지 모두 같아야 한다. 직교만 지원하며 방향이 다른 접합부는 합치지 않고 bbox 접촉·겹침 경고를 보고한다. 방향 허용오차는 1e-6도, 좌표 맞춤은 1e-3 mm(묶음 최솟값 기준), 압축 격자는 방향 묶음당 4,000,000칸까지이며 넘으면 벽 op를 나눈다.
+
+벽 좌표는 합치는 중간에 반올림하지 않고 최종 고리만 소수 여섯 자리로 쓴다. 반복을 포함해 전개될 parts·openings 합계도 20,000개까지다(`SPEC_LIMIT`). 해치 패턴은 일반 hatch와 같은 group 회전을 따르고 떨어진 영역은 각자의 각도를 쓴다. 한 영역으로 합쳐진 조각들의 변환 후 패턴 각도가 충돌하면 `SPEC_WALL`이다(SOLID는 각도 차이를 무시).
+
 ## 반복·대칭·회전
 
 `group.place`의 각 배치에 at, rotation, mirror, repeat, vars를 준다. `repeat={"count": ..., "step": [dx,dy]}`는 엔진이 펼친다. mirror x는 지역 x 부호, mirror y는 지역 y 부호를 뒤집는다. 순서는 **대칭 → 회전 → 이동(at + 반복 번호 × step)**이다. 각도는 도 단위다.
@@ -50,7 +55,7 @@
 ## 예제 실행과 재전송
 
 1. 새 합성 DWG를 `new_from_template`로 만든다. `export_snapshot`·`read_drawing` 후 예제 JSON의 `target`에 반환 ID를 넣는다.
-2. 예제는 방 그룹을 반복·대칭하고 중앙 실명, 섬이 있는 해치, 번호 버블, 치수 체인과 전체 치수를 작성한다. 표준 간격이 필요한 실제 작업은 조회 결과로 좌표 오프셋을 정한다.
+2. 예제는 방 그룹을 반복·대칭하며 공유벽을 합친다(두 영역, 바깥 2개·섬 4개). 중앙 실명, 섬이 있는 바닥 해치, 번호 버블, 치수 체인과 전체 치수를 작성한다. 표준 간격이 필요한 실제 작업은 조회 결과로 좌표 오프셋을 정한다.
 3. `draw_batch(spec=...)` → `check_standard(scale=k)` → 저장·보고한다. 같은 JSON을 다시 보내면 op를 유지하며 중복 생성 없이 건너뛰어야 한다.
 4. 같은 op의 다른 입력, 일부 객체만 남음, 수동 변경은 충돌이다. 새 op나 저수준 수정으로 우회하지 않는다. 복귀 확인 불가·수동 변경 덮어쓰기는 SKILL.md의 사용자 확인 절차를 따른다.
 
