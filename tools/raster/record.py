@@ -5,7 +5,8 @@
   python tools/raster/record.py lock measure.yaml -o lock.json
   python tools/raster/record.py region-init measure.yaml --lock lock.json --region NAME -o region-NAME.yaml
   (측정값은 measure.py profile·fitline의 --record FILE --names=a,_,b / --name으로만 기록한다)
-  python tools/raster/record.py add-element FILE --json '{"id": "E1", "type": "wall", "refs": {"f1": "obs"}}'
+  python tools/raster/record.py add-element FILE --id E1 --type wall --ref f1=obs1 --ref f2=obs2
+                                [--candidate meaning=창,커튼월] [--note 설명]     (또는 --json '{...}')
   python tools/raster/record.py question add FILE --id Q1 --text "..." [--element E1]
   python tools/raster/record.py merge measure.yaml --lock lock.json region-A.yaml region-B.yaml -o measure.yaml
   python tools/raster/record.py question answer measure.yaml --id Q1 --answer "..." --by user|main
@@ -540,6 +541,37 @@ def validate(path, lock_path=None, reverify=False):
     return result
 
 
+def _pairs(items, what):
+    out = {}
+    for item in items:
+        key, sep, val = item.partition("=")
+        if not sep or not key or not val:
+            raise RecordError(f"--{what}은 이름=값 형식: {item}")
+        out[key] = val
+    return out
+
+
+def _element_args(args):
+    if args.json:
+        if args.id or args.type or args.ref or args.candidate or args.note:
+            raise RecordError("--json과 --id·--type·--ref·--candidate·--note를 함께 쓰지 않음")
+        try:
+            return json.loads(args.json)
+        except ValueError as err:
+            raise RecordError(f"--json이 JSON이 아님: {err}") from err
+    if not args.id or not args.type:
+        raise RecordError("--json 또는 --id·--type이 필요함")
+    element = {"id": args.id, "type": args.type}
+    if args.ref:
+        element["refs"] = _pairs(args.ref, "ref")
+    if args.candidate:
+        element["candidates"] = {k: [c.strip() for c in v.split(",") if c.strip()]
+                                 for k, v in _pairs(args.candidate, "candidate").items()}
+    if args.note:
+        element["note"] = args.note
+    return element
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="평면 이미지 측정 기록 도구")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -559,7 +591,13 @@ def main(argv=None):
     r.add_argument("-o", "--out", required=True)
     e = sub.add_parser("add-element", help="요소 넣기(관측 참조·출처 있는 값·후보)")
     e.add_argument("file")
-    e.add_argument("--json", required=True, help='{"id": ..., "type": ..., "refs": {...}, ...}')
+    e.add_argument("--json", help='{"id": ..., "type": ..., "refs": {...}, ...}')
+    # PowerShell 5.1은 외부 프로그램 인자의 큰따옴표를 지우므로 JSON 없이 쓰는 형식도 받는다
+    e.add_argument("--id")
+    e.add_argument("--type")
+    e.add_argument("--ref", action="append", default=[], help="역할=관측이름(여러 번)")
+    e.add_argument("--candidate", action="append", default=[], help="속성=후보1,후보2(여러 번)")
+    e.add_argument("--note")
     q = sub.add_parser("question", help="질문")
     qs = q.add_subparsers(dest="action", required=True)
     qa = qs.add_parser("add")
@@ -599,11 +637,7 @@ def main(argv=None):
         elif args.command == "region-init":
             result = region_init(args.measure, args.lock, args.region, args.out)
         elif args.command == "add-element":
-            try:
-                element = json.loads(args.json)
-            except ValueError as err:
-                raise RecordError(f"--json이 JSON이 아님: {err}") from err
-            result = add_element(args.file, element)
+            result = add_element(args.file, _element_args(args))
         elif args.command == "question" and args.action == "add":
             result = add_question(args.file, args.id, args.text, args.element)
         elif args.command == "question":
