@@ -4,6 +4,11 @@ T6 완료 기준: 재실행(이미 완료·다른 입력·일부만), 일부러 
 보호된 경로로 바꾼 것은 잡히지 않음, 적용 직전 확인(단위·같은 이름 정의·읽은 뒤 바뀜), fix.
 """
 import copy
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
 
 import ezdxf
 import pytest
@@ -199,3 +204,43 @@ def test_fix_properties_precheck_and_rollback(opened, tmp_path):
     assert doc.entitydb[hidden].dxf.get("linetype", "BYLAYER").casefold() == "bylayer"
     assert doc.entitydb[hidden].dxf.get("lineweight", -1) == -1
     assert doc.entitydb[arrow].dxf.layer == "DIM"
+
+
+def test_mcp_spec_path_matches_inline_and_skips_subprocess(opened, tmp_path):
+    """공개 MCP 툴 draw_batch: spec_path로 넣은 결과가 인라인과 같은 해시이고, 두 입력 모두 재전송은 건너뛴다"""
+    ctl, work, std = opened
+    source = ctl.doc_state(ctl.doc)["full_name"]
+    spec = copy.deepcopy(SPEC)
+    spec["op"] = "t6-cad-file"
+    spec["items"][1]["at"] = [7000, -9000.0]
+    spec["items"][0]["items"][0]["points"][0] = [-0.0, 0]   # 파일은 전달 중 바뀌지 않으므로 -0.0도 그대로 해시된다
+    path = tmp_path / "한글 공백 명세.json"
+    path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8-sig")
+    expected = spec_hash(parse_spec(spec))
+    code = '''
+import asyncio, json, os
+from src import server
+server.config['work'] = dict(directory=WORK)
+async def run():
+    ctl = server.cad_service.controller
+    assert await server.com(ctl.start_cad)
+    state = await server.com(ctl.doc_state, ctl.doc)
+    assert os.path.normcase(state['full_name']) == os.path.normcase(SOURCE), '시험 도면이 활성 도면이어야 함'
+    first = (await server.mcp.call_tool('draw_batch', dict(spec_path=PATH)))[1]
+    again = (await server.mcp.call_tool('draw_batch', dict(spec_path=PATH)))[1]
+    inline = (await server.mcp.call_tool('draw_batch', dict(spec=json.loads(open(PATH, encoding='utf-8-sig').read()))))[1]
+    print(json.dumps([[r['status'], r['meta']['decision'], r['meta']['spec_hash'], r['applied'][0]['count'] if r['applied'] else 0]
+                      for r in (first, again, inline)]))
+asyncio.run(run())
+'''
+    # 토큰 치환은 Python 리터럴에만 하며 셸을 통하지 않는다.
+    for key, value in (("WORK", str(work)), ("SOURCE", source), ("PATH", str(path))):
+        code = code.replace(key, repr(value))
+    result = subprocess.run([sys.executable, "-c", code], cwd=Path(__file__).resolve().parents[2],
+                            env={**os.environ, "PYTHONIOENCODING": "utf-8"}, capture_output=True,
+                            text=True, encoding="utf-8", timeout=240)
+    assert result.returncode == 0, result.stderr
+    first, again, inline = json.loads(result.stdout.strip().splitlines()[-1])
+    assert first[0] == "success" and first[2] == expected and first[3] == COUNT, first
+    assert again[:3] == ["success", "skip", expected], again
+    assert inline[:3] == ["success", "skip", expected], inline

@@ -4,7 +4,7 @@
 
 ## 요청과 좌표
 
-`draw_batch(spec=<JSON 객체 또는 JSON 문자열>)`로 보낸다. spec 문자열은 파일 경로가 아니다.
+`draw_batch(spec=<JSON 객체 또는 JSON 문자열>)`로 보낸다. spec 문자열은 파일 경로가 아니다. Claude Code처럼 서버와 같은 PC에서 명세를 파일로 만들었으면 `draw_batch(spec_path=<로컬 절대 .json 경로>)`로 보낸다(UTF-8, 5 MB 이하, spec과 함께 쓰지 않음). 파일은 옮겨 적지 않으므로 긴 명세의 전사 오류가 없다. claude.ai 등 파일을 서버와 공유하지 않는 환경에서는 인라인으로 보낸다.
 
 | 필드 | 의미 |
 |---|---|
@@ -56,7 +56,7 @@
 
 1. 새 합성 DWG를 `new_from_template`로 만든다. `export_snapshot`·`read_drawing` 후 예제 JSON의 `target`에 반환 ID를 넣는다.
 2. 예제는 방 그룹을 반복·대칭하며 공유벽을 합친다(두 영역, 바깥 2개·섬 4개). 중앙 실명, 섬이 있는 바닥 해치, 번호 버블, 치수 체인과 전체 치수를 작성한다. 표준 간격이 필요한 실제 작업은 조회 결과로 좌표 오프셋을 정한다.
-3. `draw_batch(spec=...)` → `check_standard(scale=k)` → 저장·보고한다. 같은 JSON을 다시 보내면 op를 유지하며 중복 생성 없이 건너뛰어야 한다.
+3. `draw_batch(spec=...)` 또는 `draw_batch(spec_path=...)` → `check_standard(scale=k)` → 저장·보고한다. 같은 JSON을 다시 보내면 op를 유지하며 중복 생성 없이 건너뛰어야 한다.
 4. 같은 op의 다른 입력, 일부 객체만 남음, 수동 변경은 충돌이다. 새 op나 저수준 수정으로 우회하지 않는다. 복귀 확인 불가·수동 변경 덮어쓰기는 SKILL.md의 사용자 확인 절차를 따른다.
 
 CAD 없이 확인하려면 서버 저장소에서 다음 명령을 실행한다. `--strict` 검사 종료 코드와 미검사 목록까지 확인한다.

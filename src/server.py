@@ -1259,12 +1259,15 @@ async def check_standard(ctx: Context, snapshot_id: Optional[str] = None, file_p
 
 
 @mcp.tool()
-async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
+async def draw_batch(ctx: Context, spec: Optional[Union[Dict[str, Any], str]] = None,
+                     spec_path: Optional[str] = None,
                      resume_after_unverified: bool = False) -> ApplyResult:
     """객체 명세(JSON)를 표준 DXF로 만들어 활성 도면에 넣는다(보호된 경로)
 
     spec: 배치 규칙을 담은 객체 명세(형식은 엔진 src/engine/spec.py). 좌표 대신 group·place(반복·대칭·회전),
     그리드 참조("X2+300"), 표준 문자 용도(role)를 쓴다. 색·문자 높이·블록 배율은 표준이 정한다.
+    spec_path: 명세가 있는 로컬 절대 .json 파일 경로(UTF-8, BOM 허용, 최대 5 MB=5,242,880바이트).
+    spec과 spec_path 중 정확히 하나만 준다. 드라이브 상대·UNC·장치 경로는 받지 않는다.
     흐름: 명세 검증 → 스냅샷 → 적용 직전 확인(단위 mm, 같은 이름 정의, 재실행 판정) → Undo 묶음 안에서 넣기 →
     결과 확인 → 기준 상태 → 검사. 실패하면 되돌리고 확인한다(recovered / unverified).
     같은 op를 다시 보내면 이미 완료(success)로 건너뛴다. 같은 op에 다른 명세, 일부만 남은 객체, 사람이 고친 엔진 객체는
@@ -1274,6 +1277,9 @@ async def draw_batch(ctx: Context, spec: Union[Dict[str, Any], str],
         std = _standard()
     except StandardError as e:
         return ApplyResult(status=Status.FAILED, summary=str(e), scope=Scope(target="활성 도면"), meta=ApplyMeta(op="?"))
+    spec = apply_service.load_batch_spec(std, spec, spec_path)
+    if isinstance(spec, ApplyResult):
+        return spec
     refused = apply_service.spec_refusal(std, spec)   # 틀린 명세는 CAD에 붙기 전에 거부한다
     if refused is not None:
         return refused
