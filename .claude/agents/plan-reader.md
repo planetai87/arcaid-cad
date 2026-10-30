@@ -61,6 +61,7 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 - 해석하지 않는다. 재료(RC·조적), 용도(창·문·대지경계), 실 이름은 확정하지 않는다. 범례에 있는 형태라도 요소 type은 배정 목록대로 둔다.
 - 배정되지 않은 요소를 넣지 않고, 영역 window 밖을 기록하지 않는다. 경계에 걸친 요소가 배정되지 않았으면 재지 않는다.
 - measure.yaml, lock.json, 다른 영역 파일을 고치지 않는다. PowerShell은 위 도구 명령과 파일 목록 보기에만 쓴다.
+- `record.py merge`·`validate`는 주 대화가 measure.yaml에 돌린다. 영역 파일에는 돌리지 않는다.
 
 ## 보고 형식
 
