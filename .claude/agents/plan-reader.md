@@ -33,7 +33,7 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 # 기록: 위 profile·fitline에 붙인다
 #   profile ... --record REGION.yaml "--names=EA-f1,_,EA-f2"     (구간마다 이름 하나, 건너뛰기 _)
 #   fitline ... --record REGION.yaml --name EW-f1
-& $py $r add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--candidate meaning=창,커튼월] [--note "설명"]
+& $py $r add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--link host=EW1] [--candidate meaning=창,커튼월] [--note "설명"]
 & $py $r question add REGION.yaml --id Q-EA-1 --text "..." --element EA
 # add-element에 --json을 쓰지 않는다(PowerShell 5.1이 큰따옴표를 지워 JSON이 깨진다)
 ```
@@ -52,7 +52,7 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 4. `profile --plot`으로 재고 그림을 본다. 구간 수와 위치가 기대와 맞을 때만 `--record`로 다시 실행한다(같은 명령 + 기록 인자).
    - 기울어진 선은 그 선의 frame으로 재거나 `fitline`을 쓴다.
    - 축선(가는 선)이 벽 면선 사이를 지나면 그 구간은 `_`로 건너뛴다. 범례에 축선이 있으면 이름을 붙여 기록해도 된다.
-5. `add-element`로 요소를 넣는다. `--ref 역할=관측이름`은 기록한 관측을 가리킨다. 범례에 없는 형태는 `--candidate 속성=후보1,후보2`로 후보만 적는다(예: `--candidate meaning=창,커튼월`).
+5. `add-element`로 요소를 넣는다. `--ref 역할=관측이름`은 기록한 관측을 가리킨다. 역할 이름은 생성기(`tools/raster/generate.py` docstring 지원표)를 따른다: 벽·기둥 `f1`·`f2`(두 면선)·`s`·`e`(양 끝선), 창·문·개구부 `s`·`e`(개구부 끝선, 창 유리선은 `glass`), 마감선·선 `l`·`s`·`e`. 창·문·개구부는 붙는 벽을 `--link host=벽id`로 적는다(벽이 다른 영역에 배정돼 있어도 된다). 범례에 없는 형태는 `--candidate 속성=후보1,후보2`로 후보만 적는다(예: `--candidate meaning=창,커튼월`).
 6. 범례로 판단할 수 없는 것, 원본에서 끊기거나 흐린 것, 배정 목록과 다르게 보이는 것은 `question add`로 남긴다.
 
 ## 금지

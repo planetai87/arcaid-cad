@@ -5,4 +5,5 @@ Pillow>=10.0.0     # 스크린샷 PNG 인코딩
 ezdxf>=1.4,<2      # DXF 읽기·쓰기(엔진)
 PyYAML>=6.0        # 표준 프로파일 YAML(엔진)
 numpy>=1.24        # 이미지 측정 도구(tools/raster). 엔진(src/engine)에서는 쓰지 않는다
+shapely>=2.0       # 범용 생성기(tools/raster/generate.py)의 벽 합치기. 엔진에서는 쓰지 않는다
 pytest>=8          # 테스트

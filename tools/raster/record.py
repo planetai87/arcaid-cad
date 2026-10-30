@@ -6,7 +6,8 @@
   python tools/raster/record.py region-init measure.yaml --lock lock.json --region NAME -o region-NAME.yaml
   (측정값은 measure.py profile·fitline의 --record FILE --names=a,_,b / --name으로만 기록한다)
   python tools/raster/record.py add-element FILE --id E1 --type wall --ref f1=obs1 --ref f2=obs2
-                                [--candidate meaning=창,커튼월] [--note 설명]     (또는 --json '{...}')
+                                [--link host=EW1] [--candidate meaning=창,커튼월] [--note 설명]
+                                (또는 --json '{...}')
   python tools/raster/record.py question add FILE --id Q1 --text "..." [--element E1]
   python tools/raster/record.py merge measure.yaml --lock lock.json region-A.yaml region-B.yaml -o measure.yaml
   python tools/raster/record.py question answer measure.yaml --id Q1 --answer "..." --by user|main
@@ -136,11 +137,13 @@ class Observation(_Model):
 
 
 class Element(_Model):
-    """요소(벽·창 등). 판독 에이전트는 관측 참조(refs)·출처 있는 값(values)·후보(candidates)만 적는다.
-    재료·용도 같은 확정은 measure.yaml의 interpretations에 주 대화가 적는다. 요소 종류별 필드는 생성기가 정한다"""
+    """요소(벽·창 등). 판독 에이전트는 관측 참조(refs)·요소 참조(links, 예: 창의 host 벽)·출처 있는 값(values)·
+    후보(candidates)만 적는다. 재료·용도 같은 확정은 measure.yaml의 interpretations에 주 대화가 적는다.
+    요소 종류별 필드는 생성기가 정한다"""
     type: str
     frame: Optional[str] = None
     refs: Dict[str, str] = {}
+    links: Dict[str, str] = {}
     values: Dict[str, Value] = {}
     candidates: Dict[str, List[Any]] = {}
     note: Optional[str] = None
@@ -513,6 +516,11 @@ def validate(path, lock_path=None, reverify=False):
         for role, name in el.get("refs", {}).items():
             if name not in obs:
                 errors.append(f"요소 {eid}.{role}: 없는 관측 {name}")
+        for role, target in el.get("links", {}).items():
+            if target == eid:
+                errors.append(f"요소 {eid}.{role}: 자기 자신을 가리킴")
+            elif target not in data["elements"]:
+                errors.append(f"요소 {eid}.{role}: 없는 요소 {target}")
     for eid in data["interpretations"]:
         if eid not in data["elements"]:
             errors.append(f"해석이 없는 요소를 가리킴: {eid}")
@@ -553,8 +561,8 @@ def _pairs(items, what):
 
 def _element_args(args):
     if args.json:
-        if args.id or args.type or args.ref or args.candidate or args.note:
-            raise RecordError("--json과 --id·--type·--ref·--candidate·--note를 함께 쓰지 않음")
+        if args.id or args.type or args.ref or args.link or args.candidate or args.note:
+            raise RecordError("--json과 --id·--type·--ref·--link·--candidate·--note를 함께 쓰지 않음")
         try:
             return json.loads(args.json)
         except ValueError as err:
@@ -564,6 +572,8 @@ def _element_args(args):
     element = {"id": args.id, "type": args.type}
     if args.ref:
         element["refs"] = _pairs(args.ref, "ref")
+    if args.link:
+        element["links"] = _pairs(args.link, "link")
     if args.candidate:
         element["candidates"] = {k: [c.strip() for c in v.split(",") if c.strip()]
                                  for k, v in _pairs(args.candidate, "candidate").items()}
@@ -596,6 +606,7 @@ def main(argv=None):
     e.add_argument("--id")
     e.add_argument("--type")
     e.add_argument("--ref", action="append", default=[], help="역할=관측이름(여러 번)")
+    e.add_argument("--link", action="append", default=[], help="역할=요소id(여러 번, 예: host=EW1)")
     e.add_argument("--candidate", action="append", default=[], help="속성=후보1,후보2(여러 번)")
     e.add_argument("--note")
     q = sub.add_parser("question", help="질문")
