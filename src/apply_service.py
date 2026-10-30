@@ -12,11 +12,12 @@
 """
 import time
 import os
+import stat
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from pathlib import Path, PureWindowsPath
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 import ezdxf
 
@@ -544,6 +545,44 @@ def apply_changes(ctl, work: Path, std, spec, overwrite_manual: bool = False, ho
 # ---------- draw_batch ----------
 
 DRAW_SCOPE = ["객체 명세 넣기(draw_batch)"]
+SPEC_MAX_BYTES = 5 * 1024 * 1024
+
+
+def load_batch_spec(std, spec: Optional[Union[Dict[str, Any], str]] = None,
+                    spec_path: Optional[str] = None) -> Union[Dict[str, Any], str, ApplyResult]:
+    """인라인·파일 중 하나를 받아 CAD 연결 전에 파일을 한 번만 읽는다."""
+    def refuse(code: str, message: str) -> ApplyResult:
+        return _result(Status.FAILED, message, Scope(target="활성 도면", supported=DRAW_SCOPE),
+                       ResultIds(standard=std.ref), ApplyMeta(op="?"),
+                       violations=[Violation(code=code, message=message)])
+
+    if (spec is None) == (spec_path is None):
+        return refuse("SPEC_INPUT", "spec과 spec_path 중 정확히 하나만 지정해야 함")
+    if spec_path is None:
+        return spec
+
+    path = Path(spec_path)
+    windows_path = PureWindowsPath(spec_path)
+    if (not path.is_absolute() or spec_path.replace("/", "\\").startswith("\\\\")
+            or "\x00" in spec_path or windows_path.is_reserved()):
+        return refuse("SPEC_PATH", "spec_path는 로컬 절대 경로여야 함(드라이브 상대·UNC·장치 경로 불가)")
+    if path.suffix.lower() != ".json":
+        return refuse("SPEC_PATH", "spec_path는 .json 확장자여야 함(대소문자 무관)")
+    try:
+        if not stat.S_ISREG(path.stat().st_mode):
+            return refuse("SPEC_FILE", f"명세 경로가 일반 파일이 아님: {spec_path}")
+        with path.open("rb") as source:
+            # 연 파일도 확인하고, 크기 판정과 디코딩에 같은 바이트를 쓴다.
+            if not stat.S_ISREG(os.fstat(source.fileno()).st_mode):
+                return refuse("SPEC_FILE", f"명세 경로가 일반 파일이 아님: {spec_path}")
+            data = source.read(SPEC_MAX_BYTES + 1)
+        if len(data) > SPEC_MAX_BYTES:
+            return refuse("SPEC_SIZE", f"명세 파일이 5 MB({SPEC_MAX_BYTES}바이트) 상한을 넘음: {spec_path}")
+        return data.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return refuse("SPEC_ENCODING", f"명세 파일은 UTF-8(BOM 허용)이어야 함: {spec_path}")
+    except OSError as error:
+        return refuse("SPEC_READ", f"명세 파일 읽기 실패: {spec_path} ({error})")
 
 
 def change_refusal(std, spec) -> Optional[ApplyResult]:
