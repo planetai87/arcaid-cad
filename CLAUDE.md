@@ -40,6 +40,7 @@
 - `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다. 손으로 고치지 않고 `python tools/standards/gen_references.py --write`로 만든 뒤 `--check`로 확인한다.
 - `tools/acceptance/t10_dangsan.py`: T10 당산동 통과 시험의 로컬 준비·비교 도구(고정 입력 전용).
 - `.claude/agents/`: Claude Code 서브에이전트 정의(plan-reviewer: 미리보기 DXF 검토, 지적만). 부모 작업 폴더 `D:\worktable\python\cad mcp\.claudegents`는 이 폴더로 가는 정션이다. 새 정의를 처음 추가하면 Claude Code를 다시 시작해야 목록에 뜬다. 평가 정답표는 `output/plan-reviewer-eval/`.
+- `tools/ops/ops.py`: ops 폴더(op별 명세 + 적용 순서 `hashes.json`) 도구(CAD 없음). `verify`는 목록·파일 대응·해시·표준 검증·전개(SPEC_ID 등)·op 사이 standard·units·scale·target 일치를 CAD 전에 확인한다. `bind`는 원본을 두고 새 실행 사본에만 target을 넣는다(target은 해시에 들어가므로 묶은 사본은 다시 쓰지 않음). 시험은 `tests/engine/test_ops_tool.py`.
 - `tools/review/render.py`: 미리보기 DXF 검토 도구(CAD 없음, PIL). `render`(창 영역 PNG, 기준 대비 공통 회색·추가 빨강·삭제 파랑, `--frame` 회전 좌표 눈금), `diff`(T10 형상 서명으로 추가·삭제 개수와 영역), `list`(창 안 객체 좌표 JSON, 지역 좌표). 시험은 `tests/engine/test_review_render.py`.
 - 템플릿 DWG를 고치면 `tools/template/export_template_dxf.py`(GstarCAD 필요)로 `template.dxf`와 해시를 다시 만든다. 안 하면 엔진 테스트가 실패한다.
 

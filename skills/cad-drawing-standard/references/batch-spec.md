@@ -4,7 +4,7 @@
 
 ## 요청과 좌표
 
-`draw_batch(spec=<JSON 객체 또는 JSON 문자열>)`로 보낸다. spec 문자열은 파일 경로가 아니다. Claude Code처럼 서버와 같은 PC에서 명세를 파일로 만들었으면 `draw_batch(spec_path=<로컬 절대 .json 경로>)`로 보낸다(UTF-8, 5 MB 이하, spec과 함께 쓰지 않음). 파일은 옮겨 적지 않으므로 긴 명세의 전사 오류가 없다. claude.ai 등 파일을 서버와 공유하지 않는 환경에서는 인라인으로 보낸다.
+`draw_batch(spec=<JSON 객체 또는 JSON 문자열>)`로 보낸다. spec 문자열은 파일 경로가 아니다. Claude Code처럼 서버와 같은 PC에서 명세를 파일로 만들었으면 `draw_batch(spec_path=<로컬 절대 .json 경로>)`로 보낸다(UTF-8, 5 MB 이하, spec과 함께 쓰지 않음). 파일은 옮겨 적지 않으므로 긴 명세의 전사 오류가 없다. claude.ai 등 파일을 서버와 공유하지 않는 환경에서는 인라인으로 보낸다. 여러 op를 폴더(`<op>.json` + 적용 순서 `hashes.json`)로 만들었으면 서버 저장소의 `python tools/ops/ops.py verify <폴더>`로 CAD 전에 모두 확인하고, `bind <폴더> --out <새 폴더> --drawing-id … --snapshot-id …`로 실행 사본에만 target을 넣어 그 사본을 순서대로 보낸다. 재전송·재개는 그 사본을 그대로 쓴다.
 
 | 필드 | 의미 |
 |---|---|
