@@ -6,7 +6,7 @@
 - `src/engine/walls.py`: 벽 조각 합치기. 표준 라이브러리만 사용한다.
 - `src/cli.py`: 파일 단위 CLI. 엔진·CLI·`src/egress.py`에는 MCP·COM 모듈을 가져오지 않는다.
 - `src/server.py`: MCP 진입점이므로 경로·이름과 직접 실행·패키지 가져오기를 유지한다. CAD별 차이는 `src/cad_controller.py`에서만 처리한다. `draw_batch`는 인라인 `spec` 또는 로컬 절대 `.json` 경로 `spec_path` 중 하나를 받는다(`apply_service.load_batch_spec`, CAD 연결 전 거부).
-- `standards/heo-2026/`: 표준 YAML·DXF. `skills/cad-drawing-standard/`: 스킬·DWG 자산. `.claude/agents/`: Claude Code 서브에이전트 정의(Codex는 쓰지 않음). `tools/`: 유지보수 도구(`tools/review/render.py`는 미리보기 DXF 렌더·비교·좌표 목록, `tools/ops/ops.py`는 ops 폴더 verify·bind, `tools/raster/measure.py`는 평면 이미지 보정·직선·각도·프로파일·펴 보기. numpy는 tools/raster에서만 쓴다). `docs/`: 계획 사본. `spikes/`: 실험 전용이며 제품 코드로 옮기지 않는다.
+- `standards/heo-2026/`: 표준 YAML·DXF. `skills/cad-drawing-standard/`: 스킬·DWG 자산. `.claude/agents/`: Claude Code 서브에이전트 정의(Codex는 쓰지 않음). `tools/`: 유지보수 도구(`tools/review/render.py`는 미리보기 DXF 렌더·비교·좌표 목록, `tools/ops/ops.py`는 ops 폴더 verify·bind, `tools/raster/measure.py`는 평면 이미지 보정·직선·각도·프로파일·펴 보기, `tools/raster/record.py`는 측정 기록·잠금·합치기·재검증. numpy는 tools/raster에서만 쓴다). `docs/`: 계획 사본. `spikes/`: 실험 전용이며 제품 코드로 옮기지 않는다.
 
 ## 개발·실행 명령
 
