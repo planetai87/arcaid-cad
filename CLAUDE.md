@@ -39,6 +39,7 @@
 - DXF 사본은 COM `Export`로만 만든다. `save_drawing`으로 DXF를 저장하지 않는다(열린 문서가 DXF로 바뀜). DXFOUT도 쓰지 않는다(미저장 표시를 지움).
 - `standards/heo-2026/`: 회사 표준 프로파일(YAML)과 `template.dxf`. 표준값의 단일 원본이다. 스킬 references의 표는 여기서 생성한다. 손으로 고치지 않고 `python tools/standards/gen_references.py --write`로 만든 뒤 `--check`로 확인한다.
 - `tools/acceptance/t10_dangsan.py`: T10 당산동 통과 시험의 로컬 준비·비교 도구(고정 입력 전용).
+- `tools/review/render.py`: 미리보기 DXF 검토 도구(CAD 없음, PIL). `render`(창 영역 PNG, 기준 대비 공통 회색·추가 빨강·삭제 파랑, `--frame` 회전 좌표 눈금), `diff`(T10 형상 서명으로 추가·삭제 개수와 영역), `list`(창 안 객체 좌표 JSON, 지역 좌표). 시험은 `tests/engine/test_review_render.py`.
 - 템플릿 DWG를 고치면 `tools/template/export_template_dxf.py`(GstarCAD 필요)로 `template.dxf`와 해시를 다시 만든다. 안 하면 엔진 테스트가 실패한다.
 
 ## 규칙
