@@ -142,7 +142,8 @@ CLI는 0단계 후반, 검사와 읽기가 CAD 없이 DXF만으로 돌아갈 때
 | 엔진 (`src/engine`) | 읽기, 생성, 검사, 변경 목록 계산 | 0단계부터 단계마다 확장 |
 | CLI | 일괄 생성·검사, 테스트, Claude Code에서 직접 실행 | 0단계 후반 |
 | IR (건물 모델) | 엔진이 만든 범위의 건물 정보. 형상의 기준은 DWG로 두고, 수동 편집 충돌 원칙을 정한 뒤 넓힌다 | 2단계, 필요한 범위만 |
-| Claude Code 서브에이전트 (plan-reviewer·cad-applier) | 미리보기 DXF 검토(지적만 함), ops 폴더를 보호된 경로로 적용 | 지금. 아래 Agent SDK 별도 에이전트와 다르다 |
+| Claude Code 서브에이전트 (plan-reviewer·plan-reader) | 미리보기 DXF 검토(지적만 함), 평면 이미지 영역별 측정(측정 도구로만 기록, 해석하지 않음). cad-applier는 보류: 메인이 ops 검사·묶기(`tools/ops`) 뒤 `draw_batch(spec_path)`로 적용 | 지금. 아래 Agent SDK 별도 에이전트와 다르다 |
+| 이미지 판독 도구 (`tools/raster`) | 평면 이미지 좌표 보정·선 측정, 측정 기록(measure.yaml), 범용 생성기(측정 기록 → ops), 원본 겹침 | 지금. 입력은 CAD에서 내보낸 PNG(원근 없음). 스캔·사진 원근 보정과 벡터 PDF 추출은 범위 밖 |
 | 별도 에이전트 (Agent SDK) | 사내 전용 프롬프트·툴·권한을 고정한 실행 환경 | 2단계 뒤 판단. 그전까지 Claude Code와 Claude 앱이 맡는다 |
 | ArcAid 웹 통합 | 엔진과 IR을 웹 서비스에서 사용 | 2단계 이후 |
 
