@@ -12,6 +12,7 @@ dependencies = [
     "Pillow>=10.0.0",
     "ezdxf>=1.4,<2",
     "PyYAML>=6.0",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]

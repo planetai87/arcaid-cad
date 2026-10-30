@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       # 엔진 의존성만 설치한다(D1: 엔진은 CAD·MCP 없이 돈다). tests/mcp, tests/cad는 Linux에서 스스로 빠진다
-      - run: python -m pip install "ezdxf>=1.4,<2" "PyYAML>=6.0" "pydantic>=2.0" "Pillow>=10.0.0" "pytest>=8"
+      - run: python -m pip install "ezdxf>=1.4,<2" "PyYAML>=6.0" "pydantic>=2.0" "Pillow>=10.0.0" "numpy>=1.24" "pytest>=8"
       - run: python -m pytest -q
       - name: CLI 파일 명령
         run: |
