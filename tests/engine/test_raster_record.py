@@ -209,6 +209,16 @@ def test_add_element_takes_plain_flags_without_json(plan_project, capsys):
                   "candidates": {"material": ["RC", "조적"]}, "note": "남측 벽"}
 
 
+def test_add_element_records_links_to_other_elements(plan_project, capsys):
+    # 창·문이 어느 벽에 붙는지(host)는 요소 사이 관계다. 대상은 다른 영역 요소일 수 있어 validate가 확인한다
+    assert _profile(plan_project, "A", "s-out,_,s-in") == 0
+    assert rec.main(["add-element", str(plan_project["files"]["A"]), "--id", "EA", "--type", "window",
+                     "--ref", "s=s-out", "--link", "host=EB"]) == 0
+    assert _read(plan_project["files"]["A"])["elements"]["EA"]["links"] == {"host": "EB"}
+    assert rec.main(["add-element", str(plan_project["files"]["A"]), "--json", "{}",
+                     "--link", "host=EB"]) == 1
+
+
 def test_add_element_refuses_confirmed_state_in_a_region_file(plan_project, capsys):
     assert _element(plan_project["files"]["A"], {"id": "EA", "type": "wall", "status": "확정"}) == 1
 
@@ -357,6 +367,16 @@ def test_validate_is_not_ready_until_questions_and_interpretations_are_settled(m
     assert report["ready"] is True
     assert _read(merged["merged"])["interpretations"]["EA"]["material"] == {"value": "RC", "status": "사용자확정",
                                                                             "by": "user"}
+
+
+def test_validate_catches_links_to_missing_or_same_elements(merged, capsys):
+    data = _read(merged["merged"])
+    data["elements"]["EA"]["links"] = {"host": "NOPE", "next": "EA"}
+    merged["merged"].write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    assert _validate(merged) == 1
+    errors = json.loads(capsys.readouterr().out)["errors"]
+    assert any("EA.host" in e and "NOPE" in e for e in errors)
+    assert any("EA.next" in e and "자기 자신" in e for e in errors)
 
 
 def test_answers_and_interpretations_only_go_into_measure(merged, capsys):
