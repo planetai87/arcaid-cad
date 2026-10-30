@@ -198,6 +198,17 @@ def test_add_element_only_for_assigned_ids_and_known_observations(plan_project, 
     assert _read(plan_project["files"]["A"])["elements"]["EA"]["refs"] == {"f1": "s-out", "f2": "s-in"}
 
 
+def test_add_element_takes_plain_flags_without_json(plan_project, capsys):
+    # PowerShell 5.1은 외부 프로그램에 넘기는 인자의 큰따옴표를 지워 --json을 깨뜨린다
+    assert _profile(plan_project, "A", "s-out,_,s-in") == 0
+    assert rec.main(["add-element", str(plan_project["files"]["A"]), "--id", "EA", "--type", "wall",
+                     "--ref", "f1=s-out", "--ref", "f2=s-in", "--candidate", "material=RC,조적",
+                     "--note", "남측 벽"]) == 0
+    el = _read(plan_project["files"]["A"])["elements"]["EA"]
+    assert el == {"type": "wall", "refs": {"f1": "s-out", "f2": "s-in"},
+                  "candidates": {"material": ["RC", "조적"]}, "note": "남측 벽"}
+
+
 def test_add_element_refuses_confirmed_state_in_a_region_file(plan_project, capsys):
     assert _element(plan_project["files"]["A"], {"id": "EA", "type": "wall", "status": "확정"}) == 1
 
