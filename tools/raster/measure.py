@@ -7,7 +7,7 @@
   python tools/raster/measure.py angles IMG --calib calib.json --window U0 V0 U1 V1 [--frame X,Y,DEG]
   python tools/raster/measure.py fitline IMG --calib calib.json [--frame X,Y,DEG] --from U,V --to U,V --band MM
   python tools/raster/measure.py profile IMG --calib calib.json [--frame X,Y,DEG] --axis u|v --at C --range A B
-                                 [--band MM] [--plot out.png]
+                                 [--band MM] [--plot out.png] [--record FILE --names=a,_,b]
   python tools/raster/measure.py view IMG --calib calib.json [--frame X,Y,DEG] --window U0 V0 U1 V1 -o out.png
                                  [--mmpp MM] [--grid MM]
 
@@ -595,13 +595,107 @@ def _line(text):
     return vals
 
 
+def canonical_command(args):
+    """기록용 명령(절대 경로, --record 빼고). record.py가 다시 실행해 기록값을 대조한다"""
+    cmd = [args.command, str(Path(args.image).resolve()), "--calib", str(Path(args.calib).resolve())]
+    if args.frame:
+        cmd += ["--frame", args.frame]
+    if args.command == "profile":
+        cmd += ["--axis", args.axis, "--at", repr(args.at), "--range", repr(args.range[0]), repr(args.range[1]),
+                "--band", repr(args.band), "--min-contrast", repr(args.min_contrast)]
+        if args.max_tol is not None:
+            cmd += ["--max-tol", repr(args.max_tol)]
+    else:
+        cmd += ["--from", f"{args.p1[0]!r},{args.p1[1]!r}", "--to", f"{args.p2[0]!r},{args.p2[1]!r}",
+                "--band", repr(args.band)]
+    return cmd
+
+
+def profile_observations(result, frame, names, base):
+    """프로파일 구간을 이름별 관측으로. names는 구간마다 하나(건너뛰기 '_' 또는 '-')"""
+    runs = result["runs"]
+    if len(names) != len(runs):
+        raise ValueError(f"--names는 구간 {len(runs)}개에 하나씩(건너뛰기는 _), 받은 것 {len(names)}개")
+    line_axis = "v" if result["axis"] == "u" else "u"
+    ang_local = 0.0 if line_axis == "u" else 90.0
+    items = {}
+    for k, (name, r) in enumerate(zip(names, runs)):
+        if name in ("_", "-"):
+            continue
+        if r["status"] == "unreadable":
+            raise ValueError(f"구간 {k}({name})은 판독 불가({', '.join(r['flags'])})라 기록하지 않음")
+        items[name] = {**base, "tool": "profile", "axis": line_axis, "coord": r["center"],
+                       "angle_local_deg": ang_local, "angle_wcs_deg": _r(_angle180(frame.deg + ang_local), 4),
+                       "point_wcs": r["center_wcs"], "width_px": r["width_px"], "tol_mm": result["tol_mm"],
+                       "flags": r["flags"], "pick": k}
+    return items
+
+
+def fitline_observation(result, frame, name, base):
+    if result["status"] not in ("ok", "partial"):
+        raise ValueError(f"직선 맞춤이 {result['status']}라 기록하지 않음: {result.get('message', '')}")
+    axis = "u" if abs(result["angle_local_deg"]) < 45 else "v"
+    lu, lv = result["point_local"]
+    wx, wy = frame.to_wcs(lu, lv)
+    return {name: {**base, "tool": "fitline", "axis": axis, "coord": lv if axis == "u" else lu,
+                   "angle_local_deg": result["angle_local_deg"], "angle_wcs_deg": result["angle_wcs_deg"],
+                   "point_wcs": [_r(wx), _r(wy)], "width_px": None, "tol_mm": result["tol_mm"],
+                   "flags": [] if result["status"] == "ok" else ["partial"], "pick": None}}
+
+
+def _record(args, result, frame, sha):
+    from tools.raster import record as rec
+    calib_sha = hashlib.sha256(Path(args.calib).read_bytes()).hexdigest()
+    base = {"kind": "line", "frame": [frame.x, frame.y, frame.deg], "command": canonical_command(args),
+            "image_sha256": sha, "calib_sha256": calib_sha}
+    if args.command == "profile":
+        names = [n.strip() for n in (args.names or "").split(",")]
+        items = profile_observations(result, frame, names, base)
+    else:
+        if not args.name:
+            raise ValueError("--record에는 --name이 필요함")
+        items = fitline_observation(result, frame, args.name, base)
+    return rec.add_observations(args.record, items, sha, calib_sha)
+
+
 def _load(args, need_calib=True):
     dark, sha = load_image(args.image)
     calib = Calib.load(args.calib, sha) if need_calib else None
     return dark, sha, calib
 
 
+def rerun_observation(command, pick):
+    """기록된 명령을 다시 실행해 같은 방식으로 관측을 만든다(record.py validate --reverify)"""
+    args = _parser().parse_args(command)
+    if args.command not in ("profile", "fitline") or getattr(args, "record", None):
+        raise ValueError(f"재실행할 수 없는 명령: {command[:1]}")
+    result = _run(args)
+    frame = _frame(args.frame)
+    base = {"kind": "line", "frame": [frame.x, frame.y, frame.deg], "command": list(command),
+            "image_sha256": result["sha256"],
+            "calib_sha256": hashlib.sha256(Path(args.calib).read_bytes()).hexdigest()}
+    if args.command == "profile":
+        names = ["_"] * len(result["runs"])
+        if pick is None or not 0 <= pick < len(names):
+            raise ValueError(f"재실행 결과에 구간 {pick}이 없음(구간 {len(names)}개)")
+        names[pick] = "x"
+        return profile_observations(result, frame, names, base)["x"]
+    return fitline_observation(result, frame, "x", base)["x"]
+
+
 def main(argv=None):
+    args = _parser().parse_args(argv)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    try:
+        result = _run(args)
+    except (ValueError, OSError) as e:
+        result = {"status": "error", "message": str(e)}
+    print(json.dumps(result, ensure_ascii=False))
+    return 0 if result.get("status") not in ("error", "rejected") else 1
+
+
+def _parser():
     parser = argparse.ArgumentParser(description="평면 이미지 측정 도구(좌표 보정·직선·각도·프로파일·펴 보기)")
     sub = parser.add_subparsers(dest="command", required=True)
     c = sub.add_parser("calib", help="대응점으로 px↔mm 보정")
@@ -619,6 +713,8 @@ def main(argv=None):
     f.add_argument("--from", dest="p1", type=_xy, required=True)
     f.add_argument("--to", dest="p2", type=_xy, required=True)
     f.add_argument("--band", type=float, required=True)
+    f.add_argument("--record", help="관측을 기록할 measure·영역 파일(--calib 필요)")
+    f.add_argument("--name", help="기록할 관측 이름")
     a = sub.add_parser("angles", help="창 안 주된 선 각도")
     a.add_argument("image")
     a.add_argument("--calib", required=True)
@@ -636,6 +732,8 @@ def main(argv=None):
     p.add_argument("--min-contrast", type=float, default=MIN_CONTRAST)
     p.add_argument("--max-tol", type=float, help="허용오차 상한 mm(기본 2 px)")
     p.add_argument("--plot", help="프로파일 그림 PNG")
+    p.add_argument("--record", help="관측을 기록할 measure·영역 파일")
+    p.add_argument("--names", help="구간마다 관측 이름(쉼표, 건너뛰기 _). 예: --names=s-out,_,s-in")
     v = sub.add_parser("view", help="지역 좌표로 펴 본 그림")
     v.add_argument("image")
     v.add_argument("--calib", required=True)
@@ -644,15 +742,7 @@ def main(argv=None):
     v.add_argument("-o", "--out", required=True)
     v.add_argument("--mmpp", type=float)
     v.add_argument("--grid", type=float)
-    args = parser.parse_args(argv)
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    try:
-        result = _run(args)
-    except (ValueError, OSError) as e:
-        result = {"status": "error", "message": str(e)}
-    print(json.dumps(result, ensure_ascii=False))
-    return 0 if result.get("status") not in ("error", "rejected") else 1
+    return parser
 
 
 def _run(args):
@@ -673,8 +763,13 @@ def _run(args):
     if args.command == "fitline":
         if bool(args.px) == bool(args.calib):
             raise ValueError("--calib 또는 --px 중 하나")
+        if args.record and args.px:
+            raise ValueError("--record는 --calib(mm)일 때만")
         dark, sha, calib = _load(args, need_calib=not args.px)
-        result = fit_line(dark, args.p1, args.p2, args.band, calib, _frame(args.frame))
+        frame = _frame(args.frame)
+        result = fit_line(dark, args.p1, args.p2, args.band, calib, frame)
+        if args.record:
+            result["recorded"] = _record(args, result, frame, sha)
         return {"image": str(args.image), "sha256": sha, **result}
     dark, sha, calib = _load(args)
     frame = _frame(args.frame)
@@ -687,6 +782,8 @@ def _run(args):
         if args.plot:
             result["plot"] = plot_profile(result, args.plot)
         result.pop("_curve", None)
+        if args.record:
+            result["recorded"] = _record(args, result, frame, sha)
     else:
         result = view(dark, calib, frame, args.window, args.out, args.mmpp, args.grid, names)
     return {"image": str(args.image), "sha256": sha, **result}
