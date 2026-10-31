@@ -9,7 +9,7 @@ from .server import create_app
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="명세·DXF 읽기 전용 검토 화면(CAD 연결 없음)")
+    parser = argparse.ArgumentParser(description="명세·DXF 검토와 메모(CAD 연결 없음)")
     parser.add_argument("--work", required=True, help="작업 명세 폴더")
     parser.add_argument("--base", help="기준 DXF 파일")
     parser.add_argument("--port", type=int, default=8770)
