@@ -30,6 +30,8 @@
 - 영역 파일(kind region): 판독 에이전트 하나가 쓴다. 잠금 해시·보정 파일 sha256을 담는다.
 머리말의 값은 {value, source, ...}로 출처를 적는다. source: 실측(ref "관측이름.필드"), 파생(formula·refs),
 원본표기(text), 추정(reason), 표준(key). 관측(observations)은 측정 도구가 명령·선택 번호와 함께 기록한다.
+관측은 kind로 나뉜다: line(profile·fitline, 직선 하나)과 point(blob, 외곽 상자와 그 중심). merge의 같은 선 비교는
+line만 하고, --reverify는 둘 다 다시 실행한다. 머리말 grids의 키는 frame 이름이고 WCS는 wcs다.
 파일 쓰기는 같은 폴더의 임시 파일에 쓴 뒤 이름을 바꾼다(반쯤 쓴 파일이 남지 않게).
 표준 출력은 UTF-8 JSON 하나이고, 성공이면 종료 코드 0, 거부·오류면 1이다.
 """
@@ -41,9 +43,9 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-from typing import Any, Dict, List, Literal, Optional
+from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationError, model_validator
 import yaml
 
 SCHEMA_VERSION = 1
@@ -118,7 +120,7 @@ class Output(_Model):
     k: int
 
 
-class Observation(_Model):
+class LineObservation(_Model):
     kind: Literal["line"]
     tool: Literal["profile", "fitline"]
     frame: List[float]
@@ -134,6 +136,26 @@ class Observation(_Model):
     pick: Optional[int] = None
     image_sha256: str
     calib_sha256: str
+
+
+class PointObservation(_Model):
+    """blob 점 관측: 외곽 상자(bbox_local, frame 지역 좌표)와 그 중심(point_local·point_wcs)"""
+    kind: Literal["point"]
+    tool: Literal["blob"]
+    frame: List[float]
+    point_local: List[float]
+    point_wcs: List[float]
+    bbox_local: List[float]
+    tol_mm: float
+    flags: List[str] = []
+    command: List[str]
+    pick: Optional[int] = None
+    image_sha256: str
+    calib_sha256: str
+
+
+Observation = Annotated[Union[LineObservation, PointObservation], Field(discriminator="kind")]
+_OBSERVATION = TypeAdapter(Observation)
 
 
 class Element(_Model):
@@ -334,7 +356,7 @@ SAME_ANGLE_DEG = 0.5
 
 def _line_pairs(sources):
     """출처가 다른 관측 쌍 중 같은 선(거리 ≤ 허용오차)과 불일치(허용오차 < 거리 ≤ 2배)"""
-    flat = [(src, name, o) for src, obs in sources for name, o in obs.items()]
+    flat = [(src, name, o) for src, obs in sources for name, o in obs.items() if o.get("kind", "line") == "line"]
     same, conflicts = [], []
     for i, (sa, na, a) in enumerate(flat):
         for sb, nb, b in flat[i + 1:]:
@@ -427,7 +449,7 @@ def add_observations(path, items, image_sha, calib_sha):
     for name, obs in items.items():
         if name in data["observations"]:
             raise RecordError(f"관측 이름이 이미 있음: {name}")
-        Observation.model_validate(obs)
+        _OBSERVATION.validate_python(obs)
     data["observations"].update(items)
     save(path, data)
     return sorted(items)
@@ -490,8 +512,11 @@ def _same(a, b):
     return a == b
 
 
-REVERIFY_FIELDS = ("axis", "coord", "angle_local_deg", "angle_wcs_deg", "point_wcs", "width_px", "tol_mm", "flags",
-                   "image_sha256", "calib_sha256")
+REVERIFY_FIELDS = {
+    "line": ("axis", "coord", "angle_local_deg", "angle_wcs_deg", "point_wcs", "width_px", "tol_mm", "flags",
+             "image_sha256", "calib_sha256"),
+    "point": ("kind", "tool", "frame", "point_local", "point_wcs", "bbox_local", "tol_mm", "flags", "image_sha256",
+              "calib_sha256")}
 
 
 def validate(path, lock_path=None, reverify=False):
@@ -533,7 +558,7 @@ def validate(path, lock_path=None, reverify=False):
             except (ValueError, OSError, SystemExit) as e:
                 errors.append(f"관측 {name}: 다시 실행하지 못함({e})")
                 continue
-            diff = [f"{k} 기록 {o.get(k)} / 재실행 {again.get(k)}" for k in REVERIFY_FIELDS
+            diff = [f"{k} 기록 {o.get(k)} / 재실행 {again.get(k)}" for k in REVERIFY_FIELDS[o.get("kind", "line")]
                     if not _same(o.get(k), again.get(k))]
             if diff:
                 errors.append(f"관측 {name}: 재실행 결과와 다름(손으로 고침?): {'; '.join(diff)}")

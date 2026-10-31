@@ -8,6 +8,8 @@
   python tools/raster/measure.py fitline IMG --calib calib.json [--frame X,Y,DEG] --from U,V --to U,V --band MM
   python tools/raster/measure.py profile IMG --calib calib.json [--frame X,Y,DEG] --axis u|v --at C --range A B
                                  [--band MM] [--plot out.png] [--record FILE --names=a,_,b]
+  python tools/raster/measure.py blob IMG --calib calib.json [--frame X,Y,DEG] --window U0 V0 U1 V1
+                                 [--record FILE --name N]                                # 문자·기호의 외곽 상자
   python tools/raster/measure.py view IMG --calib calib.json [--frame X,Y,DEG] --window U0 V0 U1 V1 -o out.png
                                  [--mmpp MM] [--grid MM]
 
@@ -18,6 +20,7 @@
 보정(calib)은 대응점 3개 이상을 최소제곱으로 맞추고, 아핀으로 다시 맞춰 x·y 축척 차(비균등 확대)를 확인한다.
 보정에 쓰지 않은 검증점(--check)의 오차와 잔차 중 큰 값을 보정 오차(err_mm)로 둔다.
 측정값의 허용오차(tol_mm)는 보정 오차 + 경계 보간 오차(0.5 px)다. --max-tol(기본 2 px)을 넘으면 판독 불가로 본다.
+blob은 창 안 잉크의 외곽 상자와 그 중심(점 관측)을 낸다. 창은 대상 하나만 온전히 담아야 한다(가장자리에 닿으면 거부).
 선폭(width_px)은 관측값일 뿐이고, 벽·창 같은 의미는 정하지 않는다.
 표준 출력은 UTF-8 JSON 하나이고, 성공이면 종료 코드 0, 거부·오류면 1이다.
 """
@@ -489,6 +492,50 @@ def profile(dark, calib, frame, axis, at, start, end, band=0.0, step=None, min_c
     return result
 
 
+def blob(dark, calib, frame, window, min_contrast=MIN_CONTRAST, max_tol=None):
+    """창(지역 좌표 mm) 안 잉크의 외곽 상자와 기준점. 1 px 간격으로 표본을 뜨고, 바탕(표본 25 백분위)보다
+    min_contrast 이상 어두우면 잉크로 본다. 기준점(point)은 외곽 상자 중심이고, 무게중심(centroid)은 참고값이다.
+    상자 경계는 표본 간격만큼 어긋날 수 있어 tol = 보정 오차 + 1 px. 창 가장자리 1 px에 잉크가 닿으면 잘린 것(truncated)"""
+    u0, v0, u1, v1 = (float(x) for x in window)
+    if u1 <= u0 or v1 <= v0:
+        raise ValueError("window는 U0 < U1, V0 < V1")
+    step = 1.0 / calib.s
+    max_tol = max_tol if max_tol is not None else MAX_TOL_PX / calib.s
+    us = np.arange(u0 + step / 2, u1, step)
+    vs = np.arange(v0 + step / 2, v1, step)
+    if len(us) < 3 or len(vs) < 3:
+        raise ValueError("window가 3 px보다 작음")
+    U, V = np.meshgrid(us, vs)
+    D = sample(dark, *_local_to_px(calib, frame, U, V))
+    base = {"window": [u0, v0, u1, v1], "step_mm": _r(step, 3), "tol_mm": _r(calib.err_mm + step),
+            "max_tol_mm": _r(max_tol), "flags": []}
+    if np.isnan(D).any():
+        return {**base, "status": "outside", "message": "창 일부가 이미지 밖"}
+    bg = float(np.percentile(D, 25))
+    h = D - bg
+    ink = h >= min_contrast
+    if not ink.any():
+        return {**base, "status": "empty", "background": _r(bg, 3), "message": "잉크 없음"}
+    cols, rows = np.where(ink.any(axis=0))[0], np.where(ink.any(axis=1))[0]
+    bbox = (us[cols[0]], vs[rows[0]], us[cols[-1]], vs[rows[-1]])
+    pu, pv = (bbox[0] + bbox[2]) / 2, (bbox[1] + bbox[3]) / 2
+    w = np.where(ink, h, 0.0)
+    cu, cv = float((U * w).sum() / w.sum()), float((V * w).sum() / w.sum())
+    flags = []
+    if ink[0].any() or ink[-1].any() or ink[:, 0].any() or ink[:, -1].any():
+        flags.append("truncated")
+    if calib.err_mm + step > max_tol:
+        flags.append("budget")
+    wx, wy = frame.to_wcs(pu, pv)
+    result = {**base, "status": "unreadable" if flags else "ok", "flags": flags, "background": _r(bg, 3),
+              "ink_px": int(ink.sum()), "point_local": [_r(pu), _r(pv)], "point_wcs": [_r(wx), _r(wy)],
+              "bbox_local": [_r(b) for b in bbox], "centroid_local": [_r(cu), _r(cv)]}
+    if flags:
+        result["message"] = {"truncated": "잉크가 창 가장자리에 닿음(창을 넓힐 것)",
+                             "budget": "오차 예산 초과"}[flags[0]]
+    return result
+
+
 def plot_profile(result, out_path, size=(1000, 300)):
     """프로파일 곡선과 잰 구간을 그림으로(에이전트가 Read로 확인)"""
     t, P, bg = result["_curve"]
@@ -605,6 +652,10 @@ def canonical_command(args):
                 "--band", repr(args.band), "--min-contrast", repr(args.min_contrast)]
         if args.max_tol is not None:
             cmd += ["--max-tol", repr(args.max_tol)]
+    elif args.command == "blob":
+        cmd += ["--window", *(repr(w) for w in args.window), "--min-contrast", repr(args.min_contrast)]
+        if args.max_tol is not None:
+            cmd += ["--max-tol", repr(args.max_tol)]
     else:
         cmd += ["--from", f"{args.p1[0]!r},{args.p1[1]!r}", "--to", f"{args.p2[0]!r},{args.p2[1]!r}",
                 "--band", repr(args.band)]
@@ -643,12 +694,25 @@ def fitline_observation(result, frame, name, base):
                    "flags": [] if result["status"] == "ok" else ["partial"], "pick": None}}
 
 
+def blob_observation(result, name, base):
+    if result["status"] != "ok":
+        raise ValueError(f"점 관측이 {result['status']}라 기록하지 않음({', '.join(result['flags'])}): "
+                         f"{result.get('message', '')}")
+    return {name: {**base, "kind": "point", "tool": "blob", "point_local": result["point_local"],
+                   "point_wcs": result["point_wcs"], "bbox_local": result["bbox_local"],
+                   "tol_mm": result["tol_mm"], "flags": result["flags"], "pick": None}}
+
+
 def _record(args, result, frame, sha):
     from tools.raster import record as rec
     calib_sha = hashlib.sha256(Path(args.calib).read_bytes()).hexdigest()
     base = {"kind": "line", "frame": [frame.x, frame.y, frame.deg], "command": canonical_command(args),
             "image_sha256": sha, "calib_sha256": calib_sha}
-    if args.command == "profile":
+    if args.command == "blob":
+        if not args.name:
+            raise ValueError("--record에는 --name이 필요함")
+        items = blob_observation(result, args.name, base)
+    elif args.command == "profile":
         names = [n.strip() for n in (args.names or "").split(",")]
         items = profile_observations(result, frame, names, base)
     else:
@@ -667,7 +731,7 @@ def _load(args, need_calib=True):
 def rerun_observation(command, pick):
     """기록된 명령을 다시 실행해 같은 방식으로 관측을 만든다(record.py validate --reverify)"""
     args = _parser().parse_args(command)
-    if args.command not in ("profile", "fitline") or getattr(args, "record", None):
+    if args.command not in ("profile", "fitline", "blob") or getattr(args, "record", None):
         raise ValueError(f"재실행할 수 없는 명령: {command[:1]}")
     result = _run(args)
     frame = _frame(args.frame)
@@ -680,6 +744,8 @@ def rerun_observation(command, pick):
             raise ValueError(f"재실행 결과에 구간 {pick}이 없음(구간 {len(names)}개)")
         names[pick] = "x"
         return profile_observations(result, frame, names, base)["x"]
+    if args.command == "blob":
+        return blob_observation(result, "x", base)["x"]
     return fitline_observation(result, frame, "x", base)["x"]
 
 
@@ -734,6 +800,15 @@ def _parser():
     p.add_argument("--plot", help="프로파일 그림 PNG")
     p.add_argument("--record", help="관측을 기록할 measure·영역 파일")
     p.add_argument("--names", help="구간마다 관측 이름(쉼표, 건너뛰기 _). 예: --names=s-out,_,s-in")
+    b = sub.add_parser("blob", help="창 안 잉크의 외곽 상자와 기준점(문자·기호 위치)")
+    b.add_argument("image")
+    b.add_argument("--calib", required=True)
+    b.add_argument("--frame")
+    b.add_argument("--window", nargs=4, type=float, required=True, metavar=("U0", "V0", "U1", "V1"))
+    b.add_argument("--min-contrast", type=float, default=MIN_CONTRAST)
+    b.add_argument("--max-tol", type=float, help="허용오차 상한 mm(기본 2 px)")
+    b.add_argument("--record", help="관측을 기록할 measure·영역 파일")
+    b.add_argument("--name", help="기록할 관측 이름")
     v = sub.add_parser("view", help="지역 좌표로 펴 본 그림")
     v.add_argument("image")
     v.add_argument("--calib", required=True)
@@ -776,6 +851,10 @@ def _run(args):
     names = ("u", "v") if args.frame else ("x", "y")
     if args.command == "angles":
         result = angles(dark, calib, frame, args.window, args.top)
+    elif args.command == "blob":
+        result = blob(dark, calib, frame, args.window, args.min_contrast, args.max_tol)
+        if args.record:
+            result["recorded"] = _record(args, result, frame, sha)
     elif args.command == "profile":
         result = profile(dark, calib, frame, args.axis, args.at, args.range[0], args.range[1], args.band,
                          min_contrast=args.min_contrast, max_tol=args.max_tol)
