@@ -26,6 +26,10 @@ CAD MCP도 없는 환경(claude.ai 웹 대화 등)에서는 어림 경로의 명
    - 관측 하나의 허용오차는 `tol_mm`에 따로 나온다: profile은 보정 오차 + 0.5 px, blob은 + 1 px다.
    - 두 선의 교점 오차는 교차각이 작을수록 커진다.
    - 명령: `python tools/raster/measure.py calib IMG --point U,V=X,Y … --check U,V=X,Y -o calib.json`
+   - **사진(휨·원근)**: 위 명령에 선 대응을 더한다. `--vline U1,V1,U2,V2=X`는 X만 아는 세로선(축선, 치수 연장선)이고, `--hline …=Y`는 Y만 아는 가로선(외곽면, 치수 연장선)이다. 여기에 `--warp 2`를 붙인다.
+     - 선 구간은 대략이면 된다. 다른 선과 겹치는 조각은 도구가 버린다.
+     - 서로 다른 X와 서로 다른 Y가 각각 차수 + 1개 이상 필요하고, 그림 전체에 고르게 있어야 한다.
+     - 선이 덮지 않는 바깥은 외삽이므로 검증점으로 확인한다.
 2. **기록 머리말.** `python tools/raster/record.py init --image IMG --calib calib.json --standard heo-2026@<버전> --k k -o measure.yaml`로 measure.yaml을 만들고 머리말을 쓴다.
    - `frames`: 회전 구역이 있으면 지역 좌표계를 둔다. 각도는 `measure.py angles`로 구한다.
    - `grids`: 축 위치. 키는 frame 이름이고, WCS는 `wcs`다.

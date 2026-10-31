@@ -4,6 +4,7 @@
   python tools/raster/measure.py fitline IMG --px --from U,V --to U,V --band PX            # 이미지 px로 직선 맞춤
   python tools/raster/measure.py cross --line U,V,DU,DV --line U,V,DU,DV                   # 두 px 직선의 교점
   python tools/raster/measure.py calib IMG --point U,V=X,Y ... [--check U,V=X,Y ...] -o calib.json
+                                 [--vline U1,V1,U2,V2=X ...] [--hline U1,V1,U2,V2=Y ...] [--warp 2|3]   # 사진(휨·원근)
   python tools/raster/measure.py angles IMG --calib calib.json --window U0 V0 U1 V1 [--frame X,Y,DEG]
   python tools/raster/measure.py fitline IMG --calib calib.json [--frame X,Y,DEG] --from U,V --to U,V --band MM
   python tools/raster/measure.py profile IMG --calib calib.json [--frame X,Y,DEG] --axis u|v --at C --range A B
@@ -19,6 +20,9 @@
 - 보정은 닮음 변환이다: u = u0 + s(cosβ·x − sinβ·y), v = v0 − s(sinβ·x + cosβ·y). β는 화면에서 반시계가 +다.
 보정(calib)은 대응점 3개 이상을 최소제곱으로 맞추고, 아핀으로 다시 맞춰 x·y 축척 차(비균등 확대)를 확인한다.
 보정에 쓰지 않은 검증점(--check)의 오차와 잔차 중 큰 값을 보정 오차(err_mm)로 둔다.
+사진(휨·원근)은 --vline·--hline으로 X 또는 Y 하나만 아는 선(축선·치수 연장선·외곽면)을 주면, 닮음 위에 px → WCS 다항식
+보정량(--warp 2|3)을 맞춘다. 선 구간은 대략이면 되고, 도구가 60 px 조각마다 직선을 맞춰 휜 선을 따라 표본을 뽑는다.
+선이 덮지 않는 바깥은 외삽이라 믿지 않는다(검증점으로 확인).
 profile의 tilted는 띠 안에서 줄마다 잰 중심의 기울기가 10°를 넘거나, 그 기울기로 띠 안 위치가 1 px 넘게 바뀔 때 붙는다.
 경고가 없다고 frame이 맞다는 뜻은 아니다(좁은 띠·저해상도에서는 몇 도 어긋남이 드러나지 않음). frame 방향은
 angles·fitline(0.05~0.1°)으로 확인한다.
@@ -57,6 +61,12 @@ TILT_DRIFT_PX = 1.0            # 그 기울기로 띠 안 위치가 이만큼 �
 TILT_GROSS_DEG = 10.0          # 이보다 크면 띠가 좁아도 '기울어짐'(frame을 잘못 고른 경우)
 MIN_CONTRAST = 0.2             # 바탕보다 이만큼 어두워야 선으로 본다(어두움 0~1)
 MAX_TOL_PX = 2.0
+WARP_NEWTON_STEPS = 30
+WARP_NEWTON_TOL_PX = 1e-6
+WARP_MAX_COND = 1e7            # 보정량 설계행렬 조건수 상한(넘으면 그 좌표의 제약이 부족)
+LINE_PIECE_PX = 60.0           # 선 대응 표본: 구간을 이 길이 조각으로 나눠 조각마다 직선 맞춤
+LINE_PIECE_RMS_PX = 1.5        # 조각 맞춤 rms가 이보다 크면(교차선·문자) 버림
+LINE_PIECE_TURN_DEG = 4.0      # 조각 방향이 구간 방향에서 이보다 벗어나면 버림
 MAX_VIEW_SIDE = 2400
 GRID_COLOR, LABEL_COLOR = (0, 150, 0, 110), (0, 120, 0, 255)
 
@@ -96,24 +106,75 @@ def sample(dark, u, v):
 
 
 class Calib:
-    """WCS(mm, y 위) ↔ 이미지(px, v 아래) 닮음 변환"""
+    """WCS(mm, y 위) ↔ 이미지(px, v 아래). 닮음 변환(s·beta·원점)에, 사진이면 px → WCS 다항식 보정량 warp를 더한다:
+    WCS = 닮음⁻¹(px) + Q(px). Q는 정규화 px 좌표의 다항식(terms·qx·qy). WCS → px는 뉴턴 반복으로 푼다.
+    s·beta는 기본 닮음 값이라 표본 간격·허용오차 같은 대략의 축척에만 쓴다(국소 회전은 local_beta)"""
 
-    def __init__(self, s, beta_deg, u0, v0, err_mm=0.0, sha256=None):
+    def __init__(self, s, beta_deg, u0, v0, err_mm=0.0, sha256=None, warp=None):
         self.s, self.beta, self.u0, self.v0 = float(s), float(beta_deg), float(u0), float(v0)
         self.err_mm, self.sha256 = float(err_mm), sha256
         self.c, self.n = math.cos(math.radians(self.beta)), math.sin(math.radians(self.beta))
+        self.warp = warp
 
-    def to_px(self, x, y):
-        x, y = np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)
+    def _sim_px(self, x, y):
         return self.u0 + self.s * (self.c * x - self.n * y), self.v0 - self.s * (self.n * x + self.c * y)
 
-    def to_wcs(self, u, v):
-        a = (np.asarray(u, dtype=np.float64) - self.u0) / self.s
-        b = -(np.asarray(v, dtype=np.float64) - self.v0) / self.s
+    def _sim_wcs(self, u, v):
+        a, b = (u - self.u0) / self.s, -(v - self.v0) / self.s
         return self.c * a + self.n * b, -self.n * a + self.c * b
+
+    def _q(self, u, v):
+        w = self.warp
+        un, vn = (u - w["center"][0]) / w["scale"], (v - w["center"][1]) / w["scale"]
+        basis = [un ** i * vn ** j for i, j in w["terms"]]
+        return sum(c * b for c, b in zip(w["qx"], basis)), sum(c * b for c, b in zip(w["qy"], basis))
+
+    def to_px(self, x, y):
+        """WCS → px. warp면 닮음 근사로 고정점 반복(감쇠)하고, 수렴하지 않은 점은 nan(이미지 밖처럼 다룸)"""
+        x, y = np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64)
+        u, v = self._sim_px(x, y)
+        if not self.warp:
+            return u, v
+        u, v = np.array(u, dtype=np.float64), np.array(v, dtype=np.float64)
+        step = np.ones_like(u)
+        err = np.full_like(u, np.inf)
+        for _ in range(WARP_NEWTON_STEPS):
+            wx, wy = self.to_wcs(u, v)
+            ex, ey = x - wx, y - wy
+            e = np.hypot(ex, ey) * self.s
+            step = np.where(e > err, step / 2, np.minimum(step * 1.5, 1.0))      # 커지면 감쇠
+            err = np.minimum(err, e)
+            du, dv = self.s * (self.c * ex - self.n * ey), -self.s * (self.n * ex + self.c * ey)
+            u, v = u + step * du, v + step * dv
+            if float(np.nanmax(e)) < WARP_NEWTON_TOL_PX:
+                break
+        wx, wy = self.to_wcs(u, v)
+        bad = np.hypot(x - wx, y - wy) * self.s > 0.01
+        return np.where(bad, np.nan, u), np.where(bad, np.nan, v)
+
+    def to_wcs(self, u, v):
+        u, v = np.asarray(u, dtype=np.float64), np.asarray(v, dtype=np.float64)
+        x, y = self._sim_wcs(u, v)
+        if self.warp:
+            dx, dy = self._q(u, v)
+            x, y = x + dx, y + dy
+        return x, y
+
+    def local_beta(self, x, y):
+        """WCS 점 (x, y)에서 WCS +x 방향이 이미지에서 이루는 회전(도, 반시계 +)"""
+        if not self.warp:
+            return self.beta
+        u0, v0 = (float(c) for c in self.to_px(x, y))
+        u1, v1 = (float(c) for c in self.to_px(x + 100.0, y))
+        return math.degrees(math.atan2(-(v1 - v0), u1 - u0))
 
     def tol_mm(self):
         return self.err_mm + EDGE_ERR_PX / self.s
+
+    @classmethod
+    def from_result(cls, data, sha256=None):
+        return cls(data["px_per_mm"], data["beta_deg"], *data["origin_px"], data.get("err_mm", 0.0),
+                   sha256 or data.get("sha256"), data.get("warp"))
 
     @classmethod
     def load(cls, path, image_sha=None):
@@ -124,8 +185,7 @@ class Calib:
             raise ValueError("거부된 보정 파일")
         if image_sha and data.get("sha256") and data["sha256"] != image_sha:
             raise ValueError("보정 파일의 이미지 sha256이 이 이미지와 다름")
-        return cls(data["px_per_mm"], data["beta_deg"], *data["origin_px"], data.get("err_mm", 0.0),
-                   data.get("sha256"))
+        return cls.from_result(data)
 
 
 def _frame(text):
@@ -150,9 +210,80 @@ def _angle180(deg):
 
 # ---------- 보정 ----------
 
+def line_samples(dark, seg, band):
+    """대략의 선 구간 seg(u1, v1, u2, v2 px)를 조각으로 나눠 조각마다 직선을 맞추고, 조각 중점에서 맞춘 선 위의 점을 낸다.
+    휜 선을 따라가는 표본이다. 교차선·문자가 걸려 흐트러진 조각(rms·방향)은 버린다"""
+    a, b = np.array(seg[:2], dtype=np.float64), np.array(seg[2:], dtype=np.float64)
+    length = float(np.linalg.norm(b - a))
+    if length < LINE_PIECE_PX:
+        raise ValueError(f"선 구간이 {LINE_PIECE_PX:g} px보다 짧음")
+    t = (b - a) / length
+    n = int(length // LINE_PIECE_PX)
+    out = []
+    for k in range(n):
+        p, q = a + t * (k * length / n), a + t * ((k + 1) * length / n)
+        r = fit_line(dark, p, q, band)
+        if r["status"] != "ok" or r["rms_px"] > LINE_PIECE_RMS_PX:
+            continue
+        d = np.array(r["dir_px"])
+        if math.degrees(math.acos(min(1.0, abs(float(np.dot(d, t)))))) > LINE_PIECE_TURN_DEG:
+            continue
+        mid, mean = (p + q) / 2, np.array(r["point_px"])
+        foot = mean + d * float(np.dot(mid - mean, d))
+        out.append((float(foot[0]), float(foot[1])))
+    return out
+
+
+def _warp_fit(calib, pairs, vlines, hlines, degree):
+    """닮음 calib 위에 px → WCS 다항식 보정량을 맞춘다. 세로선 표본은 X만, 가로선 표본은 Y만, 점 대응은 둘 다 제약한다.
+    기저는 정규화 px 좌표(중심·반폭)의 단항식 u^i·v^j(i + j ≤ 차수, 상수·일차 포함). 좌표마다 설계행렬의 조건수가
+    WARP_MAX_COND를 넘으면(예: 가로선이 차수 + 1 줄보다 적음) 그 좌표를 정할 수 없어 거부한다"""
+    terms = [(i, j) for i in range(degree + 1) for j in range(degree + 1 - i)]
+    allp = [p for p, _ in pairs] + [p for pts, _ in vlines for p in pts] + [p for pts, _ in hlines for p in pts]
+    P = np.array(allp, dtype=np.float64)
+    center = P.mean(axis=0)
+    scale = float(max(np.ptp(P[:, 0]), np.ptp(P[:, 1])) / 2) or 1.0
+    warp = {"degree": degree, "center": [float(center[0]), float(center[1])], "scale": scale,
+            "terms": [list(t) for t in terms]}
+
+    def rows(points):
+        Q = np.array(points, dtype=np.float64).reshape(-1, 2)
+        un, vn = (Q[:, 0] - center[0]) / scale, (Q[:, 1] - center[1]) / scale
+        return np.column_stack([un ** i * vn ** j for i, j in terms]), Q
+    out = {}
+    for axis, k, lines in (("x", 0, vlines), ("y", 1, hlines)):
+        pts = [p for p, _ in pairs] + [p for pts_, _ in lines for p in pts_]
+        target = [w[k] for _, w in pairs] + [c for pts_, c in lines for _ in pts_]
+        if len(pts) < 2 * len(terms):
+            word = "세로 선(--vline)" if axis == "x" else "가로 선(--hline)"
+            return None, f"{word} 표본 {len(pts)}개: 차수 {degree}에는 {2 * len(terms)}개 이상 필요"
+        distinct = len({round(c, 3) for c in target})
+        if distinct < degree + 1:
+            word = "세로 선(--vline)·점의 서로 다른 X" if axis == "x" else "가로 선(--hline)·점의 서로 다른 Y"
+            return None, f"{word}가 {distinct}개: 차수 {degree}에는 {degree + 1}개 이상 필요"
+        A, Q = rows(pts)
+        sv = np.linalg.svd(A, compute_uv=False)
+        if sv[-1] <= 0 or sv[0] / sv[-1] > WARP_MAX_COND:
+            word = "세로 선(--vline)·점" if axis == "x" else "가로 선(--hline)·점"
+            return None, (f"{word} 제약이 차수 {degree} 보정량을 정하기에 부족함(조건수 "
+                          f"{(sv[0] / sv[-1]) if sv[-1] > 0 else float('inf'):.3g}): 서로 다른 위치의 선을 차수 + 1개 "
+                          f"이상, 그림 전체에 고르게")
+        sim = calib._sim_wcs(Q[:, 0], Q[:, 1])[k]
+        rhs = np.array(target) - sim
+        coef = np.linalg.lstsq(A, rhs, rcond=None)[0]
+        out[axis] = (coef, float(np.sqrt(np.mean((A @ coef - rhs) ** 2))))
+        warp[f"bbox_{axis}"] = [float(Q[:, 0].min()), float(Q[:, 1].min()), float(Q[:, 0].max()), float(Q[:, 1].max())]
+    warp["qx"], warp["qy"] = [float(c) for c in out["x"][0]], [float(c) for c in out["y"][0]]
+    return warp, {"rms_x_mm": _r(out["x"][1]), "rms_y_mm": _r(out["y"][1]),
+                  "samples_x": len(pairs) + sum(len(p) for p, _ in vlines),
+                  "samples_y": len(pairs) + sum(len(p) for p, _ in hlines)}
+
+
 def fit_calib(pairs, checks=(), max_anisotropy=MAX_ANISOTROPY, min_separation=MIN_SEPARATION_PX,
-              max_residual=MAX_RESIDUAL_PX):
-    """pairs·checks: [((u, v), (x, y)), ...]. 거부 사유가 있으면 status rejected"""
+              max_residual=MAX_RESIDUAL_PX, vlines=(), hlines=(), degree=None):
+    """pairs·checks: [((u, v), (x, y)), ...]. 거부 사유가 있으면 status rejected.
+    degree(2·3)를 주면 사진용 보정: 닮음 위에 px → WCS 다항식 보정량을 vlines·hlines([(px 점들, X 또는 Y), ...])와
+    점 대응으로 맞춘다. 이때 닮음의 비균등·잔차 검사는 정보로만 남기고, 판정은 보정 뒤 잔차·검증점으로 한다"""
     reasons, warnings = [], []
     P = np.array([p for p, _ in pairs], dtype=np.float64).reshape(-1, 2)
     W = np.array([w for _, w in pairs], dtype=np.float64).reshape(-1, 2)
@@ -187,13 +318,27 @@ def fit_calib(pairs, checks=(), max_anisotropy=MAX_ANISOTROPY, min_separation=MI
                                                   (np.linalg.norm(cols[0]) * np.linalg.norm(cols[1])), -1, 1)))
     if np.linalg.det(M) <= 0:
         reasons.append("이미지가 뒤집혀 있음(아핀 행렬식 ≤ 0)")
-    if anisotropy > max_anisotropy:
+    warp_info = None
+    if degree:
+        if degree not in (2, 3):
+            return {"status": "rejected", "reasons": [f"--warp 차수는 2 또는 3(받은 것 {degree})"]}
+        if anisotropy > max_anisotropy:
+            warnings.append(f"닮음만으로는 x·y 축척 차 {anisotropy * 100:.2f}%(사진 보정량으로 맞춤)")
+        calib.warp, warp_info = _warp_fit(calib, list(zip(map(tuple, P), map(tuple, W))), list(vlines), list(hlines),
+                                          degree)
+        if calib.warp is None:
+            reasons.append(warp_info)
+            return {"status": "rejected", "reasons": reasons, "warnings": warnings}
+    elif anisotropy > max_anisotropy:
         reasons.append(f"x·y 축척 차 {anisotropy * 100:.2f}%(상한 {max_anisotropy * 100:g}%, 비균등 확대 이미지)")
     pu, pv = calib.to_px(W[:, 0], W[:, 1])
     res = np.hypot(pu - P[:, 0], pv - P[:, 1])
     rms = float(np.sqrt(np.mean(res ** 2)))
+    if warp_info:
+        line_px = max(warp_info["rms_x_mm"], warp_info["rms_y_mm"]) * calib.s
+        rms = max(rms, line_px)
     if rms > max_residual:
-        reasons.append(f"대응점 잔차 RMS {rms:.2f} px(상한 {max_residual:g} px)")
+        reasons.append(f"대응점·선 잔차 RMS {rms:.2f} px(상한 {max_residual:g} px)")
     check_out = []
     for (u, v), (x, y) in checks:
         cu, cv = calib.to_px(x, y)
@@ -205,8 +350,9 @@ def fit_calib(pairs, checks=(), max_anisotropy=MAX_ANISOTROPY, min_separation=MI
     calib.err_mm = max(rms, worst_check) / calib.s
     if worst_check > max_residual:
         reasons.append(f"검증점 오차 {worst_check:.2f} px(상한 {max_residual:g} px)")
-    return {
+    result = {
         "status": "rejected" if reasons else "ok", "reasons": reasons, "warnings": warnings,
+        "model": "poly" if calib.warp else "similarity",
         "px_per_mm": calib.s, "px_per_m": _r(calib.s * 1000, 4), "beta_deg": _r(calib.beta, 4),
         "origin_px": [calib.u0, calib.v0], "err_mm": _r(calib.err_mm),
         "residuals": [{"px": [_r(u), _r(v)], "wcs": [_r(x), _r(y)], "err_px": _r(e, 3)}
@@ -214,6 +360,9 @@ def fit_calib(pairs, checks=(), max_anisotropy=MAX_ANISOTROPY, min_separation=MI
         "rms_px": _r(rms, 3), "checks": check_out,
         "affine": {"anisotropy_pct": _r(anisotropy * 100, 4), "shear_deg": _r(shear, 4)},
     }
+    if calib.warp:
+        result["warp"], result["lines"] = calib.warp, warp_info
+    return result
 
 
 # ---------- 직선 맞춤·교점 ----------
@@ -318,6 +467,7 @@ def angles(dark, calib, frame, window, top=5):
     """창(지역 mm) 안 선의 주된 방향(WCS·지역 도, 0~180). 투영 날카로움(Hough 각도 탐색):
     0.25° 간격으로 찾고 ±0.5°를 0.01° 간격으로 다시 찾는다. 기울기 방식은 가는 사선에서 45° 쪽으로 치우친다"""
     u0, v0, u1, v1 = window
+    beta = calib.beta
     gu = np.linspace(u0, u1, max(int((u1 - u0) * calib.s), 2))
     gv = np.linspace(v0, v1, max(int((v1 - v0) * calib.s), 2))
     GU, GV = np.meshgrid(gu, gv)
@@ -337,7 +487,11 @@ def angles(dark, calib, frame, window, top=5):
     keep = wts > MIN_CONTRAST
     if keep.sum() < 20:
         return {"status": "empty", "message": "창 안에 선이 없음", "peaks": []}
-    pu, pv, wts = pu[inside][keep], pv[inside][keep], wts[keep]
+    if calib.warp:     # 사진 보정: 잉크 픽셀을 지역 좌표로 옮겨(px 크기 단위, v 아래로) 방향을 찾는다 → 결과가 곧 지역 각도
+        pu, pv, beta = lu[inside][keep] * calib.s, -lv[inside][keep] * calib.s, -frame.deg
+    else:
+        pu, pv = pu[inside][keep], pv[inside][keep]
+    wts = wts[keep]
     pu, pv = pu - pu.mean(), pv - pv.mean()
     coarse = np.radians(np.arange(0.0, 180.0, 0.25))
     score = _sharpness(pu, pv, wts, coarse)
@@ -359,7 +513,7 @@ def angles(dark, calib, frame, window, top=5):
     for th_deg, s in found:
         th = math.radians(th_deg)
         # 법선 θ의 선 방향(px) = (−sinθ, cosθ). 화면 위쪽 기준 각 = atan2(−cosθ, −sinθ), WCS 각 = 화면 각 − β
-        wcs = (math.degrees(math.atan2(-math.cos(th), -math.sin(th))) - calib.beta) % 180.0
+        wcs = (math.degrees(math.atan2(-math.cos(th), -math.sin(th))) - beta) % 180.0
         out.append({"angle_wcs_deg": _r(wcs, 3) % 180.0, "angle_local_deg": _r((wcs - frame.deg) % 180.0, 3) % 180.0,
                     "strength": _r((s - base) / (best - base) if best > base else 1.0, 3)})
     return {"status": "ok", "peaks": out, "pixels": int(keep.sum())}
@@ -631,6 +785,18 @@ def _pair(text):
     return (u, v), (x, y)
 
 
+def _seg(text):
+    """U1,V1,U2,V2=C: px 구간과 그 선의 WCS 좌표 하나(세로선이면 X, 가로선이면 Y)"""
+    try:
+        left, right = text.split("=")
+        seg = tuple(float(c) for c in left.split(","))
+        if len(seg) != 4:
+            raise ValueError
+        return seg, float(right)
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(f"U1,V1,U2,V2=C 형식이 아님: {text}") from e
+
+
 def _xy(text):
     try:
         a, b = (float(c) for c in text.split(","))
@@ -775,6 +941,13 @@ def _parser():
     c.add_argument("image")
     c.add_argument("--point", type=_pair, action="append", default=[], help="U,V=X,Y(이미지 px = WCS mm)")
     c.add_argument("--check", type=_pair, action="append", default=[], help="보정에 쓰지 않는 검증점")
+    c.add_argument("--vline", type=_seg, action="append", default=[],
+                   help="U1,V1,U2,V2=X: X가 일정한(세로) 선의 대략 px 구간(사진 보정)")
+    c.add_argument("--hline", type=_seg, action="append", default=[],
+                   help="U1,V1,U2,V2=Y: Y가 일정한(가로) 선의 대략 px 구간(사진 보정)")
+    c.add_argument("--warp", type=int, choices=(2, 3), help="사진 보정 다항식 차수(선을 주면 기본 2)")
+    c.add_argument("--band", type=float, default=12.0, help="선 표본 맞춤 띠 폭 px")
+    c.add_argument("--max-residual", type=float, default=MAX_RESIDUAL_PX, help="잔차·검증점 상한 px")
     c.add_argument("-o", "--out", required=True)
     x = sub.add_parser("cross", help="두 px 직선의 교점")
     x.add_argument("--line", type=_line, action="append", required=True, help="U,V,DU,DV(fitline --px의 line_px)")
@@ -834,7 +1007,11 @@ def _run(args):
         return cross(*args.line)
     if args.command == "calib":
         dark, sha = load_image(args.image)
-        result = fit_calib(args.point, args.check)
+        vlines = [(line_samples(dark, seg, args.band), c) for seg, c in args.vline]
+        hlines = [(line_samples(dark, seg, args.band), c) for seg, c in args.hline]
+        degree = args.warp or (2 if (vlines or hlines) else None)
+        result = fit_calib(args.point, args.check, max_residual=args.max_residual, vlines=vlines, hlines=hlines,
+                           degree=degree)
         result = {"schema": CALIB_SCHEMA, "image": str(args.image), "sha256": sha,
                   "image_size": [dark.shape[1], dark.shape[0]], **result}
         if result["status"] == "ok":
