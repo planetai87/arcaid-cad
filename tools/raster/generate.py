@@ -10,8 +10,8 @@ interpretations에서 온다. 관측 하나는 직선 하나(point_wcs·angle_wc
 소수 셋째 자리로 반올림한다(-0.0 정리).
 
 역할 선·점은 관측 대신 요소 values로 줄 수 있다(record.py set-value, 사진처럼 왜곡이 커 치수 문자가 더 정확할 때):
-{value: {u: 좌표}} = 세로선 u=좌표, {v: 좌표} = 가로선, {u, v} = 점. 출처는 원본표기(text)·추정(reason)만 받고, 추정은
-assumptions로 보고한다. 같은 역할을 관측과 값 둘 다에 주면 거부한다. 외곽 상자(level p, fixture box)는 측정만.
+{value: {u: 좌표}} = 세로선 u=좌표, {v: 좌표} = 가로선, {u, v} = 점, {u0, v0, u1, v1} = 외곽 상자(level p, fixture box).
+출처는 원본표기(text)·추정(reason)만 받고, 추정은 assumptions로 보고한다. 같은 역할을 관측과 값 둘 다에 주면 거부한다.
 
 요소 지원표(C1, 형상). 해석 값은 record.py interpret로 확정한다(문자열 "true"·"false"도 받음).
   type              refs(관측)                     links   해석                         출력·레이어
@@ -164,8 +164,12 @@ class _Generator:
         """점 관측(blob) → (frame 지역 좌표의 상자 중심, 외곽 상자 또는 None). 상자는 같은 frame에서 잰 것만"""
         name = el.get("refs", {}).get(role)
         if name is None:
-            if box and role in el.get("values", {}):
-                raise _Refused(f"{role}(외곽 상자)는 측정(blob)으로만")
+            if box:      # 외곽 상자를 잴 수 없을 때(타일 격자 간섭 등) 추정·원본표기 값 {u0, v0, u1, v1}
+                value = self.given(eid, el, role, ({"u0", "v0", "u1", "v1"},))
+                if value is None:
+                    raise _Refused(f"관측 참조 {role} 없음")
+                b = [value["u0"], value["v0"], value["u1"], value["v1"]]
+                return ((b[0] + b[2]) / 2, (b[1] + b[3]) / 2), b
             value = self.given(eid, el, role, ({"u", "v"},))
             if value is None:
                 raise _Refused(f"관측 참조 {role} 없음")

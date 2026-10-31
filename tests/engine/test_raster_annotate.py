@@ -544,3 +544,16 @@ def test_sheet_position_does_not_depend_on_element_order():
     b["observations"] = dict(reversed(list(b["observations"].items())))
     sheet = [gen.build(d, "t")["ops"][-1] for d in (a, b)]
     assert json.dumps(sheet[0], sort_keys=True) == json.dumps(sheet[1], sort_keys=True)
+
+
+def test_a_fixture_box_can_be_an_estimate_when_it_cannot_be_measured():
+    data = _measure()
+    data["elements"]["F1"] = {"type": "fixture", "refs": {}, "values": {
+        "box": {"value": {"u0": 7282.0, "v0": 3330.0, "u1": 7622.0, "v1": 3850.0}, "source": "추정",
+                "reason": "타일 격자가 붙어 blob 불가, 편 그림에서 읽음"}}}
+    _confirm(data, "F1", kind="세면기", back="u+")
+    r = _ready(data)
+    assert any("F1.box" in a and "추정" in a for a in r["assumptions"])
+    polys = _prims(r, "t-anno-misc", "F1", "polyline")
+    outer = max(polys, key=lambda p: Polygon(p.points).area)
+    assert Polygon(outer.points).equals(Polygon([(7282, 3330), (7622, 3330), (7622, 3850), (7282, 3850)]))
