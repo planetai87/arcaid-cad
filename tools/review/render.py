@@ -4,10 +4,19 @@
   python tools/review/render.py render NEW.dxf -o out.png --window X0 Y0 X1 Y1 [--base BASE.dxf] [--frame X,Y,DEG]
   python tools/review/render.py diff BASE.dxf NEW.dxf [--gap 1000] [--ignore-layers TIT]
   python tools/review/render.py list NEW.dxf --window X0 Y0 X1 Y1 [--frame X,Y,DEG] [--layers WAL,DOR]
+  python tools/review/render.py overlay NEW.dxf --image IMG --calib calib.json -o out.png --window U0 V0 U1 V1
+                                [--frame X,Y,DEG] [--layers CON,WAL] [--compare [--tol MM] [--cell MM] [--min-len MM]]
 
 render는 --base가 있으면 공통 객체를 회색, 새 쪽에만 있는 객체를 빨강, 기준 쪽에만 있는 객체를 파랑으로 그린다.
 diff·list는 표준 출력에 UTF-8 JSON 하나를 쓴다. 단위는 모두 mm(WCS)이고, --frame을 주면 지역 좌표도 함께 낸다.
 비교는 T10 도구의 형상 서명(핸들·ARCAID 태그 제외, 소수 6자리 반올림)과 개수(Counter)로 한다.
+
+overlay는 원본 이미지(measure.py calib 보정 파일로 WCS에 맞춤)를 연하게 깔고 DXF를 빨강으로 겹친다. --frame을 주면
+window는 그 지역 좌표이고 그림은 지역 좌표로 펴진다. 이미지는 출력 px 중심 → WCS → 이미지 px 아핀 하나로 옮긴다
+(Pillow AFFINE은 출력 (i+.5, j+.5)에 적용하고 입력 픽셀 중심을 i+.5로 본다 = measure.py 규약).
+--compare는 원본 잉크(바탕보다 0.2 이상 어두움)와 DXF 선(해치 제외)을 허용오차만큼 넓혀 서로 대조해, 원본에만 있는
+잉크(파랑, 누락 후보)와 DXF에만 있는 선(빨강, 추가 후보)을 칸(--cell)으로 모아 영역 목록으로 낸다. 결과는 '불일치
+후보'다: 원본 문자·해치·치수 문자는 원본에만으로 나오고, 원본 굵은 획이 DXF 선을 가릴 수 있다. 이미지 밖은 비교하지 않는다.
 """
 import argparse
 from collections import Counter, defaultdict
@@ -22,7 +31,7 @@ from ezdxf.addons.drawing import Frontend, RenderContext
 from ezdxf.addons.drawing.backend import Backend
 from ezdxf.addons.drawing.config import BackgroundPolicy, ColorPolicy, Configuration, LinePolicy
 from ezdxf.npshapes import single_paths
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -30,6 +39,7 @@ if str(ROOT) not in sys.path:
 
 from tools.acceptance.t10_dangsan import signature  # noqa: E402
 
+CALIB_SCHEMA = "arcaid-raster-calib/1"     # tools/raster/measure.py와 같은 값(시험이 확인)
 GRAY, RED, BLUE, BLACK = (150, 150, 150, 255), (220, 0, 0, 255), (0, 70, 220, 255), (0, 0, 0, 255)
 GRID_COLOR, FRAME_COLOR = (0, 150, 0, 110), (190, 0, 190, 140)
 FONT_FILES = ("malgun.ttf", "C:/Windows/Fonts/malgun.ttf")
@@ -58,6 +68,34 @@ class Frame:
 
     def to_wcs(self, u, v):
         return [self.x + u * self.c - v * self.s, self.y + u * self.s + v * self.c]
+
+
+class View:
+    """그림 창: window(frame 지역 좌표, 없으면 WCS) U0 V0 U1 V1, 배율 scale(px/mm, 기본 긴 변 2400 px).
+    px는 왼쪽 위 (0, 0), 아래로 증가. render·overlay가 같이 쓴다"""
+
+    def __init__(self, window, frame=None, scale=None):
+        u0, v0, u1, v1 = (float(v) for v in window)
+        if u1 <= u0 or v1 <= v0:
+            raise ValueError("window는 X0 Y0 X1 Y1(X0<X1, Y0<Y1)")
+        self.window, self.frame = (u0, v0, u1, v1), frame
+        self.scale = scale or MAX_SIDE / max(u1 - u0, v1 - v0)
+        self.size = (max(1, round((u1 - u0) * self.scale)), max(1, round((v1 - v0) * self.scale)))
+
+    def to_px(self, p):
+        u, v = self.frame.to_local(p) if self.frame else (float(p[0]), float(p[1]))
+        return (u - self.window[0]) * self.scale, (self.window[3] - v) * self.scale
+
+    def to_wcs(self, px):
+        u = self.window[0] + float(px[0]) / self.scale
+        v = self.window[3] - float(px[1]) / self.scale
+        return self.frame.to_wcs(u, v) if self.frame else [u, v]
+
+    def wcs_box(self, px_box=None):
+        """px 상자(기본 그림 전체)의 네 꼭짓점을 WCS로 옮긴 외접 창"""
+        x0, y0, x1, y1 = px_box or (0, 0, self.size[0], self.size[1])
+        pts = [self.to_wcs(c) for c in ((x0, y0), (x1, y0), (x0, y1), (x1, y1))]
+        return [min(q[0] for q in pts), min(q[1] for q in pts), max(q[0] for q in pts), max(q[1] for q in pts)]
 
 
 def _r(v, digits=1):
@@ -240,14 +278,14 @@ def list_entities(path, window, frame=None, layers=None):
 class PilBackend(Backend):
     """창(WCS mm) → 그림 픽셀. 선 색은 패스마다 정한다(DXF 색은 쓰지 않음)"""
 
-    def __init__(self, canvas, window, scale):
+    def __init__(self, canvas, view):
         super().__init__()
-        self.canvas, self.window, self.scale = canvas, window, scale
+        self.canvas, self.view, self.scale = canvas, view, view.scale
         self.draw = ImageDraw.Draw(canvas)
         self.color = BLACK
 
     def xy(self, p):
-        return ((float(p[0]) - self.window[0]) * self.scale, (self.window[3] - float(p[1])) * self.scale)
+        return self.view.to_px(p)
 
     def set_background(self, color):
         pass
@@ -305,17 +343,17 @@ def _grid_values(lo, hi, step):
     return [k * step for k in range(math.floor(lo / step), math.ceil(hi / step) + 1)]
 
 
-def _draw_grid(canvas, window, scale, step, frame):
+def _draw_grid(canvas, window, scale, step, frame, names=("x", "y")):
     layer = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
     draw, font = ImageDraw.Draw(layer), _font(14)
     to_px = lambda p: ((p[0] - window[0]) * scale, (window[3] - p[1]) * scale)  # noqa: E731
     w, h = canvas.size
     for x in _grid_values(window[0], window[2], step):
         draw.line([to_px((x, window[1])), to_px((x, window[3]))], fill=GRID_COLOR)
-        draw.text((to_px((x, window[3]))[0] + 2, 2), f"x {x:g}", fill=GRID_COLOR[:3] + (255,), font=font)
+        draw.text((to_px((x, window[3]))[0] + 2, 2), f"{names[0]} {x:g}", fill=GRID_COLOR[:3] + (255,), font=font)
     for y in _grid_values(window[1], window[3], step):
         draw.line([to_px((window[0], y)), to_px((window[2], y))], fill=GRID_COLOR)
-        draw.text((2, to_px((window[0], y))[1] + 2), f"y {y:g}", fill=GRID_COLOR[:3] + (255,), font=font)
+        draw.text((2, to_px((window[0], y))[1] + 2), f"{names[1]} {y:g}", fill=GRID_COLOR[:3] + (255,), font=font)
     if frame:
         corners = [frame.to_local(c) for c in ((window[0], window[1]), (window[2], window[1]),
                                                (window[0], window[3]), (window[2], window[3]))]
@@ -337,10 +375,8 @@ def _draw_grid(canvas, window, scale, step, frame):
 
 def render(new_path, out_path, window, base_path=None, scale=None, grid=1000.0, frame=None, hide_layers=("TIT",)):
     x0, y0, x1, y1 = window
-    if x1 <= x0 or y1 <= y0:
-        raise ValueError("window는 X0 Y0 X1 Y1(X0<X1, Y0<Y1)")
-    scale = scale or MAX_SIDE / max(x1 - x0, y1 - y0)
-    size = (max(1, round((x1 - x0) * scale)), max(1, round((y1 - y0) * scale)))
+    view = View(window, scale=scale)
+    scale, size = view.scale, view.size
     canvas = Image.new("RGBA", size, (255, 255, 255, 255))
     if grid:
         _draw_grid(canvas, window, scale, grid, frame)
@@ -361,7 +397,7 @@ def render(new_path, out_path, window, base_path=None, scale=None, grid=1000.0, 
         passes = [(new, None, BLACK)]
     cache = bbox.Cache()
     for doc, handles, color in passes:
-        backend = PilBackend(canvas, window, scale)
+        backend = PilBackend(canvas, view)
         backend.color = color
 
         def visible(e, handles=handles):
@@ -380,6 +416,194 @@ def render(new_path, out_path, window, base_path=None, scale=None, grid=1000.0, 
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     canvas.convert("RGB").save(out_path)
     return {"png": str(out_path), "size": list(size), "mm_per_px": _r(1 / scale, 3), **counts}
+
+
+# ---------- 원본 겹침 ----------
+
+class ImageCalib:
+    """measure.py calib 보정 파일(닮음 변환): WCS(mm, y 위) → 이미지 px(v 아래, 픽셀 (i, j) 중심 (i+.5, j+.5))"""
+
+    def __init__(self, data):
+        self.s, self.u0, self.v0 = float(data["px_per_mm"]), *(float(v) for v in data["origin_px"])
+        self.err_mm = float(data.get("err_mm", 0.0))
+        b = math.radians(float(data["beta_deg"]))
+        self.c, self.n = math.cos(b), math.sin(b)
+
+    def to_px(self, x, y):
+        return self.u0 + self.s * (self.c * x - self.n * y), self.v0 - self.s * (self.n * x + self.c * y)
+
+
+def _sha(path):
+    import hashlib
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def load_calib(calib_path, image_path):
+    data = json.loads(Path(calib_path).read_text(encoding="utf-8"))
+    if data.get("schema") != CALIB_SCHEMA:
+        raise ValueError(f"보정 파일 형식이 아님({data.get('schema')})")
+    if data.get("status") != "ok":
+        raise ValueError("거부된 보정 파일")
+    if data.get("sha256") != _sha(image_path):
+        raise ValueError("보정 파일의 이미지 sha256이 이 이미지와 다름")
+    return ImageCalib(data)
+
+
+def _gray(path):
+    im = Image.open(path)
+    if im.mode in ("RGBA", "LA", "P"):
+        im = im.convert("RGBA")
+        bg = Image.new("RGBA", im.size, (255, 255, 255, 255))
+        bg.alpha_composite(im)
+        im = bg
+    return im.convert("L")
+
+
+def warp(img, view, calib, fill=255):
+    """이미지를 그림 창으로 옮긴다. 출력 px 연속 좌표 → WCS → 이미지 px는 아핀이라 세 점으로 계수를 정한다"""
+    o = calib.to_px(*view.to_wcs((0.0, 0.0)))
+    ex = calib.to_px(*view.to_wcs((1.0, 0.0)))
+    ey = calib.to_px(*view.to_wcs((0.0, 1.0)))
+    coeffs = (ex[0] - o[0], ey[0] - o[0], o[0], ex[1] - o[1], ey[1] - o[1], o[1])
+    return img.transform(view.size, Image.AFFINE, coeffs, resample=Image.BILINEAR, fillcolor=fill)
+
+
+def _valid(image_size, view, calib):
+    """이미지 안(픽셀 중심 범위, 가장자리 1 px 제외)인 그림 px = 255"""
+    w, h = image_size
+    mask = Image.new("L", (w, h), 0)
+    if w > 2 and h > 2:
+        mask.paste(255, (1, 1, w - 1, h - 1))
+    return warp(mask, view, calib, fill=0).point(lambda v: 255 if v == 255 else 0)
+
+
+def _draw_dxf(canvas, doc, view, color, layers, hide, hatches=True):
+    cfg = Configuration(color_policy=ColorPolicy.BLACK, background_policy=BackgroundPolicy.WHITE,
+                        line_policy=LinePolicy.ACCURATE, max_flattening_distance=max(0.5 / view.scale, 1))
+    backend = PilBackend(canvas, view)
+    backend.color = color
+    box, cache = view.wcs_box(), bbox.Cache()
+
+    def visible(e):
+        layer = e.dxf.layer.upper()
+        if layer in hide or (layers and layer not in layers) or (not hatches and e.dxftype() == "HATCH"):
+            return False
+        return bool(_hits(_box(e, cache), box))
+    Frontend(RenderContext(doc), backend, cfg).draw_layout(doc.modelspace(), filter_func=visible)
+
+
+def _dilate(mask, r):
+    for _ in range(r):
+        mask = mask.filter(ImageFilter.MaxFilter(3))
+    return mask
+
+
+def _count(mask):
+    return mask.histogram()[255]
+
+
+def regions(mask, view, cell, min_len):
+    """어긋난 px(255)을 칸으로 세어 잡음 바닥(칸 3 px)을 넘는 칸을 8방향으로 묶고, 묶음 합계가 min_len 길이
+    선(배율 × min_len px)보다 큰 것만 영역으로 낸다(큰 것부터)"""
+    w, h = mask.size
+    c = max(cell * view.scale, 4.0)
+    cols, rows = math.ceil(w / c), math.ceil(h / c)
+    cells = {}
+    for i in range(cols):
+        for j in range(rows):
+            box = (int(i * c), int(j * c), min(w, int((i + 1) * c)), min(h, int((j + 1) * c)))
+            crop = mask.crop(box)
+            n = _count(crop)
+            if n >= 3:
+                b = crop.getbbox()
+                cells[(i, j)] = (n, (box[0] + b[0], box[1] + b[1], box[0] + b[2], box[1] + b[3]))
+    seen, out = set(), []
+    for start in sorted(cells):
+        if start in seen:
+            continue
+        stack, group = [start], []
+        seen.add(start)
+        while stack:
+            i, j = stack.pop()
+            group.append(cells[(i, j)])
+            for di in (-1, 0, 1):
+                for dj in (-1, 0, 1):
+                    k = (i + di, j + dj)
+                    if k in cells and k not in seen:
+                        seen.add(k)
+                        stack.append(k)
+        total = sum(n for n, _ in group)
+        if total < min_len * view.scale:
+            continue
+        x0, y0 = min(b[0] for _, b in group), min(b[1] for _, b in group)
+        x1, y1 = max(b[2] for _, b in group), max(b[3] for _, b in group)
+        u0, v0, u1, v1 = view.window
+        local = [u0 + x0 / view.scale, v1 - y1 / view.scale, u0 + x1 / view.scale, v1 - y0 / view.scale]
+        region = {"window": [_r(v, 0) for v in view.wcs_box((x0, y0, x1, y1))], "px": total}
+        if view.frame:
+            region["window_local"] = [_r(v, 0) for v in local]
+        out.append(region)
+    return sorted(out, key=lambda r: -r["px"])
+
+
+def overlay(dxf_path, image_path, calib_path, out_path, window, frame=None, scale=None, grid=1000.0, layers=None,
+            hide_layers=("TIT",), fade=0.35, compare=False, tol=None, cell=500.0, min_len=300.0):
+    view = View(window, frame, scale)
+    calib = load_calib(calib_path, image_path)
+    gray = _gray(image_path)
+    bg = warp(gray, view, calib, fill=255)
+    valid = _valid(gray.size, view, calib)
+    n_valid, total = _count(valid), view.size[0] * view.size[1]
+    if n_valid == 0:
+        raise ValueError("창 전체가 이미지 밖")
+    canvas = bg.point(lambda v: 255 - round((255 - v) * fade)).convert("RGBA")
+    if grid:
+        _draw_grid(canvas, view.window, view.scale, grid, None, ("u", "v") if frame else ("x", "y"))
+    doc = ezdxf.readfile(dxf_path)
+    _korean_fonts(doc)
+    layers = {n.upper() for n in layers} if layers else None
+    hide = {n.upper() for n in hide_layers}
+    result = {"png": str(out_path), "size": list(view.size), "mm_per_px": _r(1 / view.scale, 3),
+              "outside_pct": _r(100.0 * (1 - n_valid / total), 1)}
+    if compare:
+        tol = calib.err_mm + 2.0 / calib.s if tol is None else float(tol)
+        r = max(1, math.ceil(tol * view.scale))
+        drawn = Image.new("RGBA", view.size, (255, 255, 255, 255))
+        _draw_dxf(drawn, doc, view, BLACK, layers, hide, hatches=False)
+        dxf = ImageChops.multiply(drawn.convert("L").point(lambda v: 255 if v < 250 else 0), valid)
+        hist = [n for n in ImageChops.multiply(bg, valid).histogram()]
+        hist[0] -= total - n_valid            # 이미지 밖(0으로 채운 곳)은 바탕 계산에서 뺀다
+        acc, paper = 0, 255
+        for level in range(255, -1, -1):      # 밝은 쪽 25% = 어두움 25 백분위
+            acc += hist[level]
+            if acc >= 0.25 * n_valid:
+                paper = level
+                break
+        ink = ImageChops.multiply(bg.point(lambda v: 255 if v <= paper - 51 else 0), valid)
+        only_image = ImageChops.multiply(ink, ImageChops.invert(_dilate(dxf, r)))
+        only_dxf = ImageChops.multiply(dxf, ImageChops.invert(_dilate(ink, r)))
+        canvas.paste(GRAY, mask=dxf)
+        canvas.paste(RED, mask=only_dxf)
+        canvas.paste(BLUE, mask=only_image)
+        result.update({"tol_mm": _r(tol, 2), "tol_px": r, "effective_tol_mm": _r(r / view.scale, 1),
+                       "effective_tol_diag_mm": _r(r * math.sqrt(2) / view.scale, 1),
+                       "counts": {"image_px": _count(ink), "dxf_px": _count(dxf), "only_image_px": _count(only_image),
+                                  "only_dxf_px": _count(only_dxf)},
+                       "only_image": regions(only_image, view, cell, min_len),
+                       "only_dxf": regions(only_dxf, view, cell, min_len)})
+    else:
+        _draw_dxf(canvas, doc, view, RED, layers, hide)
+    draw, font = ImageDraw.Draw(canvas), _font(16)
+    w = view.window
+    legend = f"window {w[0]:g},{w[1]:g} – {w[2]:g},{w[3]:g} mm  |  {1 / view.scale:.1f} mm/px"
+    if frame:
+        legend += f"  |  frame ({frame.x:g},{frame.y:g}) {frame.deg:g}° 지역 좌표"
+    legend += "  |  회색 일치 · 빨강 DXF에만 · 파랑 원본에만" if compare else "  |  빨강 DXF · 회색 원본"
+    draw.rectangle([0, view.size[1] - 22, view.size[0], view.size[1]], fill=(255, 255, 255, 230))
+    draw.text((4, view.size[1] - 20), legend, fill=BLACK, font=font)
+    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    canvas.convert("RGB").save(out_path)
+    return result
 
 
 # ---------- CLI ----------
@@ -406,6 +630,23 @@ def main(argv=None):
     lst.add_argument("--window", nargs=4, type=float, required=True, metavar=("X0", "Y0", "X1", "Y1"))
     lst.add_argument("--frame", help="지역 좌표도 함께: X,Y,DEG")
     lst.add_argument("--layers", help="이 레이어만(쉼표)")
+    o = sub.add_parser("overlay", help="원본 이미지에 DXF를 겹친 PNG(--compare면 어긋난 영역 목록)")
+    o.add_argument("dxf")
+    o.add_argument("--image", required=True)
+    o.add_argument("--calib", required=True, help="measure.py calib 보정 파일")
+    o.add_argument("-o", "--out", required=True)
+    o.add_argument("--window", nargs=4, type=float, required=True, metavar=("U0", "V0", "U1", "V1"),
+                   help="--frame이 있으면 지역 좌표")
+    o.add_argument("--frame", help="지역 좌표로 펴 보기: X,Y,DEG")
+    o.add_argument("--scale", type=float, help="px/mm(기본: 긴 변 2400 px)")
+    o.add_argument("--grid", type=float, default=1000.0)
+    o.add_argument("--layers", help="이 레이어만(쉼표)")
+    o.add_argument("--hide-layers", default="TIT")
+    o.add_argument("--fade", type=float, default=0.35, help="원본 진하기(0~1)")
+    o.add_argument("--compare", action="store_true", help="원본에만·DXF에만 있는 곳을 찾는다")
+    o.add_argument("--tol", type=float, help="허용오차 mm(기본: 보정 오차 + 이미지 2 px)")
+    o.add_argument("--cell", type=float, default=500.0, help="집계 칸 mm")
+    o.add_argument("--min-len", type=float, default=300.0, help="이보다 짧은 선 길이만큼의 어긋남은 내지 않음(mm)")
     args = parser.parse_args(argv)
     split = lambda s: [v.strip() for v in s.split(",") if v.strip()] if s else []  # noqa: E731
     if args.command == "render":
@@ -413,12 +654,19 @@ def main(argv=None):
                         Frame.parse(args.frame), split(args.hide_layers))
     elif args.command == "diff":
         result = diff(args.base, args.dxf, args.gap, split(args.ignore_layers))
+    elif args.command == "overlay":
+        try:
+            result = overlay(args.dxf, args.image, args.calib, args.out, args.window, Frame.parse(args.frame),
+                             args.scale, args.grid, split(args.layers), split(args.hide_layers), args.fade,
+                             args.compare, args.tol, args.cell, args.min_len)
+        except (ValueError, OSError) as e:
+            result = {"status": "error", "message": str(e)}
     else:
         result = list_entities(args.dxf, args.window, Frame.parse(args.frame), split(args.layers))
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False))
-    return 0
+    return 1 if result.get("status") == "error" else 0
 
 
 if __name__ == "__main__":
