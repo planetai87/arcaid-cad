@@ -199,3 +199,55 @@ def test_cli_calib_file_profile_plot_and_sha_guard(tmp_path, capsys):
 def test_cross_rejects_parallel_lines():
     with pytest.raises(ValueError):
         m.cross([0, 0, 1, 0], [0, 5, 1, 0.01])
+
+
+# ---------- 점 관측(blob) ----------
+
+def _near(got, want, tol):
+    return all(abs(g - w) <= tol for g, w in zip(got, want))
+
+
+@pytest.mark.parametrize("beta, shift", [(0.0, 0.0), (0.8, 0.0), (0.0, 0.37), (0.8, 0.71)])
+def test_blob_finds_circle_center_and_box_extent(beta, shift):
+    D, sc, res = _calib(beta)
+    cal = _cal(res)
+    tol = PX_MM + res["err_mm"]
+    cx, cy, r = rs.CIRCLE
+    cx_w, cy_w = cx + shift * PX_MM, cy + shift * PX_MM       # 표본 격자를 서브픽셀만큼 옮긴다
+    ring = m.blob(D, cal, IDENT, (cx_w - 700, cy_w - 700, cx_w + 700, cy_w + 700))
+    assert ring["status"] == "ok" and ring["flags"] == []
+    assert _near(ring["point_local"], (cx, cy), tol)
+    half = r + rs.THICK / 2 * PX_MM
+    assert _near(ring["bbox_local"], (cx - half, cy - half, cx + half, cy + half), tol)
+    x0, y0, x1, y1 = rs.BOX
+    d = shift * PX_MM
+    box = m.blob(D, cal, IDENT, (x0 - 300 + d, y0 - 300 + d, x1 + 300 + d, y1 + 300 + d))
+    h = rs.THIN / 2 * PX_MM
+    assert _near(box["bbox_local"], (x0 - h, y0 - h, x1 + h, y1 + h), tol)
+    assert _near(box["point_local"], ((x0 + x1) / 2, (y0 + y1) / 2), tol)
+    assert _near(box["point_wcs"], box["point_local"], 1e-6)
+    assert box["tol_mm"] == pytest.approx(cal.err_mm + 1 / cal.s, abs=0.02)
+
+
+def test_blob_in_rotated_frame_reports_local_box():
+    D, sc, res = _calib(0.8)
+    cal = _cal(res)
+    x0, y0, x1, y1 = rs.WING_BOX
+    r = m.blob(D, cal, WING, (x0 - 200, y0 - 200, x1 + 200, y1 + 200))
+    h = rs.THIN / 2 * PX_MM
+    tol = PX_MM + res["err_mm"]
+    assert r["status"] == "ok"
+    assert _near(r["bbox_local"], (x0 - h, y0 - h, x1 + h, y1 + h), tol)
+    assert _near(r["point_wcs"], WING.to_wcs((x0 + x1) / 2, (y0 + y1) / 2), tol)
+
+
+def test_blob_rejects_empty_truncated_outside_and_over_budget():
+    D, sc, res = _calib(0.0)
+    cal = _cal(res)
+    assert m.blob(D, cal, IDENT, (17000, 12000, 18000, 13000))["status"] == "empty"
+    cut = m.blob(D, cal, IDENT, (14800, 10800, 15200, 11800))      # 사각형 가운데만
+    assert cut["status"] == "unreadable" and "truncated" in cut["flags"]
+    assert m.blob(D, cal, IDENT, (18000, 12000, 21000, 13000))["status"] == "outside"
+    x0, y0, x1, y1 = rs.BOX
+    budget = m.blob(D, cal, IDENT, (x0 - 300, y0 - 300, x1 + 300, y1 + 300), max_tol=1.0)
+    assert budget["status"] == "unreadable" and "budget" in budget["flags"]

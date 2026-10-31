@@ -37,7 +37,9 @@ interpretations에서 온다. 관측 하나는 직선 하나(point_wcs·angle_wc
 
 거부(C1 밖): 곡면·두께가 변하는 벽, frame 축과 0.5° 넘게 어긋난 면선(frame을 그 벽 각도로 둘 것), 두께 0 이하
 또는 1,000 mm 초과, 원·타원 기둥, 블록(문·창 블록은 표준에서 unused), host 구간 밖·다른 frame의 개구부,
-SOLID 아닌 해치. 그리드·치수·버블·문자·계단·위생기구·표식·도곽·반복 패턴은 C2.
+SOLID 아닌 해치. 그리드·치수·버블·문자·계단·위생기구·표식·단면 표식·도곽·물결 패턴은 annotate.py(C2, 지원표는
+그 docstring). 주석 op는 형상 op 뒤에 -anno-<영역>·-grid·-stair-<id>, 도곽 -sheet가 맨 끝이다(다른 op 전체의
+외곽에 맞춘다). op 이름이 겹치면 거부한다. 표준이 정하지 않은 기호 치수는 assumptions로 보고한다.
 
 상태: 오류가 있으면 error(아무것도 쓰지 않음). 확인 필요 해석이나 미해결 질문이 있으면 preview(미리보기만).
 둘 다 없으면 ready(미리보기 + ops 폴더). ops 폴더는 tools/ops/ops.py verify·bind로 확인·묶은 뒤 적용한다.
@@ -61,103 +63,20 @@ from shapely.ops import unary_union  # noqa: E402
 from src.engine.layout import expand  # noqa: E402
 from src.engine.spec import SpecError, parse_spec, validate_spec  # noqa: E402
 from src.engine.standards import load_standard  # noqa: E402
+from tools.raster import annotate  # noqa: E402
+from tools.raster.common import SNAP_DEG, _cross, _Frame, _Line, _line, _o, _Refused, _seg, _yes_no  # noqa: E402
 
-SNAP_DEG = 0.5
 MAX_THICK_MM = 1000.0
 TOUCH_MM = 1.0
 GRID_MM = 0.001
 MIN_WIDTH_MM = 1.0
-MIN_CROSS_DEG = 15.0
-DIGITS = 3
 MATERIAL_LAYER = {"RC": "CON", "조적": "WAL", "건식": "WAL1"}
 MEANING_LAYER = {"승강기": "CIR", "샤프트": "CIR", "난간": "STL1", "보선": "HID", "대지경계": "LIM", "마감": "FIN"}
 CONFIRMED = ("확정", "사용자확정")
 WALL_TYPES = ("wall", "column")
 OPENING_TYPES = ("window", "door", "opening")
 LINE_TYPES = ("finish", "line", "polyline", "polygon")
-
-
-class _Refused(ValueError):
-    pass
-
-
-def _o(v):
-    """출력 좌표: 소수 셋째 자리, -0.0 정리"""
-    v = round(float(v), DIGITS)
-    return 0.0 if v == 0 else v
-
-
-def _wrap(a):
-    return (a + 90.0) % 180.0 - 90.0
-
-
-def _yes_no(value, attr):
-    """해석 값(record.py interpret --value는 문자열로 저장)을 참·거짓으로"""
-    if isinstance(value, bool):
-        return value
-    text = str(value).strip().casefold()
-    if text in ("true", "yes", "1", "예"):
-        return True
-    if text in ("false", "no", "0", "아니오"):
-        return False
-    raise _Refused(f"{attr}는 true|false(받은 것 {value})")
-
-
-# ---------- 선·frame ----------
-
-class _Frame:
-    def __init__(self, name, x, y, deg):
-        self.name, self.x, self.y, self.deg = name, x, y, deg
-        self.c, self.s = math.cos(math.radians(deg)), math.sin(math.radians(deg))
-
-    @property
-    def identity(self):
-        return self.x == 0 and self.y == 0 and self.deg == 0
-
-    def local(self, x, y):
-        dx, dy = x - self.x, y - self.y
-        return self.c * dx + self.s * dy, -self.s * dx + self.c * dy
-
-    def wcs(self, u, v):
-        return self.x + self.c * u - self.s * v, self.y + self.s * u + self.c * v
-
-
-class _Line:
-    """frame 지역 좌표의 직선. axis u면 v=coord인 가로선, v면 u=coord인 세로선, None이면 점 p·방향 d"""
-    def __init__(self, axis=None, coord=None, p=None, d=None):
-        self.axis, self.coord, self.p, self.d = axis, coord, p, d
-        if axis == "u":
-            self.p, self.d = (0.0, coord), (1.0, 0.0)
-        elif axis == "v":
-            self.p, self.d = (coord, 0.0), (0.0, 1.0)
-
-
-def _line(obs, frame):
-    """관측 → frame 지역 좌표의 선. 같은 frame에서 잰 축 선이면 기록 좌표를 그대로 쓴다"""
-    if [float(v) for v in obs["frame"]] == [frame.x, frame.y, frame.deg] and \
-            abs(_wrap(obs["angle_local_deg"] - (0.0 if obs["axis"] == "u" else 90.0))) <= SNAP_DEG:
-        return _Line(obs["axis"], float(obs["coord"]))
-    pu, pv = frame.local(*obs["point_wcs"])
-    a = obs["angle_wcs_deg"] - frame.deg
-    if abs(_wrap(a)) <= SNAP_DEG:
-        return _Line("u", pv)
-    if abs(_wrap(a - 90.0)) <= SNAP_DEG:
-        return _Line("v", pu)
-    r = math.radians(a)
-    return _Line(p=(pu, pv), d=(math.cos(r), math.sin(r)))
-
-
-def _cross(a, b):
-    """두 선의 교점. 교차각이 MIN_CROSS_DEG 미만이면 거부(교점 오차 ≈ 선 오차 / sin 교차각)"""
-    if a.axis == "u" and b.axis == "v":
-        return b.coord, a.coord
-    if a.axis == "v" and b.axis == "u":
-        return a.coord, b.coord
-    det = a.d[0] * b.d[1] - a.d[1] * b.d[0]
-    if abs(det) < math.sin(math.radians(MIN_CROSS_DEG)):
-        raise _Refused(f"두 선이 {MIN_CROSS_DEG:.0f}° 미만으로 만나 교점을 정하지 않음")
-    t = ((b.p[0] - a.p[0]) * b.d[1] - (b.p[1] - a.p[1]) * b.d[0]) / det
-    return a.p[0] + t * a.d[0], a.p[1] + t * a.d[1]
+RESERVED_REGIONS = ("grid", "sheet")
 
 
 # ---------- 요소 ----------
@@ -174,8 +93,10 @@ class _Generator:
     def __init__(self, data, prefix, force_union=False, std=None):
         self.data, self.prefix, self.force_union = data, prefix, force_union
         self.std = std or load_standard()
-        self.problems, self.pending, self.warnings = [], [], []
+        self.problems, self.pending, self.warnings, self.assumptions = [], [], [], []
         self.frames = {}
+        self.k = int(data["output"]["k"])
+        self.s = self.k / 100.0
 
     def frame(self, name):
         if name is None:
@@ -205,7 +126,60 @@ class _Generator:
             raise _Refused(f"관측 참조 {role} 없음")
         if name not in self.data["observations"]:
             raise _Refused(f"없는 관측 {name}({role})")
-        return _line(self.data["observations"][name], frame)
+        obs = self.data["observations"][name]
+        if obs.get("kind", "line") != "line":
+            raise _Refused(f"{role}는 선 관측이어야 함({name}은 {obs.get('kind')})")
+        return _line(obs, frame)
+
+    def point(self, eid, el, role, frame, box=False):
+        """점 관측(blob) → (frame 지역 좌표의 상자 중심, 외곽 상자 또는 None). 상자는 같은 frame에서 잰 것만"""
+        name = el.get("refs", {}).get(role)
+        if name is None:
+            raise _Refused(f"관측 참조 {role} 없음")
+        if name not in self.data["observations"]:
+            raise _Refused(f"없는 관측 {name}({role})")
+        obs = self.data["observations"][name]
+        if obs.get("kind", "line") != "point":
+            raise _Refused(f"{role}는 점 관측(blob)이어야 함({name}은 선 관측)")
+        if [float(v) for v in obs["frame"]] == [frame.x, frame.y, frame.deg]:
+            return tuple(obs["point_local"]), list(obs["bbox_local"])
+        if box:
+            raise _Refused(f"{role}의 외곽 상자를 다른 frame에서 잼(요소 frame {frame.name}으로 다시 잴 것)")
+        return frame.local(*obs["point_wcs"]), None
+
+    def value(self, eid, el, key, default=None):
+        v = el.get("values", {}).get(key)
+        if v is None or v.get("value") in (None, ""):
+            if default is not None:
+                return default
+            raise _Refused(f"values.{key} 없음")
+        return v["value"]
+
+    def content(self, eid, el, key, default=None):
+        """문자 내용. 특수기호는 CAD 코드로(text.yaml special_codes)"""
+        text = str(self.value(eid, el, key, default))
+        for sym, code in self.std.text.special_codes.items():
+            text = text.replace(sym, code)
+        return text
+
+    def number(self, eid, el, key):
+        v = self.value(eid, el, key)
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            raise _Refused(f"values.{key}는 수(받은 것 {v})") from None
+
+    def assume(self, note):
+        if note not in self.assumptions:
+            self.assumptions.append(note)
+
+    def layer_of(self, eid):
+        """layer 해석: 뜻(MEANING_LAYER) 또는 표준 레이어 이름"""
+        meaning = str(self.interp(eid, "layer"))
+        layer = MEANING_LAYER.get(meaning) or (self.std.layer(meaning).name if self.std.layer(meaning) else None)
+        if layer is None:
+            raise _Refused(f"모르는 레이어 해석 {meaning}(뜻: {', '.join(MEANING_LAYER)} 또는 표준 레이어 이름)")
+        return layer
 
     def wall(self, eid, el):
         frame = self.frame(el.get("frame"))
@@ -266,14 +240,7 @@ class _Generator:
         """마감선·선(l·s·e)과 polyline·polygon(꼭짓점 i = v{i}a × v{i}b). 레이어는 해석, 마감선은 FIN"""
         frame = self.frame(el.get("frame"))
         kind = el["type"]
-        if kind == "finish":
-            layer = "FIN"
-        else:
-            meaning = self.interp(eid, "layer")
-            meaning = str(meaning)
-            layer = MEANING_LAYER.get(meaning) or (self.std.layer(meaning).name if self.std.layer(meaning) else None)
-            if layer is None:
-                raise _Refused(f"모르는 레이어 해석 {meaning}(뜻: {', '.join(MEANING_LAYER)} 또는 표준 레이어 이름)")
+        layer = "FIN" if kind == "finish" else self.layer_of(eid)
         linetype = self.interp(eid, "linetype", required=False)
         if kind in ("finish", "line"):
             l, s, e = (self.ref(eid, el, r, frame) for r in ("l", "s", "e"))
@@ -433,21 +400,46 @@ class _Generator:
         return {"schema_version": 1, "standard": out["standard"], "op": op, "units": "mm", "scale": out["k"],
                 "items": items}
 
+    def shape(self, frame, pts):
+        """그리드 축선 길이에 쓰는 형상 점(frame 지역 좌표)"""
+        self.shapes.setdefault(frame.name or "wcs", []).extend(pts)
+
     def run(self):
         elements = self.data["elements"]
-        pieces, openings, lines = {}, [], {}
+        pieces, openings, lines, notes, stairs, grids, sheets = {}, [], {}, {}, [], [], []
+        self.shapes = {}
         for eid in sorted(elements):
             el = elements[eid]
+            kind = el["type"]
             try:
-                if el["type"] in WALL_TYPES:
+                if kind in WALL_TYPES:
                     pieces[eid] = self.wall(eid, el)
-                elif el["type"] in LINE_TYPES:
+                    self.shape(pieces[eid].frame, pieces[eid].local)
+                elif kind in LINE_TYPES:
                     region = el.get("region") or "misc"
-                    lines.setdefault(region, []).append((eid,) + self.line_items(eid, el))
-                elif el["type"] not in OPENING_TYPES:
-                    raise _Refused(f"C1에서 지원하지 않는 요소 종류 {el['type']}")
+                    frame, item = self.line_items(eid, el)
+                    lines.setdefault(region, []).append((eid, frame, item))
+                    self.shape(frame, [item["start"], item["end"]] if "start" in item else item["points"])
+                elif kind in annotate.ANNO_TYPES or kind == "stair":
+                    frame = self.frame(el.get("frame"))
+                    out = getattr(annotate, kind)(self, eid, el, frame)
+                    items, pts = out if isinstance(out, tuple) else (out, None)
+                    if pts:
+                        self.shape(frame, pts)
+                    if kind == "stair":
+                        stairs.append((eid, frame, items))
+                    else:
+                        notes.setdefault(el.get("region") or "misc", []).append((eid, frame, items))
+                elif kind == "grid":
+                    grids.append(eid)
+                elif kind == "sheet":
+                    sheets.append(eid)
+                elif kind not in OPENING_TYPES:
+                    raise _Refused(f"지원하지 않는 요소 종류 {kind}")
             except _Refused as e:
                 self.problems.append(f"{eid}: {e}")
+        if len(sheets) > 1:
+            self.problems.append(f"도곽(sheet) 요소가 둘 이상: {', '.join(sheets)}")
         for eid in sorted(elements):
             if elements[eid]["type"] in OPENING_TYPES:
                 try:
@@ -488,18 +480,86 @@ class _Generator:
                 items += self.place(*by_frame[name])
             ops.append({"op": f"{self.prefix}-{region}", "layer": None, "items": items,
                         "elements": sorted(eid for eid, _, _ in lines[region])})
+        for region in sorted(notes):
+            ops.append(self.framed_op(f"{self.prefix}-anno-{region}", notes[region]))
+        grid_items = []
+        for eid in grids:
+            el = elements[eid]
+            try:
+                frame = self.frame(el.get("frame"))
+                grid_items.append((eid, frame, annotate.grid(self, eid, el, frame,
+                                                             self.shapes.get(frame.name or "wcs", []))))
+            except _Refused as e:
+                self.problems.append(f"{eid}: {e}")
+        if grid_items:
+            ops.append(self.framed_op(f"{self.prefix}-grid", grid_items))
+        for eid, frame, items in stairs:
+            ops.append(self.framed_op(f"{self.prefix}-stair-{eid}", [(eid, frame, items)]))
+        for region in sorted({el.get("region") for el in elements.values() if el.get("region")}):
+            if region in RESERVED_REGIONS or region.startswith(("anno-", "stair-", "wall-")):
+                self.problems.append(f"영역 이름 {region}이 생성기 op 이름({self.prefix}-{region})과 겹칠 수 있음")
+        names = [o["op"] for o in ops]
+        for name in sorted({n for n in names if names.count(n) > 1}):
+            self.problems.append(f"op 이름 {name}이 겹침(영역 이름을 바꿀 것)")
         for o in ops:
             self.check(o)
+        if sheets and not self.problems:
+            eid = sheets[0]
+            try:
+                ops.append(self.sheet_op(eid, elements[eid], ops))
+                self.check(ops[-1])
+            except _Refused as e:
+                self.problems.append(f"{eid}: {e}")
         if self.problems:
             return {"status": "error", "problems": self.problems, "pending": self.pending,
-                    "warnings": self.warnings, "preview": None, "ops": [], "manifest": {}}
+                    "warnings": self.warnings, "assumptions": self.assumptions, "preview": None, "ops": [],
+                    "manifest": {}}
         specs = [self.spec(o["op"], o["items"]) for o in ops]
         preview = self.spec(f"{self.prefix}-preview",
                             [{"kind": "group", "id": o["op"], "items": o["items"], "place": [{"at": [0.0, 0.0]}]}
                              for o in ops])
         manifest = {eid: o["op"] for o in ops for eid in o["elements"]}
         return {"status": "preview" if self.pending else "ready", "problems": [], "pending": self.pending,
-                "warnings": self.warnings, "preview": preview, "ops": specs, "manifest": manifest}
+                "warnings": self.warnings, "assumptions": self.assumptions, "preview": preview, "ops": specs,
+                "manifest": manifest}
+
+    def framed_op(self, op, entries):
+        """(요소, frame, 항목) 목록 → op 하나. frame별로 모아 회전 frame은 group 하나에"""
+        by_frame = {}
+        for eid, frame, items in entries:
+            by_frame.setdefault(frame.name, (frame, []))[1].extend(items)
+        items = []
+        for name in sorted(by_frame, key=lambda n: n or ""):
+            items += self.place(*by_frame[name])
+        return {"op": op, "layer": None, "items": items, "elements": sorted(eid for eid, _, _ in entries)}
+
+    def sheet_op(self, eid, el, ops):
+        """도곽: 다른 op 전체(와 아래 제목)의 외곽에 맞춰 놓는다"""
+        box = _extents(self.spec("extents", _merged(ops)), self.std, self.k)
+        items = []
+        if _yes_no(self.interp(eid, "title_under", required=False, default=False), "title_under"):
+            items = annotate.title_under(self, eid, el, box)
+            box = _extents(self.spec("extents", _merged(ops) + items), self.std, self.k)
+        items += annotate.sheet(self, eid, el, box)
+        return {"op": f"{self.prefix}-sheet", "layer": None, "items": items, "elements": [eid]}
+
+
+def _merged(ops):
+    return [{"kind": "group", "id": o["op"], "items": o["items"], "place": [{"at": [0.0, 0.0]}]} for o in ops]
+
+
+def _extents(spec, std, k):
+    """명세를 전개해 DXF 문서에 넣고 ezdxf bbox(fast: 글꼴 없이 문자 높이·길이로)로 잰 외곽 (x0, y0, x1, y1)"""
+    from ezdxf import bbox
+    from src.engine.write import _add, _new_doc
+    prims = expand(parse_spec(json.dumps(spec, ensure_ascii=False)), std, k)
+    doc = _new_doc(std, prims, k)
+    for prim in prims:
+        _add(doc, prim, std, k)
+    ext = bbox.extents(doc.modelspace(), fast=True)
+    if not ext.has_data:
+        raise _Refused("도곽을 맞출 도면 내용이 없음")
+    return ext.extmin.x, ext.extmin.y, ext.extmax.x, ext.extmax.y
 
 
 class _Opening:
@@ -522,10 +582,6 @@ def _ring(coords):
     pts = [(_o(x), _o(y)) for x, y in list(coords)[:-1]]
     k = pts.index(min(pts))
     return [list(p) for p in pts[k:] + pts[:k]]
-
-
-def _seg(iid, layer, a, b):
-    return {"kind": "line", "id": iid, "layer": layer, "start": [_o(a[0]), _o(a[1])], "end": [_o(b[0]), _o(b[1])]}
 
 
 def _bounds(pieces):
@@ -565,7 +621,7 @@ def generate(measure_path, prefix, out, lock_path=None):
     if checked["errors"]:
         return {"status": "error", "problems": [f"measure 검사: {e}" for e in checked["errors"]]}
     r = build(data, prefix)
-    report = {k: r[k] for k in ("status", "problems", "pending", "warnings")}
+    report = {k: r[k] for k in ("status", "problems", "pending", "warnings", "assumptions")}
     if r["status"] == "error":
         return report
     (out / "preview").mkdir(parents=True)
@@ -573,7 +629,7 @@ def generate(measure_path, prefix, out, lock_path=None):
     _dump(out / "preview" / "manifest.json", {
         "status": r["status"], "measure": str(Path(measure_path).resolve()), "prefix": prefix,
         "ops": [s["op"] for s in r["ops"]], "elements": r["manifest"], "pending": r["pending"],
-        "warnings": r["warnings"], "estimates": checked["estimates"]})
+        "warnings": r["warnings"], "assumptions": r["assumptions"], "estimates": checked["estimates"]})
     report["preview"] = str(out / "preview" / "preview.json")
     if r["status"] == "ready":
         from src.engine.spec import spec_hash

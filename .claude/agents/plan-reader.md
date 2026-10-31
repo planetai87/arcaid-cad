@@ -30,9 +30,11 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 & $py $m profile IMG --calib CAL [--frame X,Y,DEG] --axis u|v --at C --range A B --band 300 [--plot P.png]
 & $py $m fitline IMG --calib CAL [--frame X,Y,DEG] --from U,V --to U,V --band 100
 & $py $m angles IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1
+& $py $m blob IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1      (문자·기호의 외곽 상자와 중심)
 # 기록: 위 profile·fitline에 붙인다
 #   profile ... --record REGION.yaml "--names=EA-f1,_,EA-f2"     (구간마다 이름 하나, 건너뛰기 _)
 #   fitline ... --record REGION.yaml --name EW-f1
+#   blob ... --record REGION.yaml --name T1-p
 & $py $r add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--link host=EW1] [--candidate meaning=창,커튼월] [--note "설명"]
 & $py $r question add REGION.yaml --id Q-EA-1 --text "..." --element EA
 # add-element에 --json을 쓰지 않는다(PowerShell 5.1이 큰따옴표를 지워 JSON이 깨진다)
@@ -41,6 +43,7 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 - 좌표: `--frame`이 없으면 WCS(x 오른쪽, y 위, mm). 있으면 그 지역 좌표(u, v). 영역의 frame은 measure.yaml `regions.<영역>.frame`과 `frames`에서 읽는다. frame 값은 `x.value`, `y.value`, `deg.value`다.
 - profile의 `--axis`는 단면선이 나아가는 방향이다. 벽이 u 방향으로 뻗으면 `--axis v`로 가로지른다.
 - profile 결과의 `runs`: 구간마다 `center`(mm), `width_px`(선 굵기 관측), `flags`, `status`. 이름은 이 순서대로 붙인다.
+- `blob`은 창 안 잉크 전체의 외곽 상자(bbox_local)와 그 중심(point_local)을 낸다. 창에는 대상 하나만 온전히 담는다. 다른 선이 걸치거나 대상이 창 가장자리에 닿으면 truncated로 기록이 거부되므로 창을 옮기거나 넓힌다. 외곽 상자를 쓰는 역할(레벨 기호 p, 위생기구 box)은 요소와 같은 frame으로 잰다.
 - `flags`: tilted(단면선이 선과 직각 아님 → frame 확인), inconsistent(띠 안에서 위치가 흩어짐 → 문자·해치 간섭, 위치를 옮김), double(붙은 선 의심), truncated(범위 끝에서 잘림 → 범위를 넓힘), budget(오차 예산 초과). 판독 불가 구간은 기록이 거부된다.
 - 그림(PNG)은 받은 폴더에만 쓰고 Read로 본다.
 
@@ -52,7 +55,7 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 4. `profile --plot`으로 재고 그림을 본다. 구간 수와 위치가 기대와 맞을 때만 `--record`로 다시 실행한다(같은 명령 + 기록 인자).
    - 기울어진 선은 그 선의 frame으로 재거나 `fitline`을 쓴다.
    - 축선(가는 선)이 벽 면선 사이를 지나면 그 구간은 `_`로 건너뛴다. 범례에 축선이 있으면 이름을 붙여 기록해도 된다.
-5. `add-element`로 요소를 넣는다. `--ref 역할=관측이름`은 기록한 관측을 가리킨다. 역할 이름은 생성기(`tools/raster/generate.py` docstring 지원표)를 따른다: 벽·기둥 `f1`·`f2`(두 면선)·`s`·`e`(양 끝선), 창·문·개구부 `s`·`e`(개구부 끝선, 창 유리선은 `glass`), 마감선·선 `l`·`s`·`e`. 창·문·개구부는 붙는 벽을 `--link host=벽id`로 적는다(벽이 다른 영역에 배정돼 있어도 된다). 범례에 없는 형태는 `--candidate 속성=후보1,후보2`로 후보만 적는다(예: `--candidate meaning=창,커튼월`).
+5. `add-element`로 요소를 넣는다. `--ref 역할=관측이름`은 기록한 관측을 가리킨다. 역할 이름은 생성기(`tools/raster/generate.py` docstring 지원표)를 따른다: 벽·기둥 `f1`·`f2`(두 면선)·`s`·`e`(양 끝선), 창·문·개구부 `s`·`e`(개구부 끝선, 창 유리선은 `glass`), 마감선·선 `l`·`s`·`e`. 주석·기호(`tools/raster/annotate.py` docstring): 문자 `p`(blob) 또는 `l`·`r`·`b`·`t`, 표식 `p`, 레벨 `p`(기호만 담은 상자)·`t`(문자), 방위 `p`·`dir`(화살표 축 fitline), 단면 표식 `l`(단면선)·`p`(기호)·`q`(끝 깃발), 위생기구 `box`, 물결 패턴 `l`·`s`·`e`, 계단 `ao`·`h1`·`h2`·`bo`·`at0`·`t2`·`at1`·`bt0`·`bt1`·`land`. 문자 내용은 측정값이 아니라서 주 대화가 values(원본표기)로 적는다. 창·문·개구부는 붙는 벽을 `--link host=벽id`로 적는다(벽이 다른 영역에 배정돼 있어도 된다). 범례에 없는 형태는 `--candidate 속성=후보1,후보2`로 후보만 적는다(예: `--candidate meaning=창,커튼월`).
 6. 범례로 판단할 수 없는 것, 원본에서 끊기거나 흐린 것, 배정 목록과 다르게 보이는 것은 `question add`로 남긴다.
 
 ## 금지

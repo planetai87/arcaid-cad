@@ -66,6 +66,18 @@ class Scene:
             region = self.ink[r0:r1, x0:x1]
             region[:] = 1 - (1 - region) * (1 - cov * dark)
 
+    def ring(self, center, r, width_px=1.0, frame=None, n=72):
+        """원(정 n각형 근사, 꼭짓점이 원 위)"""
+        pts = [(center[0] + r * math.cos(2 * math.pi * k / n), center[1] + r * math.sin(2 * math.pi * k / n))
+               for k in range(n)]
+        for a, b in zip(pts, pts[1:] + pts[:1]):
+            self.line(a, b, width_px, frame=frame)
+
+    def box(self, rect, width_px=1.0, frame=None):
+        x0, y0, x1, y1 = rect
+        for a, b in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))):
+            self.line(a, b, width_px, frame=frame)
+
     def scribble(self, rect, count, seed, width_px=1.5):
         """문자 같은 짧은 획(간섭용)"""
         rng = np.random.default_rng(seed)
@@ -109,11 +121,15 @@ S = 0.06                      # px/mm(60 px/m, 지상6층 59.06 px/m와 비슷)
 GRID_X = {"X1": 0.0, "X2": 6850.0, "X3": 9850.0}
 GRID_Y = {"Y1": 0.0, "Y2": 5700.0}
 THICK, THIN = 3.0, 1.0
+CIRCLE = (16000.0, 9000.0, 400.0)            # 원 표식 중심·반지름
+BOX = (14500.0, 11000.0, 15500.0, 11600.0)     # 사각형(WCS)
+WING_BOX = (3000.0, 2000.0, 4000.0, 2600.0)    # 회전동 지역 좌표 사각형
 
 
 @lru_cache(maxsize=8)
 def plan(beta=0.0, aniso=0.0, noise=0.03, seed=1):
-    """시험 평면: 축, RC 벽(굵은선 두 줄), 창(굵은선+가는선), 23.76° 회전동, 문자·해치 간섭, 붙은 이중선, 빈 영역.
+    """시험 평면: 축, RC 벽(굵은선 두 줄), 창(굵은선+가는선), 23.76° 회전동, 문자·해치 간섭, 붙은 이중선, 빈 영역,
+    원 표식·사각형(점 관측용).
     (PIL 이미지, Scene) — Scene.px가 정답 변환이다"""
     sc = Scene((1320, 1140), S, beta, (180.0, 960.0), aniso)
     for x in GRID_X.values():
@@ -140,6 +156,9 @@ def plan(beta=0.0, aniso=0.0, noise=0.03, seed=1):
         sc.line((x, 0), (x, 3000), THIN)
     for x in (13000.0, 13000.0 + 4 / S):               # 중심 간격 4 px
         sc.line((x, 0), (x, 3000), THIN)
+    sc.ring(CIRCLE[:2], CIRCLE[2], THICK)              # 점 표식(원)
+    sc.box(BOX, THIN)                                  # 문자 상자 같은 사각형
+    sc.box(WING_BOX, THIN, frame=WING)                 # 회전동 안 사각형(지역 좌표)
     return sc.image(noise=noise, seed=seed), sc
 
 

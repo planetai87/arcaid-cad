@@ -154,6 +154,33 @@ def test_fitline_record_stores_line_in_wcs(plan_project):
     assert abs(o["angle_wcs_deg"] - 23.76) <= 0.05 and o["pick"] is None
 
 
+def _blob(p, region, name, window, frame=None):
+    args = ["blob", str(p["image"]), "--calib", str(p["calib"]), "--window", *map(str, window)]
+    if frame:
+        args += ["--frame", frame]
+    return m.main(args + ["--record", str(p["files"][region]), "--name", name])
+
+
+def _around(rect, pad):
+    return rect[0] - pad, rect[1] - pad, rect[2] + pad, rect[3] + pad
+
+
+def test_blob_record_stores_a_point_with_its_box(plan_project, capsys):
+    assert _blob(plan_project, "A", "box-p", _around(rs.BOX, 300)) == 0
+    o = _read(plan_project["files"]["A"])["observations"]["box-p"]
+    assert o["kind"] == "point" and o["tool"] == "blob" and o["pick"] is None
+    x0, y0, x1, y1 = rs.BOX
+    assert abs(o["point_wcs"][0] - (x0 + x1) / 2) <= PX_MM + 2 and abs(o["point_wcs"][1] - (y0 + y1) / 2) <= PX_MM + 2
+    assert len(o["bbox_local"]) == 4 and "axis" not in o
+    assert o["command"][0] == "blob" and "--record" not in o["command"] and "--name" not in o["command"]
+
+
+def test_blob_record_refuses_a_truncated_box(plan_project, capsys):
+    assert _blob(plan_project, "A", "cut", (14800, 10800, 15200, 11800)) == 1
+    assert "truncated" in json.loads(capsys.readouterr().out)["message"]
+    assert _read(plan_project["files"]["A"])["observations"] == {}
+
+
 def test_record_refuses_another_calib_file(plan_project, tmp_path, capsys):
     other = tmp_path / "calib2.json"
     data = json.loads(plan_project["calib"].read_text(encoding="utf-8"))
@@ -239,6 +266,17 @@ def test_merge_combines_regions_and_carries_questions(plan_project, capsys):
     assert merged["elements"]["EA"]["region"] == "A"
     assert merged["questions"] == [{"id": "Q1", "text": "RC인가 조적인가", "element": "EA", "region": "A"}]
     assert rec.lock_hash(merged) == rec.lock_hash(_read(plan_project["measure"]))
+
+
+def test_merge_keeps_points_out_of_the_same_line_check(plan_project, capsys):
+    assert _blob(plan_project, "A", "ring-a", _around((15300, 8300, 16700, 9700), 0)) == 0
+    assert _blob(plan_project, "B", "ring-b", _around((15300, 8300, 16700, 9700), 50)) == 0
+    capsys.readouterr()
+    rc, out = _merge(plan_project)
+    report = json.loads(capsys.readouterr().out)
+    assert rc == 0, report
+    assert report["same_lines"] == []
+    assert _read(out)["observations"]["ring-b"]["kind"] == "point"
 
 
 def test_merge_refuses_header_changed_after_lock(plan_project, capsys):
@@ -423,3 +461,17 @@ def test_reverify_passes_untouched_records_and_catches_hand_edits(merged, capsys
     errors = json.loads(capsys.readouterr().out)["errors"]
     assert any("s-out" in e and "coord" in e for e in errors)
     assert any("s-in" in e for e in errors)
+
+
+def test_reverify_reruns_points_and_catches_an_edited_box(merged, capsys):
+    data = _read(merged["merged"])
+    assert _blob(merged, "A", "box-p", _around(rs.BOX, 300)) == 0       # 영역 파일에 기록한 뒤
+    data["observations"]["box-p"] = _read(merged["files"]["A"])["observations"]["box-p"]
+    merged["merged"].write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    capsys.readouterr()
+    assert _validate(merged, "--reverify") == 0
+    assert json.loads(capsys.readouterr().out)["reverified"] == 3
+    data["observations"]["box-p"]["bbox_local"][2] += 30.0
+    merged["merged"].write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
+    assert _validate(merged, "--reverify") == 1
+    assert any("box-p" in e and "bbox_local" in e for e in json.loads(capsys.readouterr().out)["errors"])
