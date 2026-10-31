@@ -244,3 +244,30 @@ def test_line_samples_accept_thick_noisy_pencil_lines_only_with_a_looser_piece_r
     assert len(m.line_samples(D, seg, 10)) <= 1
     pts = m.line_samples(D, seg, 10, max_rms=4.0)
     assert len(pts) >= 4 and all(abs(u - sc.px(0, 0)[0]) <= 1.0 for u, _ in pts)
+
+
+def test_lines_with_unknown_coordinates_fix_the_far_side():
+    """Y를 아는 가로선은 왼쪽 짧은 구간뿐이고, 전체 폭을 가로지르는 선은 Y를 모르는 경우(치수선 줄)"""
+    sc = rs.Scene((1000, 760), S, 0.8, (90.0, 680.0), warp=WARP)
+    for x in XS:
+        sc.line((x, -800), (x, 10600), rs.THIN, 0.8)
+    for y in (0.0, 2500.0, 5000.0, 7500.0, 10000.0):
+        sc.line((-1450, y), (-200, y), rs.THIN, 0.8)            # 왼쪽 여백의 치수 연장선(Y 앎)
+    for y in (-900.0, 10900.0):
+        sc.line((-800, y), (12600, y), rs.THIN, 0.8)            # 위·아래 치수선(Y 모름)
+    img = sc.image(noise=0.02, seed=5)
+    D = rs.dark_of(img)
+    v = [(m.line_samples(D, sc.px(x, -700) + sc.px(x, 10500), 12), x) for x in XS]
+    known = [(m.line_samples(D, sc.px(-1400, y) + sc.px(-250, y), 12), y) for y in (0.0, 2500.0, 5000.0, 7500.0, 10000.0)]
+    unknown = [(m.line_samples(D, sc.px(-700, y) + sc.px(12500, y), 12), None) for y in (-900.0, 10900.0)]
+    pairs = [(sc.px(x, y), (x, y)) for x, y in ((0, 0), (12000, 0), (0, 10000))]
+    left_only = m.fit_calib(pairs, vlines=v, hlines=known, degree=2)
+    res = m.fit_calib(pairs, [(sc.px(12000, 10000), (12000, 10000))], vlines=v, hlines=known + unknown, degree=2)
+    assert res["status"] == "ok", res
+    cal = m.Calib.from_result(res)
+    worst = max(math.dist([float(c) for c in cal.to_px(x, y)], sc.px(x, y))
+                for x in np.linspace(0, 12000, 7) for y in np.linspace(0, 10000, 7))
+    assert worst <= 1.0
+    if left_only["status"] == "ok":                              # 왼쪽만으로는 오른쪽이 틀린다
+        cal0 = m.Calib.from_result(left_only)
+        assert math.dist([float(c) for c in cal0.to_px(12000, 10000)], sc.px(12000, 10000)) > worst
