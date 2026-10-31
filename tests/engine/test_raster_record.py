@@ -586,3 +586,22 @@ def test_set_value_writes_original_dimensions_into_the_measure_only(merged, caps
                      "--source", "원본표기", "--text", "@200"]) == 0
     vals = _read(path)["elements"]["EA"]["values"]
     assert vals["num"]["value"] == "1" and vals["pitch"]["value"] == 200.0
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "box", "--box", "1", "2", "3", "4",
+                     "--source", "추정", "--reason", "타일 간섭"]) == 0
+    assert _read(path)["elements"]["EA"]["values"]["box"]["value"] == {"u0": 1.0, "v0": 2.0, "u1": 3.0, "v1": 4.0}
+
+
+def test_merge_accepts_only_the_conflicts_the_main_conversation_names(tmp_path, capsys):
+    p = _kink_project(tmp_path, capsys, 0.8)
+    for region, at, name in (("A", 2500, "fa"), ("B", 7500, "fb")):
+        assert m.main(["profile", str(p["image"]), "--calib", str(p["calib"]), "--axis", "v", "--at", str(at),
+                       "--range", "0", "200", "--band", "300", "--record", str(p["files"][region]),
+                       "--names", name]) == 0
+    capsys.readouterr()
+    out = p["measure"].parent / "merged.yaml"
+    base = ["merge", str(p["measure"]), "--lock", str(p["lock"]), *map(str, p["files"].values()), "-o", str(out)]
+    assert rec.main(base + ["--accept", "fa:zz"]) == 1                      # 다른 쌍을 승인해도 그대로 거부
+    capsys.readouterr()
+    assert rec.main(base + ["--accept", "fb:fa"]) == 0                      # 순서와 무관
+    report = json.loads(capsys.readouterr().out)
+    assert report["accepted_conflicts"] and "fa" in report["accepted_conflicts"][0]

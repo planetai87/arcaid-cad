@@ -415,12 +415,14 @@ def _line_pairs(sources):
             if d <= tol:
                 same.append(pair)
             elif d <= 2 * tol:
-                conflicts.append(f"같은 면으로 보이는 관측 {pair[0]}·{pair[1]}({sa}·{sb})이 불일치: "
-                                 f"거리 {d:.1f} mm(허용 {tol:.1f} mm)")
+                conflicts.append((frozenset(pair), f"같은 면으로 보이는 관측 {pair[0]}·{pair[1]}({sa}·{sb})이 불일치: "
+                                                   f"거리 {d:.1f} mm(허용 {tol:.1f} mm)"))
     return sorted(same), conflicts
 
 
-def merge(measure_path, lock_path, region_paths, out):
+def merge(measure_path, lock_path, region_paths, out, accept=()):
+    """accept: 주 대화가 확인해 승인한 불일치 쌍(관측 이름 둘). 대칭 평면처럼 서로 다른 벽이 같은 직선 위에 있어
+    짝지어진 경우에 쓴다. 승인한 쌍은 결과의 accepted_conflicts에 남는다"""
     data = load(measure_path)
     lock = _read_lock(lock_path)
     if lock_hash(data) != lock:
@@ -460,7 +462,9 @@ def merge(measure_path, lock_path, region_paths, out):
                 errors.append(f"질문 id {q['id']}가 겹침")
             questions.append({**q, "region": r})
     same, conflicts = _line_pairs(sources)
-    errors += conflicts
+    accept = {frozenset(p) for p in accept}
+    accepted = [msg for pair, msg in conflicts if pair in accept]
+    errors += [msg for pair, msg in conflicts if pair not in accept]
     if errors:
         return {"status": "error", "errors": errors, "same_lines": same}
     merged = dict(data)
@@ -469,7 +473,7 @@ def merge(measure_path, lock_path, region_paths, out):
     merged["questions"] = questions
     MeasureFile.model_validate(merged)
     save(out, merged)
-    return {"status": "ok", "written": str(out), "same_lines": same,
+    return {"status": "ok", "written": str(out), "same_lines": same, "accepted_conflicts": accepted,
             "counts": {"observations": len(merged["observations"]), "elements": len(elements),
                        "questions": len(questions)}}
 
@@ -710,6 +714,7 @@ def main(argv=None):
     sv.add_argument("--v", type=float, help="지역 v 좌표(가로선 v=값)")
     sv.add_argument("--value", help="문자 값(그대로 문자열, 예: 실명·단면 번호)")
     sv.add_argument("--number", type=float, help="수 값(간격·길이 등)")
+    sv.add_argument("--box", nargs=4, type=float, metavar=("U0", "V0", "U1", "V1"), help="외곽 상자(위생기구 box 등)")
     sv.add_argument("--source", required=True, choices=("원본표기", "추정"))
     sv.add_argument("--text", help="원본표기: 근거가 된 치수 문자")
     sv.add_argument("--reason", help="추정: 이유")
@@ -744,6 +749,8 @@ def main(argv=None):
     mg.add_argument("--lock", required=True)
     mg.add_argument("regions", nargs="+")
     mg.add_argument("-o", "--out", required=True)
+    mg.add_argument("--accept", action="append", default=[], metavar="A:B",
+                    help="확인해 승인한 불일치 관측 쌍(서로 다른 벽이 같은 직선 위에 있는 경우 등)")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
@@ -758,9 +765,10 @@ def main(argv=None):
             result = add_element(args.file, _element_args(args), args.replace)
         elif args.command == "set-value":
             coords = {k: getattr(args, k) for k in ("u", "v") if getattr(args, k) is not None}
-            given = [x for x in (coords or None, args.value, args.number) if x is not None]
+            box = dict(zip(("u0", "v0", "u1", "v1"), args.box)) if args.box else None
+            given = [x for x in (coords or None, args.value, args.number, box) if x is not None]
             if len(given) != 1:
-                raise RecordError("값은 --u·--v, --value, --number 중 하나로")
+                raise RecordError("값은 --u·--v, --value, --number, --box 중 하나로")
             value = given[0]
             result = set_value(args.file, args.element, args.key, value, args.source, args.text, args.reason)
         elif args.command == "drop-observation":
@@ -774,7 +782,10 @@ def main(argv=None):
         elif args.command == "validate":
             result = validate(args.file, args.lock, args.reverify)
         else:
-            result = merge(args.measure, args.lock, args.regions, args.out)
+            pairs = [tuple(a.split(":")) for a in args.accept]
+            if any(len(p) != 2 for p in pairs):
+                raise RecordError("--accept는 관측이름A:관측이름B")
+            result = merge(args.measure, args.lock, args.regions, args.out, pairs)
     except (RecordError, OSError) as e:
         result = {"status": "error", "message": str(e)}
     print(json.dumps(result, ensure_ascii=False))
