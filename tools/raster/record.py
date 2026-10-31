@@ -505,6 +505,28 @@ def _measure_only(path, what):
     return data
 
 
+def set_value(path, eid, key, value, source, text=None, reason=None):
+    """요소에 측정이 아닌 값을 적는다(measure.yaml에만, 주 대화). 원본 치수 문자(원본표기)나 추정만 받는다.
+    역할 선은 {u: 좌표}·{v: 좌표}, 점은 {u, v}, 문자 내용은 문자열. 생성기가 관측 대신 쓴다"""
+    data = _measure_only(path, "set-value")
+    if eid not in data["elements"]:
+        raise RecordError(f"없는 요소: {eid}")
+    if source not in ("원본표기", "추정"):
+        raise RecordError(f"set-value 출처는 원본표기·추정만(받은 것 {source})")
+    entry = {"value": value, "source": source}
+    if text:
+        entry["text"] = text
+    if reason:
+        entry["reason"] = reason
+    try:
+        Value.model_validate(entry)
+    except ValidationError as e:
+        raise RecordError(f"값 형식 오류: {e}") from e
+    data["elements"][eid].setdefault("values", {})[key] = entry
+    save(path, data)
+    return {"status": "ok", "element": eid, "key": key, "value": entry}
+
+
 def answer_question(path, qid, answer, by):
     data = _measure_only(path, "질문의 답")
     for q in data["questions"]:
@@ -679,6 +701,17 @@ def main(argv=None):
     e.add_argument("--note")
     e.add_argument("--frame", help="요소 frame(영역 파일은 영역 frame을 물려받음)")
     e.add_argument("--replace", action="store_true", help="이미 있는 요소를 통째로 바꾼다(재측정: refs·links·후보 모두 다시 줌)")
+    sv = sub.add_parser("set-value", help="요소에 원본 치수·추정 값 적기(measure.yaml에만)")
+    sv.add_argument("file")
+    sv.add_argument("--element", required=True)
+    sv.add_argument("--key", required=True, help="역할(f1·s·p 등) 또는 값 이름(content 등)")
+    sv.add_argument("--u", type=float, help="지역 u 좌표(세로선 u=값, 점이면 --v와 함께)")
+    sv.add_argument("--v", type=float, help="지역 v 좌표(가로선 v=값)")
+    sv.add_argument("--value", help="문자 값(그대로 문자열, 예: 실명·단면 번호)")
+    sv.add_argument("--number", type=float, help="수 값(간격·길이 등)")
+    sv.add_argument("--source", required=True, choices=("원본표기", "추정"))
+    sv.add_argument("--text", help="원본표기: 근거가 된 치수 문자")
+    sv.add_argument("--reason", help="추정: 이유")
     dr = sub.add_parser("drop-observation", help="참조하지 않는 관측 지우기(재측정으로 버린 관측)")
     dr.add_argument("file")
     dr.add_argument("--name", required=True)
@@ -722,6 +755,13 @@ def main(argv=None):
             result = region_init(args.measure, args.lock, args.region, args.out)
         elif args.command == "add-element":
             result = add_element(args.file, _element_args(args), args.replace)
+        elif args.command == "set-value":
+            coords = {k: getattr(args, k) for k in ("u", "v") if getattr(args, k) is not None}
+            given = [x for x in (coords or None, args.value, args.number) if x is not None]
+            if len(given) != 1:
+                raise RecordError("값은 --u·--v, --value, --number 중 하나로")
+            value = given[0]
+            result = set_value(args.file, args.element, args.key, value, args.source, args.text, args.reason)
         elif args.command == "drop-observation":
             result = drop_observation(args.file, args.name)
         elif args.command == "question" and args.action == "add":
