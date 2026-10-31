@@ -1,10 +1,8 @@
 """루프백에서만 실행하는 검토 API와 정적 화면."""
 import asyncio
 import json
-import math
 from pathlib import Path
 
-from ezdxf.colors import aci2rgb
 from starlette.applications import Starlette
 from starlette.concurrency import run_in_threadpool
 from starlette.exceptions import HTTPException
@@ -13,53 +11,14 @@ from starlette.routing import Route, Mount
 from starlette.staticfiles import StaticFiles
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from src.engine.layout import expand
-from src.engine.spec import SpecError, parse_spec, validate_spec
-from src.engine.standards import load_standard
+from src.engine.spec import SpecError
+from .specs import read_spec
+from .edit import EditStore, EditConflict
 from .base import read_base
 from .workspace import Workspace
 from .notes import NotesStore, RevisionConflict
 
 DIST = Path(__file__).resolve().parents[2] / "ui/web/dist"
-
-
-def _finite_float(value):
-    number = float(value)
-    if not math.isfinite(number):
-        raise ValueError("좌표와 수치는 유한한 숫자여야 합니다")
-    return number
-
-
-def read_spec(path):
-    result = {"spec": None, "warnings": [], "violations": [], "grid": {}, "layers": {}}
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-        raw = json.loads(text, parse_float=_finite_float, parse_constant=_finite_float)
-        result["spec"] = raw
-        spec = parse_spec(raw)
-        # load_standard와 validate_spec을 함께 써서 다른 표준 참조를 조용히 대체하지 않는다.
-        std = load_standard()
-        violations = validate_spec(spec, std)
-        if violations:
-            raise SpecError(violations)
-        k = spec.scale if spec.scale is not None else std.profile.scale.default_k
-        prims = expand(spec, std, k, warnings=result["warnings"])
-        # 치수 문자는 CAD와 같은 실제 높이로 그린다: dimtxt × DIMSCALE(write.py와 같은 k 환산)
-        dimscale = k * std.profile.scale.dimscale_per_k
-        dimstyles = {d.name: {"text_height": float(d.vars.get("dimtxt", 2.5)) * dimscale,
-                              "gap": float(d.vars.get("dimgap", 1.0)) * dimscale}
-                     for d in std.dimensions.styles}
-        result.update(prims=[p.model_dump(mode="json") for p in prims], grid=spec.grid.model_dump(),
-                      layers={layer.name: {"color_rgb": list(aci2rgb(abs(layer.color))),
-                                           "linetype": layer.linetype} for layer in std.layers},
-                      dimstyles=dimstyles)
-        if spec.scale is None:
-            result["warnings"].append(f"축척이 없어 A3 1/{k}로 가정했습니다")
-    except SpecError as error:
-        result["violations"] = [v.model_dump(mode="json") for v in error.violations]
-    except (OSError, UnicodeError, ValueError) as error:
-        result["violations"] = [{"code": "UI_READ", "message": f"명세 읽기 실패: {error}"}]
-    return result
 
 
 async def change_events(workspace, interval=0.5):
@@ -78,6 +37,7 @@ async def change_events(workspace, interval=0.5):
 def create_app(work, base=None, dist=None):
     workspace = Workspace(work, base)
     notes_store = NotesStore(workspace.root)
+    edit_store = EditStore(workspace)
     dist = Path(dist) if dist is not None else DIST
 
     def resolve(request, suffix):
@@ -127,6 +87,31 @@ def create_app(work, base=None, dist=None):
     async def spec(request):
         return JSONResponse(await run_in_threadpool(read_spec, resolve(request, ".json")))
 
+    async def edit_spec(request):
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or not isinstance(body.get("path"), str):
+                raise ValueError("명세 경로가 필요합니다")
+            undo = request.url.path.endswith("/undo")
+            allowed = {"path", "sha256"} if undo else {"path", "sha256", "ops"}
+            if set(body) != allowed:
+                raise ValueError("요청 필드를 확인해 주세요")
+            data = await run_in_threadpool(edit_store.save, body["path"], body["sha256"],
+                                           None if undo else body["ops"])
+            return JSONResponse(data)
+        except EditConflict as error:
+            return JSONResponse(error.current, status_code=409)
+        except SpecError as error:
+            return JSONResponse({"violations": [v.model_dump(mode="json") for v in error.violations]}, status_code=422)
+        except PermissionError as error:
+            raise HTTPException(403, str(error)) from None
+        except FileNotFoundError as error:
+            raise HTTPException(404, str(error)) from None
+        except (ValueError, UnicodeError) as error:
+            raise HTTPException(400, str(error)) from None
+        except OSError as error:
+            raise HTTPException(503, f"명세 저장소 접근 실패: {error}") from None
+
     async def base_dxf(request):
         path = resolve(request, ".dxf")
         try:
@@ -147,7 +132,9 @@ def create_app(work, base=None, dist=None):
                             '<p>저장소의 ui/web 폴더에서 <code>npm install</code> 후 '
                             '<code>npm run build</code>를 실행하고 새로 고침하세요.</p></html>')
 
-    routes = [Route("/api/notes", notes, methods=["GET", "POST"]),
+    routes = [Route("/api/spec/edit", edit_spec, methods=["POST"]),
+              Route("/api/spec/undo", edit_spec, methods=["POST"]),
+              Route("/api/notes", notes, methods=["GET", "POST"]),
               Route("/api/notes/{id}", notes, methods=["POST"]),
               Route("/api/workspace", inventory), Route("/api/spec", spec),
               Route("/api/base", base_dxf), Route("/api/events", events), Route("/", index)]

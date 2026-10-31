@@ -1,6 +1,8 @@
 import React, { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Group, Shape, Line, Text } from 'react-konva';
 import Primitive, { paint } from './Primitive.jsx';
+import EditHandles, { GridLines, previewPoint } from './EditHandles.jsx';
+import { snapCandidates } from '../utils/edit.js';
 import { boundsOf, hitDistance, visibleIn } from '../utils/geometry.js';
 import {
   areaTarget,
@@ -135,7 +137,16 @@ export default function PlanCanvas({
   focusRequest,
   highlighted = new Set(),
   noteTarget,
+  handles = [],
+  onEdit,
+  onGridSelect,
+  saving = false,
 }) {
+  const [preview, setPreview] = useState(null);
+  const editDragging = useRef(false);
+  const onDragging = (value) => {
+    editDragging.current = value;
+  };
   const container = useRef(null),
     stage = useRef(null);
   const [size, setSize] = useState({ width: 800, height: 600 }),
@@ -167,6 +178,24 @@ export default function PlanCanvas({
     ignoreClick.current = false;
   }, [noteMode]);
   const all = useMemo(() => [...base, ...prims], [base, prims]);
+  const snapPoints = useMemo(
+    () => snapCandidates(all.filter((p) => !hidden.has(p.layer))),
+    [all, hidden],
+  );
+  const snapAxes = useMemo(
+    () =>
+      grids.flatMap(({ path, grid }) =>
+        ['X', 'Y'].flatMap((axis) =>
+          Object.entries(grid?.[axis] || {}).map(([name, value]) => ({
+            path,
+            axis,
+            name,
+            value,
+          })),
+        ),
+      ),
+    [grids],
+  );
   const bounds = useMemo(() => boundsOf(all), [all]);
   const baseBounds = useMemo(() => boundsOf(base), [base]);
   useEffect(() => {
@@ -204,6 +233,7 @@ export default function PlanCanvas({
     return position ? fromScreen(position, view) : null;
   };
   const move = (e) => {
+    if (editDragging.current) return;
     latest.current = e.target.getStage().getPointerPosition();
     if (areaStart.current) {
       const mm = worldPoint();
@@ -318,48 +348,27 @@ export default function PlanCanvas({
             scale={view.scale}
           />
         </Layer>
-        <Layer listening={false}>
-          {grids.flatMap(({ grid, path }, index) => [
-            ...Object.entries(grid?.X || {}).flatMap(([name, x]) => [
-              <Line
-                key={path + 'x' + name}
-                points={[x, -bounds.minY, x, -bounds.maxY]}
-                stroke="#567080"
-                opacity={0.4}
-                strokeWidth={0.7 / view.scale}
-                dash={[5 / view.scale, 6 / view.scale]}
-              />,
-              <Text
-                key={path + 'xt' + name}
-                x={x}
-                y={-bounds.maxY - 20 / view.scale - (index * 20) / view.scale}
-                text={name}
-                fontSize={15 / view.scale}
-                fill="#a8bfce"
-              />,
-            ]),
-            ...Object.entries(grid?.Y || {}).flatMap(([name, y]) => [
-              <Line
-                key={path + 'y' + name}
-                points={[bounds.minX, -y, bounds.maxX, -y]}
-                stroke="#567080"
-                opacity={0.4}
-                strokeWidth={0.7 / view.scale}
-                dash={[5 / view.scale, 6 / view.scale]}
-              />,
-              <Text
-                key={path + 'yt' + name}
-                x={bounds.minX - 40 / view.scale - (index * 26) / view.scale}
-                y={-y}
-                text={name}
-                fontSize={15 / view.scale}
-                fill="#a8bfce"
-              />,
-            ]),
-          ])}
+        <Layer>
+          <GridLines
+            grids={grids}
+            bounds={bounds}
+            scale={view.scale}
+            onSelect={onGridSelect}
+            onEdit={onEdit}
+            onCoordinate={onCoordinate}
+            onDragging={onDragging}
+            saving={saving}
+            noteMode={noteMode}
+            points={snapPoints}
+            axes={snapAxes}
+          />
         </Layer>
         <Layer>
-          {visible.map((p) => {
+          {visible.map((original) => {
+            const p =
+              preview && original._key === selected?._key
+                ? previewPoint(original, preview.handle, preview.world)
+                : original;
             const same =
               source &&
               p._file === selected?._file &&
@@ -407,6 +416,23 @@ export default function PlanCanvas({
             rectangle(noteTarget.window, '#87c9ee')}
           {dragArea && rectangle(dragArea, '#ffbc72')}
         </Layer>
+        {!noteMode && (
+          <Layer>
+            <EditHandles
+              handles={hidden.has(selected?.layer) ? [] : handles}
+              selected={selected}
+              scale={view.scale}
+              points={snapPoints}
+              axes={snapAxes}
+              onEdit={onEdit}
+              onPreview={setPreview}
+              preview={preview}
+              onCoordinate={onCoordinate}
+              saving={saving}
+              onDragging={onDragging}
+            />
+          </Layer>
+        )}
       </Stage>
       {notes.map((note) => {
         const position = pinPosition(targetPoint(note.target), view);
@@ -461,7 +487,7 @@ export default function PlanCanvas({
           <span>왼쪽에서 명세를 켜거나 기준 DXF를 고르세요.</span>
         </div>
       )}
-      {hover && !draft && !dragArea && (
+      {hover && !draft && !dragArea && !preview && (
         <div
           className="tooltip"
           style={{
@@ -477,7 +503,7 @@ export default function PlanCanvas({
       <div className="canvas-guide">
         {noteMode
           ? '메모: 클릭 · Shift + 끌기로 영역 · M으로 종료'
-          : '휠로 확대 · 드래그로 이동 · 클릭으로 객체 확인'}
+          : '휠로 확대 · 빈 곳 끌기로 이동 · 손잡이·축선 끌기로 수정 · Alt: 스냅 해제'}
       </div>
     </div>
   );

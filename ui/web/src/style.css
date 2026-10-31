@@ -795,3 +795,82 @@ button:disabled {
     gap: 4px;
   }
 }
+
+.spec-editor {
+  padding: 14px 0;
+  border-top: 1px solid #293a47;
+  margin-top: 14px;
+}
+.spec-editor > code,
+.place-editor > code {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #adc7d8;
+  font-size: 11px;
+}
+.edit-field {
+  display: block;
+  margin: 10px 0;
+}
+.edit-field > span {
+  display: block;
+  color: #b5c4cf;
+  font-size: 11px;
+  margin-bottom: 4px;
+  overflow-wrap: anywhere;
+}
+.edit-control {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.edit-control input,
+.edit-control select {
+  width: 100%;
+  min-width: 0;
+  background: #101c25;
+  border: 1px solid #3c5566;
+  border-radius: 4px;
+  padding: 6px 8px;
+  color: #edf6fb;
+  font: inherit;
+  font-size: 12px;
+}
+.edit-control input:focus,
+.edit-control select:focus {
+  outline: 2px solid #71c8f3;
+  outline-offset: 1px;
+}
+.edit-control input:disabled,
+.edit-control select:disabled {
+  opacity: 0.65;
+}
+.edit-control code {
+  white-space: nowrap;
+  color: #8fe5ff;
+  font-size: 12px;
+}
+.field-error {
+  display: block;
+  color: #ffaaa4;
+  font-size: 11px;
+  margin-top: 5px;
+  overflow-wrap: anywhere;
+}
+.edit-array {
+  border-left: 1px solid #324958;
+  padding-left: 8px;
+}
+.place-editor {
+  border-top: 1px solid #304350;
+  margin-top: 16px;
+  padding-top: 8px;
+}
+.grid-editor {
+  border-bottom: 1px solid #304350;
+}
+.grid-editor p {
+  color: #b5c4cf;
+  font-size: 12px;
+  line-height: 1.8;
+}

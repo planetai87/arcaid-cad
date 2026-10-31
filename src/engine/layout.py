@@ -112,6 +112,13 @@ class _T:
         point = [x + self.tx, y + self.ty]
         return [_r(v) for v in point] if rounded else point
 
+    def inverse(self) -> "_T":
+        """이동·회전·대칭을 되짚는 변환(중간 반올림 없음)."""
+        det = self.det
+        return _T(self.d / det, -self.b / det, -self.c / det, self.a / det,
+                  (self.b * self.ty - self.d * self.tx) / det,
+                  (self.c * self.tx - self.a * self.ty) / det)
+
     def then(self, outer: "_T") -> "_T":
         """이 변환 뒤에 outer를 적용하는 변환"""
         return _T(outer.a * self.a + outer.b * self.c, outer.a * self.b + outer.b * self.d,
@@ -124,6 +131,39 @@ def _placement(at: Tuple[float, float], rotation: float, mirror: Optional[str]) 
     mx, my = (-1.0, 1.0) if mirror == "x" else (1.0, -1.0) if mirror == "y" else (1.0, 1.0)
     cos, sin = _dir(rotation)
     return _T(cos * mx, -sin * my, sin * mx, cos * my, at[0], at[1])
+
+
+
+# 편집 화면도 전개와 같은 변환 계산을 사용한다. 기존 전개·해시에는 영향이 없다.
+Transform = _T
+placement_transform = _placement
+
+
+def source_transform(spec: Spec, source: SourceRef) -> Transform:
+    """원본 항목 인스턴스의 지역 → 세계 변환. 잘못된 group 체인은 거부한다."""
+    transform = Transform()
+    items, prefix = spec.items, "items"
+    for ref in source.groups:
+        match = re.fullmatch(re.escape(prefix) + r"\[(\d+)\]", ref.group)
+        if not match:
+            raise ValueError("원본 group 체인이 맞지 않습니다")
+        group = items[int(match[1])]
+        if group.kind != "group" or ref.place < 0 or ref.i < 0:
+            raise ValueError("원본 group·배치 번호가 맞지 않습니다")
+        place = group.place[ref.place]
+        if ref.i >= place.repeat.count:
+            raise ValueError("반복 번호가 범위를 벗어났습니다")
+        at = []
+        for coord, axis in zip(place.at, ("X", "Y")):
+            name, offset = parse_coord(coord)
+            at.append(offset + (getattr(spec.grid, axis)[name] if name else 0))
+        at = [v + ref.i * step for v, step in zip(at, place.repeat.step)]
+        transform = placement_transform(at, place.rotation, place.mirror).then(transform)
+        items, prefix = group.items, ref.group + ".items"
+    match = re.fullmatch(re.escape(prefix) + r"\[(\d+)\]", source.item)
+    if not match or int(match[1]) >= len(items):
+        raise ValueError("원본 항목과 group 체인이 맞지 않습니다")
+    return transform
 
 
 def _area(loop: List[List[float]]) -> float:

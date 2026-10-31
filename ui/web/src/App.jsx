@@ -9,6 +9,7 @@ import PlanCanvas, { layerColor } from './components/PlanCanvas.jsx';
 import NotesPanel from './components/NotesPanel.jsx';
 import DetailsPanel from './components/DetailsPanel.jsx';
 import useNotes from './components/useNotes.js';
+import { GridEditor } from './components/EditFields.jsx';
 import { matchingTargets, targetPoint } from './utils/notes.js';
 import { boundsOf, geometrySignature } from './utils/geometry.js';
 
@@ -23,6 +24,11 @@ const api = (kind, path) =>
 const EMPTY = [];
 export default function App() {
   const notes = useNotes();
+  const [gridSelection, setGridSelection] = useState(null),
+    [saving, setSaving] = useState(false),
+    [editError, setEditError] = useState(''),
+    [lastEdited, setLastEdited] = useState(null);
+  const pendingEdits = useRef(new Map());
   const [noteMode, setNoteMode] = useState(false),
     [tab, setTab] = useState('details');
   const [activeNoteId, setActiveNoteId] = useState(null),
@@ -64,52 +70,119 @@ export default function App() {
     known = useRef(new Set()),
     alive = useRef(true),
     baseInitialized = useRef(false);
-  const loadSpec = useCallback(async (path, highlight = false) => {
-    const version = (versions.current[path] || 0) + 1;
-    versions.current[path] = version;
-    try {
-      const data = await getJSON(api('spec', path));
-      if (!alive.current || versions.current[path] !== version) return;
-      const old = recordsRef.current[path];
-      // 치수는 표준 치수 스타일의 실제 문자 높이·간격(mm)을 붙여 그린다.
-      const dimstyles = data.dimstyles || {};
-      data.prims = (data.prims || []).map((p) => {
-        const style = p.kind === 'dim' ? dimstyles[p.name] : null;
-        const q = style
-          ? { ...p, height: style.text_height, gap: style.gap }
-          : p;
-        return {
-          ...q,
-          _file: path,
-          _key: path + ':' + p.oid,
-          _bounds: boundsOf([q]),
-        };
-      });
-      if (highlight && old) {
-        const previous = new Map(
-          old.prims.map((p) => [p.oid, geometrySignature(p)]),
-        );
-        for (const p of data.prims)
-          if (previous.get(p.oid) !== geometrySignature(p))
-            changedRef.current.set(p._key, Date.now() + 3000);
-        setChanged(new Set(changedRef.current.keys()));
-      }
-      recordsRef.current = { ...recordsRef.current, [path]: data };
-      setRecords(recordsRef.current);
-      if (!old) setFitToken((t) => t + 1);
-    } catch (e) {
-      if (!alive.current || versions.current[path] !== version) return;
-      recordsRef.current = {
-        ...recordsRef.current,
-        [path]: {
-          prims: [],
-          violations: [{ message: e.message }],
-          warnings: [],
-        },
+  const installSpec = useCallback((path, data, highlight = false) => {
+    const old = recordsRef.current[path];
+    if (old?.sha256 && old.sha256 === data.sha256) return;
+    // 치수는 표준 치수 스타일의 실제 문자 높이·간격(mm)을 붙여 그린다.
+    const dimstyles = data.dimstyles || {};
+    data.prims = (data.prims || []).map((p) => {
+      const style = p.kind === 'dim' ? dimstyles[p.name] : null;
+      const q = style ? { ...p, height: style.text_height, gap: style.gap } : p;
+      return {
+        ...q,
+        _file: path,
+        _key: path + ':' + p.oid,
+        _bounds: boundsOf([q]),
       };
-      setRecords(recordsRef.current);
+    });
+    if (highlight && old) {
+      const previous = new Map(
+        old.prims.map((p) => [p.oid, geometrySignature(p)]),
+      );
+      for (const p of data.prims)
+        if (previous.get(p.oid) !== geometrySignature(p))
+          changedRef.current.set(p._key, Date.now() + 3000);
+      setChanged(new Set(changedRef.current.keys()));
     }
+    recordsRef.current = { ...recordsRef.current, [path]: data };
+    setRecords(recordsRef.current);
+    if (!old) setFitToken((t) => t + 1);
   }, []);
+  const loadSpec = useCallback(
+    async (path, highlight = false) => {
+      const version = (versions.current[path] || 0) + 1;
+      versions.current[path] = version;
+      try {
+        const data = await getJSON(api('spec', path));
+        if (!alive.current || versions.current[path] !== version) return;
+        if (pendingEdits.current.has(path)) return;
+        installSpec(path, data, highlight);
+      } catch (e) {
+        if (!alive.current || versions.current[path] !== version) return;
+        recordsRef.current = {
+          ...recordsRef.current,
+          [path]: {
+            prims: [],
+            violations: [{ message: e.message }],
+            warnings: [],
+          },
+        };
+        setRecords(recordsRef.current);
+      }
+    },
+    [installSpec],
+  );
+  const editSpec = useCallback(
+    async (path, ops = null) => {
+      if (pendingEdits.current.size)
+        throw Error('저장이 끝난 뒤 다시 수정해 주세요');
+      const before = recordsRef.current[path];
+      if (!before?.sha256) throw Error('명세를 먼저 읽어 주세요');
+      pendingEdits.current.set(path, null);
+      versions.current[path] = (versions.current[path] || 0) + 1;
+      setSaving(true);
+      setEditError('');
+      let savedSha = null;
+      try {
+        const response = await fetch(
+          ops === null ? '/api/spec/undo' : '/api/spec/edit',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              path,
+              sha256: before.sha256,
+              ...(ops === null ? {} : { ops }),
+            }),
+          },
+        );
+        const content = await response.text();
+        let data;
+        try {
+          data = JSON.parse(content);
+        } catch {
+          data = null;
+        }
+        if (!response.ok) {
+          if (response.status === 409 && data?.spec) {
+            installSpec(path, data, true);
+            throw Error(
+              '다른 곳에서 명세가 변경되었습니다. 현재 값을 확인하고 다시 수정해 주세요',
+            );
+          }
+          throw Error(
+            data?.violations?.map((v) => v.message).join('; ') ||
+              data?.detail ||
+              content ||
+              '저장하지 못했습니다',
+          );
+        }
+        savedSha = data.sha256;
+        versions.current[path] = (versions.current[path] || 0) + 1;
+        installSpec(path, data, true);
+        setLastEdited(path);
+      } catch (e) {
+        setEditError(e.message);
+        throw e;
+      } finally {
+        const delayed = pendingEdits.current.get(path);
+        pendingEdits.current.delete(path);
+        setSaving(false);
+        if (delayed && delayed !== savedSha) void loadSpec(path, true);
+      }
+    },
+    [installSpec, loadSpec],
+  );
   const loadBase = useCallback(async (path) => {
     const version = (versions.current.base || 0) + 1;
     versions.current.base = version;
@@ -184,6 +257,16 @@ export default function App() {
         void notes.reload();
         return;
       }
+      if (pendingEdits.current.has(event.path)) {
+        pendingEdits.current.set(event.path, event.sha256 || 'deleted');
+        void refresh();
+        return;
+      }
+      if (
+        event.sha256 &&
+        recordsRef.current[event.path]?.sha256 === event.sha256
+      )
+        return;
       void refresh();
       if (
         event.path.toLowerCase().endsWith('.json') &&
@@ -253,6 +336,7 @@ export default function App() {
   );
   const selectObject = useCallback((p) => {
     setSelection(p?._key || null);
+    setGridSelection(null);
     setActiveNoteId(null);
   }, []);
   const item = selected?.sources?.[0]?.item;
@@ -261,6 +345,29 @@ export default function App() {
         (p) => p._file === selected._file && p.sources?.[0]?.item === item,
       ).length
     : 0;
+  const undoPath =
+    gridSelection?.path ||
+    (selected?.sources?.length ? selected._file : null) ||
+    lastEdited ||
+    [...enabled][0];
+  const undo = useCallback(() => {
+    if (undoPath && !saving) void editSpec(undoPath).catch(() => {});
+  }, [undoPath, saving, editSpec]);
+  useEffect(() => {
+    const keyboard = (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === 'z' &&
+        !event.shiftKey &&
+        !event.target.closest('input,textarea,select,[contenteditable]')
+      ) {
+        event.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener('keydown', keyboard);
+    return () => window.removeEventListener('keydown', keyboard);
+  }, [undo]);
   const issues = workspace.specs
     .filter((row) => enabled.has(row.path))
     .flatMap((row) => [
@@ -350,7 +457,7 @@ export default function App() {
         <div className="brand">
           arcaid <span>도면 검토</span>
         </div>
-        <div className="mode">검토</div>
+        <div className="mode">검토·수정</div>
         <span className="connection" role="status">
           <i className={connection === '변경 감지 중' ? 'online' : ''} />
           {connection}
@@ -447,6 +554,9 @@ export default function App() {
               </span>
             </div>
             <div className="canvas-actions">
+              <button disabled={saving || !undoPath} onClick={undo}>
+                되돌리기 <kbd>Ctrl+Z</kbd>
+              </button>
               <button
                 aria-pressed={noteMode}
                 onClick={() => {
@@ -472,6 +582,12 @@ export default function App() {
               <button onClick={refresh}>다시 읽기</button>
             </div>
           )}
+          {editError && (
+            <div className="error-banner" role="alert">
+              {editError}
+              <button onClick={() => setEditError('')}>닫기</button>
+            </div>
+          )}
           {notes.error && (
             <div className="error-banner" role="alert">
               {notes.error}
@@ -480,6 +596,19 @@ export default function App() {
           )}
           <PlanCanvas
             noteMode={noteMode}
+            handles={
+              selected?.sources?.length
+                ? records[selected._file]?.handles?.[selected.oid] || EMPTY
+                : EMPTY
+            }
+            saving={saving}
+            onEdit={editSpec}
+            onGridSelect={(g) => {
+              setGridSelection(g);
+              setSelection(null);
+              setActiveNoteId(null);
+              setTab('details');
+            }}
             notes={notes.notes}
             recentNotes={notes.recent}
             activeNoteId={activeNoteId}
@@ -504,6 +633,13 @@ export default function App() {
             <output>
               X {coordinate.x.toLocaleString()}　Y{' '}
               {coordinate.y.toLocaleString()}
+              {coordinate.dx != null
+                ? '　ΔX ' +
+                  coordinate.dx.toLocaleString() +
+                  '　ΔY ' +
+                  coordinate.dy.toLocaleString() +
+                  ' mm'
+                : ''}
             </output>
             <span>
               {changed.size
@@ -540,16 +676,30 @@ export default function App() {
               onSave={notes.save}
             />
           ) : (
-            <DetailsPanel
-              selected={selected}
-              item={item}
-              instances={instances}
-              issues={issues}
-              onClear={() => {
-                setSelection(null);
-                setActiveNoteId(null);
-              }}
-            />
+            <>
+              {gridSelection && (
+                <GridEditor
+                  selection={gridSelection}
+                  record={records[gridSelection.path]}
+                  onEdit={editSpec}
+                  busy={saving}
+                  onClose={() => setGridSelection(null)}
+                />
+              )}
+              <DetailsPanel
+                record={records[selected?._file]}
+                onEdit={editSpec}
+                busy={saving}
+                selected={selected}
+                item={item}
+                instances={instances}
+                issues={issues}
+                onClear={() => {
+                  setSelection(null);
+                  setActiveNoteId(null);
+                }}
+              />
+            </>
           )}
         </aside>
       </div>
