@@ -25,7 +25,7 @@ effort: high
 ```powershell
 $py = "D:\worktable\python\cad mcp\CAD-MCP\.venv\Scripts\python.exe"
 $m = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\measure.py"
-$r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
+$rec = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 & $py $m view IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1 -o OUT.png [--mmpp 5] [--grid 100]
 & $py $m profile IMG --calib CAL [--frame X,Y,DEG] --axis u|v --at C --range A B --band 300 [--plot P.png]
 & $py $m fitline IMG --calib CAL [--frame X,Y,DEG] --from U,V --to U,V --band 100
@@ -35,10 +35,11 @@ $r = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 #   profile ... --record REGION.yaml "--names=EA-f1,_,EA-f2"     (구간마다 이름 하나, 건너뛰기 _)
 #   fitline ... --record REGION.yaml --name EW-f1
 #   blob ... --record REGION.yaml --name T1-p
-& $py $r add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--link host=EW1] [--candidate meaning=창,커튼월] [--note "설명"] [--replace]
-& $py $r drop-observation REGION.yaml --name EA-f1        # 어느 요소도 참조하지 않는 관측만(재측정으로 버린 것)
-& $py $r question add REGION.yaml --id Q-EA-1 --text "..." --element EA
+& $py $rec add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--link host=EW1] [--candidate meaning=창,커튼월] [--note "설명"] [--replace]
+& $py $rec drop-observation REGION.yaml --name EA-f1        # 어느 요소도 참조하지 않는 관측만(재측정으로 버린 것)
+& $py $rec question add REGION.yaml --id Q-EA-1 --text "..." --element EA
 # add-element에 --json을 쓰지 않는다(PowerShell 5.1이 큰따옴표를 지워 JSON이 깨진다)
+# PowerShell 변수 이름은 대소문자를 가리지 않는다($rec와 $REC는 같은 변수). 영역 파일 경로 변수는 $region처럼 다른 이름으로
 ```
 
 - 좌표: `--frame`이 없으면 WCS(x 오른쪽, y 위, mm). 있으면 그 지역 좌표(u, v). 영역의 frame은 measure.yaml `regions.<영역>.frame`과 `frames`에서 읽는다. frame 값은 `x.value`, `y.value`, `deg.value`다.
