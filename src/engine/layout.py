@@ -6,6 +6,8 @@
   블록은 도형까지 대칭한다(음수 x 배율). 호는 대칭이면 시작·끝을 바꾸고, 폴리선 bulge는 부호를 바꾼다.
   해치는 바깥 루프를 반시계, 섬을 시계 방향으로 맞춘다. 해치 패턴은 대칭하지 않고 회전만 따른다.
 - 표준이 정하는 값(문자 높이·블록 레이어·배율·치수 레이어)을 여기서 채운다.
+- sources는 원본 items 위치와 바깥부터 안쪽까지의 group·place·반복 번호를 담는다.
+  합쳐진 벽은 영역에 기여한 조각의 원본 참조를 중복 없이 정렬해 담는다.
 """
 import math
 import re
@@ -22,12 +24,28 @@ XDATA_STR_MAX = 255
 _VAR = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
+class GroupRef(BaseModel):
+    """거쳐 온 group의 원본 위치와 place·반복 번호(0부터)"""
+    model_config = ConfigDict(extra="forbid")
+    group: str
+    place: int
+    i: int
+
+
+class SourceRef(BaseModel):
+    """원본 명세 항목의 위치와 바깥부터 안쪽까지의 group 인스턴스"""
+    model_config = ConfigDict(extra="forbid")
+    item: str
+    groups: List[GroupRef] = Field(default_factory=list)
+
+
 class Prim(BaseModel):
     """펼친 기본 객체(WCS, mm)"""
     model_config = ConfigDict(extra="forbid")
     kind: Literal["line", "polyline", "circle", "arc", "text", "block", "hatch", "dim"]
     oid: str
     path: str
+    sources: List[SourceRef] = Field(default_factory=list)
     layer: str
     linetype: Optional[str] = None
     points: List[List[float]] = Field(default_factory=list, description="line [시작, 끝] / polyline 꼭짓점 / dim [p1, p2, 치수선 점]")
@@ -176,12 +194,13 @@ class _Expander:
 
     # ---------- 펼치기 ----------
 
-    def walk(self, items, t: _T, chain: List[str], parent_path: Optional[str], values: Dict[str, int], where: str):
+    def walk(self, items, t: _T, chain: List[str], parent_path: Optional[str], values: Dict[str, int],
+             where: str, groups: List[GroupRef]):
         for n, item in enumerate(items):
             w = f"{where}[{n}]"
             iid = self.subst(item.id or f"{item.kind}{n + 1}", values, f"{w}.id")
             if item.kind == "group":
-                self.group(item, iid, t, chain, parent_path, values, w)
+                self.group(item, iid, t, chain, parent_path, values, w, groups)
                 continue
             path = self.subst(item.path, values, f"{w}.path") if item.path else \
                 (f"{parent_path}/{iid}" if parent_path else iid)
@@ -189,11 +208,11 @@ class _Expander:
             if oid in self.source_ids:
                 raise SpecError([spec_violation("SPEC_ID", oid, "같은 oid가 둘 이상(같은 단계의 id가 겹침)", oid)])
             self.source_ids.add(oid)
-            self.primitive(item, oid, path, t, values, w)
+            self.primitive(item, oid, path, t, values, w, SourceRef(item=w, groups=groups))
 
-    def group(self, item, gid, t, chain, parent_path, values, where):
+    def group(self, item, gid, t, chain, parent_path, values, where, groups):
         g = 0
-        for place in item.place:
+        for place_index, place in enumerate(item.place):
             at = self.point(place.at)
             for i in range(place.repeat.count):
                 local = dict(values)
@@ -204,15 +223,16 @@ class _Expander:
                 seg = f"{gid}[{g}]"
                 path = self.subst(item.path, local, f"{where}.path") if item.path else \
                     (f"{parent_path}/{seg}" if parent_path else seg)
-                self.walk(item.items, child_t, chain + [seg], path, local, f"{where}.items")
+                self.walk(item.items, child_t, chain + [seg], path, local, f"{where}.items",
+                          groups + [GroupRef(group=where, place=place_index, i=i)])
                 g += 1
 
     def add(self, **kw):
         self.out.append(Prim(**kw))
 
-    def primitive(self, item, oid, path, t: _T, values, where):
+    def primitive(self, item, oid, path, t: _T, values, where, source: SourceRef):
         kind = item.kind
-        common = {"oid": oid, "path": path}
+        common = {"oid": oid, "path": path, "sources": [source]}
         flip = t.det < 0
         if kind in ("line", "polyline", "circle", "arc"):
             layer = self.layer_name(item.layer)
@@ -235,7 +255,7 @@ class _Expander:
             pattern_angle = _deg(item.hatch.pattern_angle + rot) if item.hatch else 0.0
             for opening, polygons in ((False, item.parts), (True, item.openings)):
                 self.walls.extend(walls.Fragment(layer, [t.pt(self.point(p), rounded=False) for p in loop],
-                                                 opening, path, pattern_angle)
+                                                 opening, path, pattern_angle, source=source.model_dump())
                                   for loop in polygons)
         elif kind == "circle":
             self.add(kind=kind, center=t.pt(self.point(item.center)), radius=_r(item.radius), **common)
@@ -284,14 +304,14 @@ class _Expander:
                 else:
                     base, angle = (line_at, (p1[1] + p2[1]) / 2), 90.0
                 d_oid, d_path = (oid, path) if kind == "dim" else (f"{oid}.{j + 1}", f"{path}.{j + 1}")
-                self.add(kind="dim", oid=d_oid, path=d_path, layer=style.layer, name=style.name,
+                self.add(kind="dim", oid=d_oid, path=d_path, sources=[source], layer=style.layer, name=style.name,
                          points=[t.pt(p1), t.pt(p2), t.pt(base)], angle=_r(_ang(t.vec(_dir(angle))) % 180.0))
 
 
 def expand(spec: Spec, std: Standard, k: int, warnings: Optional[List[str]] = None) -> List[Prim]:
     """검증한 명세를 기본 객체 목록으로 펼친다. oid가 겹치거나 태그가 너무 길면 SpecError(SPEC_ID)"""
     ex = _Expander(spec, std, k)
-    ex.walk(spec.items, _T(), [], None, {}, "items")
+    ex.walk(spec.items, _T(), [], None, {}, "items", [])
     try:
         regions, wall_warnings = walls.merge(ex.walls)
     except walls.WallError as e:
@@ -309,10 +329,17 @@ def expand(spec: Spec, std: Standard, k: int, warnings: Optional[List[str]] = No
                 break
             prefix.append(segments[0])
         path = "/".join(prefix) or "wall"
+        # 같은 wall의 여러 조각은 하나로, 다른 group 인스턴스는 각각 남긴다.
+        refs = {}
+        for fragment in region.parts:
+            source = SourceRef.model_validate(fragment.source)
+            key = (source.item, tuple((g.group, g.place, g.i) for g in source.groups))
+            refs[key] = source
+        sources = [refs[key] for key in sorted(refs)]
         loops = [[[_r(x), _r(y)] for x, y in loop] for loop in [region.outer] + region.holes]
         for i, loop in enumerate(loops):
             ex.add(kind="polyline", layer=region.layer, oid=f"{oid}/{'outer' if i == 0 else f'hole{i}'}",
-                   path=path, points=loop, bulges=[0.0] * len(loop), closed=True)
+                   path=path, sources=sources, points=loop, bulges=[0.0] * len(loop), closed=True)
         hatch = ex.wall_hatches[region.layer]
         if hatch:
             if hatch["pattern"] != "SOLID":
@@ -321,7 +348,7 @@ def expand(spec: Spec, std: Standard, k: int, warnings: Optional[List[str]] = No
                     raise SpecError([spec_violation("SPEC_WALL", path,
                                                     "합쳐진 벽 조각의 변환 후 해치 패턴 각도가 다름")])
                 hatch = {**hatch, "pattern_angle": next(iter(angles))}
-            ex.add(kind="hatch", oid=f"{oid}/hatch", path=path, loops=loops, **hatch)
+            ex.add(kind="hatch", oid=f"{oid}/hatch", path=path, sources=sources, loops=loops, **hatch)
     if len(ex.out) > MAX_OBJECTS:
         raise SpecError([spec_violation("SPEC_LIMIT", "items", f"펼친 실제 객체가 {len(ex.out)}개(상한 {MAX_OBJECTS})",
                                         len(ex.out), MAX_OBJECTS)])
