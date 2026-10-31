@@ -558,3 +558,31 @@ def test_reverify_reruns_points_and_catches_an_edited_box(merged, capsys):
     merged["merged"].write_text(yaml.safe_dump(data, allow_unicode=True), encoding="utf-8")
     assert _validate(merged, "--reverify") == 1
     assert any("box-p" in e and "bbox_local" in e for e in json.loads(capsys.readouterr().out)["errors"])
+
+
+def test_set_value_writes_original_dimensions_into_the_measure_only(merged, capsys):
+    path = merged["merged"]
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "s", "--u", "-100", "--source", "원본표기",
+                     "--text", "축 X1 −100(외벽 200)"]) == 0
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "content", "--value", "거실",
+                     "--source", "원본표기", "--text", "거실"]) == 0
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "p", "--u", "2500", "--v", "3000",
+                     "--source", "추정", "--reason", "실 중심"]) == 0
+    vals = _read(path)["elements"]["EA"]["values"]
+    assert vals["s"] == {"value": {"u": -100.0}, "source": "원본표기", "text": "축 X1 −100(외벽 200)"}
+    assert vals["content"]["value"] == "거실" and vals["p"]["value"] == {"u": 2500.0, "v": 3000.0}
+    capsys.readouterr()
+    assert rec.main(["validate", str(path), "--lock", str(merged["lock"])]) == 0
+    assert any("EA.values.p" in e for e in json.loads(capsys.readouterr().out)["estimates"])
+    assert rec.main(["set-value", str(merged["files"]["A"]), "--element", "EA", "--key", "s", "--u", "0",
+                     "--source", "원본표기", "--text", "x"]) == 1
+    assert rec.main(["set-value", str(path), "--element", "NOPE", "--key", "s", "--u", "0", "--source", "원본표기",
+                     "--text", "x"]) == 1
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "s", "--source", "원본표기",
+                     "--text", "x"]) == 1
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "num", "--value", "1", "--source", "원본표기",
+                     "--text", "1"]) == 0
+    assert rec.main(["set-value", str(path), "--element", "EA", "--key", "pitch", "--number", "200",
+                     "--source", "원본표기", "--text", "@200"]) == 0
+    vals = _read(path)["elements"]["EA"]["values"]
+    assert vals["num"]["value"] == "1" and vals["pitch"]["value"] == 200.0

@@ -3,11 +3,15 @@
 사용(저장소 루트):
   python tools/raster/generate.py measure.yaml --prefix p6f --out runs/<id> [--lock lock.json]
 
-입력은 measure.yaml만이다. 숫자는 관측(refs)에서, 요소 사이 관계는 links에서, 이산 속성(재료·레이어·문 경첩 등)은
+입력은 measure.yaml만이다. 숫자는 관측(refs)에서(또는 원본 치수 값: 아래), 요소 사이 관계는 links에서, 이산 속성(재료·레이어·문 경첩 등)은
 interpretations에서 온다. 관측 하나는 직선 하나(point_wcs·angle_wcs_deg)이고, 요소의 frame(없으면 WCS)
 지역 좌표로 옮겨 frame 축과 0.5° 안이면 그 축에 맞춘다(벽 방향은 frame 각도가 정한다). 꼭짓점은 두 선의 교점이며,
 두 선이 15° 미만으로 만나면 거부한다(교점 오차 ≈ 선 오차 / sin 교차각). 중간 좌표는 반올림하지 않고 출력만
 소수 셋째 자리로 반올림한다(-0.0 정리).
+
+역할 선·점은 관측 대신 요소 values로 줄 수 있다(record.py set-value, 사진처럼 왜곡이 커 치수 문자가 더 정확할 때):
+{value: {u: 좌표}} = 세로선 u=좌표, {v: 좌표} = 가로선, {u, v} = 점. 출처는 원본표기(text)·추정(reason)만 받고, 추정은
+assumptions로 보고한다. 같은 역할을 관측과 값 둘 다에 주면 거부한다. 외곽 상자(level p, fixture box)는 측정만.
 
 요소 지원표(C1, 형상). 해석 값은 record.py interpret로 확정한다(문자열 "true"·"false"도 받음).
   type              refs(관측)                     links   해석                         출력·레이어
@@ -77,6 +81,7 @@ WALL_TYPES = ("wall", "column")
 OPENING_TYPES = ("window", "door", "opening")
 LINE_TYPES = ("finish", "line", "polyline", "polygon")
 RESERVED_REGIONS = ("grid", "sheet")
+GIVEN_SOURCES = ("원본표기", "추정")      # 관측 대신 값으로 줄 수 있는 역할의 출처(치수 문자·추정)
 
 
 # ---------- 요소 ----------
@@ -120,10 +125,34 @@ class _Generator:
             self.pending.append(note)
         return it["value"]
 
+    def has(self, el, role):
+        return role in el.get("refs", {}) or role in el.get("values", {})
+
+    def given(self, eid, el, role, keys):
+        """관측 대신 values로 준 역할: {value: {u|v: 좌표}, source: 원본표기|추정}. keys는 받는 좌표 이름 묶음"""
+        v = el.get("values", {}).get(role)
+        if v is None:
+            return None
+        if role in el.get("refs", {}):
+            raise _Refused(f"{role}가 관측과 값 둘 다에 있음(하나만)")
+        if v.get("source") not in GIVEN_SOURCES:
+            raise _Refused(f"{role} 값의 출처는 {'·'.join(GIVEN_SOURCES)}만(받은 것 {v.get('source')})")
+        value = v.get("value")
+        if not isinstance(value, dict) or set(value) not in keys:
+            raise _Refused(f"{role} 값은 {' 또는 '.join('{' + ','.join(sorted(k)) + '}' for k in keys)}(받은 것 {value})")
+        if v["source"] == "추정":
+            self.assume(f"{eid}.{role}: 추정 값 {value}({v.get('reason')})")
+        return {k: float(c) for k, c in value.items()}
+
     def ref(self, eid, el, role, frame):
         name = el.get("refs", {}).get(role)
         if name is None:
-            raise _Refused(f"관측 참조 {role} 없음")
+            value = self.given(eid, el, role, ({"u"}, {"v"}))
+            if value is None:
+                raise _Refused(f"관측 참조 {role} 없음")
+            return _Line("v", value["u"]) if "u" in value else _Line("u", value["v"])
+        if role in el.get("values", {}):
+            raise _Refused(f"{role}가 관측과 값 둘 다에 있음(하나만)")
         if name not in self.data["observations"]:
             raise _Refused(f"없는 관측 {name}({role})")
         obs = self.data["observations"][name]
@@ -135,10 +164,15 @@ class _Generator:
         """점 관측(blob) → (frame 지역 좌표의 상자 중심, 외곽 상자 또는 None). 상자는 같은 frame에서 잰 것만"""
         name = el.get("refs", {}).get(role)
         if name is None:
-            raise _Refused(f"관측 참조 {role} 없음")
-        if name not in self.data["observations"]:
+            if box and role in el.get("values", {}):
+                raise _Refused(f"{role}(외곽 상자)는 측정(blob)으로만")
+            value = self.given(eid, el, role, ({"u", "v"},))
+            if value is None:
+                raise _Refused(f"관측 참조 {role} 없음")
+            return (value["u"], value["v"]), None
+        obs = self.data["observations"].get(name)
+        if obs is None:
             raise _Refused(f"없는 관측 {name}({role})")
-        obs = self.data["observations"][name]
         if obs.get("kind", "line") != "point":
             raise _Refused(f"{role}는 점 관측(blob)이어야 함({name}은 선 관측)")
         if [float(v) for v in obs["frame"]] == [frame.x, frame.y, frame.deg]:
@@ -226,7 +260,7 @@ class _Generator:
         kind = el["type"]
         items = []
         if kind == "window":
-            glass = self.ref(eid, el, "glass", frame) if "glass" in el.get("refs", {}) else \
+            glass = self.ref(eid, el, "glass", frame) if self.has(el, "glass") else \
                 _Line(f1.axis, (f1.coord + f2.coord) / 2)
             for role, line in (("f1", f1), ("f2", f2), ("glass", glass)):
                 items.append(_seg(f"{eid}.{role}", "WIN", _cross(line, s), _cross(line, e)))
@@ -247,7 +281,7 @@ class _Generator:
             item = _seg(eid, layer, _cross(l, s), _cross(l, e))
         else:
             pts, i = [], 1
-            while f"v{i}a" in el.get("refs", {}):
+            while self.has(el, f"v{i}a"):
                 pts.append(_cross(self.ref(eid, el, f"v{i}a", frame), self.ref(eid, el, f"v{i}b", frame)))
                 i += 1
             closed = kind == "polygon"

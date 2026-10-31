@@ -717,3 +717,64 @@ def test_output_signature_is_the_same_on_every_platform():
     ops = _build(_plan())["ops"]
     signature = hashlib.sha256(json.dumps(ops, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     assert signature == "35f1be0df83bc693526429eab2f2bf064001ae206169e9f77a85230b3813e75f"
+
+
+# ---------- 원본 치수 값(values)으로 준 역할 선 ----------
+
+def _given(axis, coord, text="원본 치수", source="원본표기"):
+    v = {"value": {axis: coord}, "source": source}
+    if source == "원본표기":
+        v["text"] = text
+    else:
+        v["reason"] = text
+    return v
+
+
+def test_a_wall_can_take_its_lines_from_original_dimensions():
+    data = _measure()
+    data["elements"]["EA"] = {"type": "wall", "refs": {}, "values": {
+        "f1": _given("v", -100.0, "축 Y1 −100(외벽 200)"), "f2": _given("v", 100.0),
+        "s": _given("u", -100.0), "e": _given("u", 24900.0)}}
+    _confirm(data, "EA", material="RC")
+    r = _build(data)
+    assert r["status"] == "ready", r["problems"]
+    wall = next(it for it in r["ops"][0]["items"] if it["kind"] == "wall")
+    assert sorted(map(tuple, wall["parts"][0])) == [(-100.0, -100.0), (-100.0, 100.0), (24900.0, -100.0),
+                                                   (24900.0, 100.0)]
+
+
+def test_measured_and_given_lines_mix_and_estimates_are_reported():
+    data = _measure()
+    data["observations"]["EA-f1"] = _obs("u", 0.0)
+    data["elements"]["EA"] = {"type": "wall", "refs": {"f1": "EA-f1"}, "values": {
+        "f2": _given("v", 200.0), "s": _given("u", 0.0), "e": _given("u", 5000.0, "치수 없음, 눈대중", "추정")}}
+    _confirm(data, "EA", material="RC")
+    _opening(data, "W1", "window", "EA", (1000.0, 2000.0))
+    r = _build(data)
+    assert r["status"] == "ready", r["problems"]
+    assert any("EA.e" in a and "추정" in a for a in r["assumptions"])
+
+
+def test_a_given_line_needs_one_axis_an_allowed_source_and_no_measured_twin():
+    data = _measure()
+    data["observations"]["EA-f1"] = _obs("u", 0.0)
+    data["elements"]["EA"] = {"type": "wall", "refs": {"f1": "EA-f1"}, "values": {
+        "f1": _given("v", 0.0), "f2": {"value": {"u": 1.0, "v": 2.0}, "source": "원본표기", "text": "x"},
+        "s": _given("u", 0.0), "e": {"value": {"u": 5000.0}, "source": "표준", "key": "x"}}}
+    _confirm(data, "EA", material="RC")
+    r = _build(data)
+    assert r["status"] == "error"
+    text = " ".join(r["problems"])
+    assert "f1" in text and ("관측과 값" in text or "둘 다" in text)
+
+
+def test_text_position_can_come_from_original_dimensions():
+    data = _measure()
+    data["elements"]["T1"] = {"type": "text", "refs": {}, "values": {
+        "p": {"value": {"u": 2500.0, "v": 3000.0}, "source": "원본표기", "text": "실 중심(축 간격 5,000·6,000의 반)"},
+        "content": {"value": "거실", "source": "원본표기", "text": "거실"}}}
+    _confirm(data, "T1", role="실명")
+    r = _build(data)
+    assert r["status"] == "ready", r["problems"]
+    [t] = [it for o in r["ops"] for it in o["items"] if it.get("kind") == "text"]
+    assert t["at"] == [2500.0, 3000.0]

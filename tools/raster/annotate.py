@@ -90,10 +90,9 @@ def _add(p, d, k=1.0):
 
 def anchor(g, eid, el, frame):
     """문자 기준점: 점 관측 p의 상자 중심, 또는 선 l·r·b·t로 둘러싼 칸의 중심"""
-    refs = el.get("refs", {})
-    if "p" in refs:
+    if g.has(el, "p"):
         return g.point(eid, el, "p", frame)[0]
-    if all(r in refs for r in "lrbt"):
+    if all(g.has(el, r) for r in "lrbt"):
         l, r, b, t = (g.ref(eid, el, x, frame) for x in "lrbt")
         pts = [_cross(l, b), _cross(r, b), _cross(r, t), _cross(l, t)]
         return sum(x for x, _ in pts) / 4, sum(y for _, y in pts) / 4
