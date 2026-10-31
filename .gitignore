@@ -30,3 +30,7 @@ _integration_test.py
 
 # 테스트 캐시
 .pytest_cache/
+
+# 로컬 검토 화면의 설치·빌드 결과
+ui/web/node_modules/
+ui/web/dist/
