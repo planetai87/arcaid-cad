@@ -14,7 +14,7 @@
 """
 import math
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
 ANGLE_TOL = 1e-6
 SNAP_TOL = 1e-3
@@ -34,6 +34,7 @@ class Fragment:
     opening: bool
     path: str
     pattern_angle: float = 0.0
+    source: Optional[dict] = None  # 호출자의 원본 참조를 그대로 전달하며 합치기에는 쓰지 않는다.
 
 
 @dataclass
