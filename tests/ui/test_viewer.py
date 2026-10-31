@@ -54,6 +54,9 @@ def test_spec_expansion_sources_and_colors(sample):
     assert len(data["layers"]["WAL"]["color_rgb"]) == 3
     assert data["grid"]["X"]["X2"] == 3300
     assert not data["violations"]
+    # 1/100: DIMSCALE = 100 × 0.5 = 50 → DIM330 문자 3.3 × 50 = 165 mm, 간격 1.0 × 50 = 50 mm
+    assert data["dimstyles"]["DIM330"] == {"text_height": 165.0, "gap": 50.0}
+    assert {p["name"] for p in data["prims"] if p["kind"] == "dim"} <= set(data["dimstyles"])
 
 
 @pytest.mark.parametrize("content", ['{"items": []}', '{', '{"schema_version":1,"standard":"missing@1","op":"x","items":[]}'])

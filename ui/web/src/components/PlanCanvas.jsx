@@ -68,16 +68,16 @@ export default function PlanCanvas({prims,base,grids,layers,hidden,selected,onSe
       <Layer listening={false}>{grids.flatMap(({grid,path},index)=>[
         ...Object.entries(grid?.X||{}).flatMap(([name,x])=>[
           <Line key={path+'x'+name} points={[x,-bounds.minY,x,-bounds.maxY]} stroke="#567080" opacity={0.4} strokeWidth={0.7/view.scale} dash={[5/view.scale,6/view.scale]}/>,
-          <Text key={path+'xt'+name} x={x} y={-bounds.maxY-20/view.scale-index*16/view.scale} text={name} fontSize={11/view.scale} fill="#a8bfce"/>]),
+          <Text key={path+'xt'+name} x={x} y={-bounds.maxY-20/view.scale-index*20/view.scale} text={name} fontSize={15/view.scale} fill="#a8bfce"/>]),
         ...Object.entries(grid?.Y||{}).flatMap(([name,y])=>[
           <Line key={path+'y'+name} points={[bounds.minX,-y,bounds.maxX,-y]} stroke="#567080" opacity={0.4} strokeWidth={0.7/view.scale} dash={[5/view.scale,6/view.scale]}/>,
-          <Text key={path+'yt'+name} x={bounds.minX-32/view.scale-index*20/view.scale} y={-y} text={name} fontSize={11/view.scale} fill="#a8bfce"/>])])}</Layer>
+          <Text key={path+'yt'+name} x={bounds.minX-40/view.scale-index*26/view.scale} y={-y} text={name} fontSize={15/view.scale} fill="#a8bfce"/>])])}</Layer>
       <Layer>{visible.map(p=>{
         const same=source && p._file===selected?._file && p.sources?.[0]?.item===source;
         const active=p._key===selected?._key||p._key===hover?._key;
         const recent=changed.has(p._key);
-        return <Primitive key={p._key} p={p} scale={view.scale} color={active?'#ffffff':recent?'#ffcb75':layerColor(layers[p.layer]?.color_rgb)}
-          emphasis={active||recent||same} opacity={same&&!active?0.6:1} onHover={setHover} onSelect={onSelect}/>;
+        return <Primitive key={p._key} p={p} scale={view.scale} color={active?'#ffffff':recent?'#ffcb75':same?'#ffd84d':layerColor(layers[p.layer]?.color_rgb)}
+          emphasis={active||recent||same} opacity={1} onHover={setHover} onSelect={onSelect}/>;
       })}</Layer>
       <Layer listening={false}>{selected?.handle && <Primitive p={selected} color="#ffffff" scale={view.scale} emphasis/>}</Layer>
     </Stage>

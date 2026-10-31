@@ -43,9 +43,15 @@ def read_spec(path):
             raise SpecError(violations)
         k = spec.scale if spec.scale is not None else std.profile.scale.default_k
         prims = expand(spec, std, k, warnings=result["warnings"])
+        # 치수 문자는 CAD와 같은 실제 높이로 그린다: dimtxt × DIMSCALE(write.py와 같은 k 환산)
+        dimscale = k * std.profile.scale.dimscale_per_k
+        dimstyles = {d.name: {"text_height": float(d.vars.get("dimtxt", 2.5)) * dimscale,
+                              "gap": float(d.vars.get("dimgap", 1.0)) * dimscale}
+                     for d in std.dimensions.styles}
         result.update(prims=[p.model_dump(mode="json") for p in prims], grid=spec.grid.model_dump(),
                       layers={layer.name: {"color_rgb": list(aci2rgb(abs(layer.color))),
-                                           "linetype": layer.linetype} for layer in std.layers})
+                                           "linetype": layer.linetype} for layer in std.layers},
+                      dimstyles=dimstyles)
         if spec.scale is None:
             result["warnings"].append(f"축척이 없어 A3 1/{k}로 가정했습니다")
     except SpecError as error:

@@ -25,7 +25,7 @@ function label(ctx,p,text,height=p.height||120,at=p.at,rotation=p.rotation||0,al
   ctx.textBaseline=align[0]==='T'?'top':align[0]==='M'?'middle':align[0]==='B'?'bottom':'alphabetic';
   ctx.fillText(text,0,0);ctx.restore();
 }
-export function paint(ctx,original,color,width,hit=false) {
+export function paint(ctx,original,color,width,hit=false,minText=width*11) {
   const p=prepared(original);
   ctx.save();ctx.strokeStyle=color;ctx.fillStyle=color;ctx.lineWidth=width;ctx.lineJoin='round';
   ctx.beginPath();
@@ -38,28 +38,40 @@ export function paint(ctx,original,color,width,hit=false) {
   }
   if(p.kind==='text') {
     if(hit) {
-      const h=p.height||120;ctx.font=h+'px "Malgun Gothic", sans-serif';
+      const h=Math.max(p.height||120,minText);ctx.font=h+'px "Malgun Gothic", sans-serif';
       const w=ctx.measureText(p.text||'').width,align=p.align||'L',horizontal=align.at(-1);
       const left=horizontal==='C'?-w/2:horizontal==='R'?-w:0;
       const top=align[0]==='T'?0:align[0]==='M'?-h/2:-h;
       ctx.save();ctx.translate(p.at[0],-p.at[1]);ctx.rotate(-(p.rotation||0)*Math.PI/180);
       ctx.rect(left,top,w,h);ctx.restore();
     }
-    else label(ctx,p,p.text||'');
+    // 문자도 치수처럼 축소해도 읽히는 최소 크기를 둔다.
+    else label(ctx,p,p.text||'',Math.max(p.height||120,minText));
   }
   if(p.kind==='block') {
     const [x,y]=p.at,r=width*5;
     ctx.moveTo(x-r,-y);ctx.lineTo(x+r,-y);ctx.moveTo(x,-y-r);ctx.lineTo(x,-y+r);
     ctx.arc(x,-y,r,0,Math.PI*2);
-    if(!hit) label(ctx,p,p.name||'블록',Math.max(90,width*9),[x+r,y+r]);
+    // 블록 형상은 Prim에 없으므로 속성 값(예: 축 버블 X1)을, 없으면 블록 이름을 표시한다.
+    const values=Object.values(p.attribs||{}).filter(Boolean);
+    if(!hit) label(ctx,p,values.length?values.join(' '):(p.name||'블록'),minText,[x+r,y+r]);
   }
   if(p.dimension) {
     const {a,b,value}=p.dimension;
     path(ctx,[p.points[0],a]);path(ctx,[p.points[1],b]);path(ctx,[a,b]);
     const r=width*4;
     for(const end of [a,b]) path(ctx,[[end[0]-r,end[1]-r],[end[0]+r,end[1]+r]]);
-    if(!hit) label(ctx,p,value.toLocaleString('ko-KR',{maximumFractionDigits:2}),p.height||120,
-      [(a[0]+b[0])/2,(a[1]+b[1])/2+50],p.angle||0,'BC');
+    if(!hit) {
+      // 실제 높이로 그리되, 축소해도 화면에서 약 13px 아래로 작아지지 않게 한다(검토용 가독성).
+      const height=Math.max(p.height||120,minText);
+      // 문자는 치수선 위쪽(dimtad=1)에 dimgap만큼 띄운다. 치수선 방향에 수직으로 민다.
+      let angle=(p.angle||0)%180;
+      if(angle>90) angle-=180;
+      const normal=[-Math.sin(angle*Math.PI/180),Math.cos(angle*Math.PI/180)];
+      const offset=(p.gap||50)*Math.max(1,height/(p.height||height));
+      label(ctx,p,value.toLocaleString('ko-KR',{maximumFractionDigits:2}),height,
+        [(a[0]+b[0])/2+normal[0]*offset,(a[1]+b[1])/2+normal[1]*offset],angle,'BC');
+    }
   }
   if(!hit) ctx.stroke();
   ctx.restore();
@@ -68,8 +80,8 @@ export default memo(function Primitive({p,color,scale,onHover,onSelect,emphasis=
   return <Shape stroke={color} fill={p.kind==='hatch'||p.kind==='text'?color:undefined}
     opacity={opacity} strokeWidth={(emphasis?2.7:1.2)/scale} hitStrokeWidth={10/scale}
     perfectDrawEnabled={false}
-    sceneFunc={context=>paint(context._context,p,color,(emphasis?2.7:1.2)/scale)}
-    hitFunc={(context,shape)=>{paint(context._context,p,color,10/scale,true);context.fillStrokeShape(shape);}}
+    sceneFunc={context=>paint(context._context,p,color,(emphasis?2.7:1.2)/scale,false,13/scale)}
+    hitFunc={(context,shape)=>{paint(context._context,p,color,10/scale,true,13/scale);context.fillStrokeShape(shape);}}
     onMouseEnter={()=>onHover?.(p)} onMouseLeave={()=>onHover?.(null)}
     onClick={event=>{event.cancelBubble=true;onSelect?.(p);}} onTap={event=>{event.cancelBubble=true;onSelect?.(p);}}/>;
 });

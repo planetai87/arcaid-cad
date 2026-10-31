@@ -22,7 +22,13 @@ export default function App() {
       const data=await getJSON(api('spec',path));
       if(!alive.current||versions.current[path]!==version) return;
       const old=recordsRef.current[path];
-      data.prims=(data.prims||[]).map(p=>({...p,_file:path,_key:path+':'+p.oid,_bounds:boundsOf([p])}));
+      // 치수는 표준 치수 스타일의 실제 문자 높이·간격(mm)을 붙여 그린다.
+      const dimstyles=data.dimstyles||{};
+      data.prims=(data.prims||[]).map(p=>{
+        const style=p.kind==='dim'?dimstyles[p.name]:null;
+        const q=style?{...p,height:style.text_height,gap:style.gap}:p;
+        return {...q,_file:path,_key:path+':'+p.oid,_bounds:boundsOf([q])};
+      });
       if(highlight&&old) {
         const previous=new Map(old.prims.map(p=>[p.oid,geometrySignature(p)]));
         for(const p of data.prims) if(previous.get(p.oid)!==geometrySignature(p)) changedRef.current.set(p._key,Date.now()+3000);
@@ -50,9 +56,12 @@ export default function App() {
     try {
       const data=await getJSON('/api/workspace');if(!alive.current)return;
       const next=new Set(data.specs.map(row=>row.path));
+      // 새 명세 목록은 지금 계산한다. 상태 갱신 함수는 나중에 실행되므로 그 안에서 known.current를 읽으면
+      // 아래에서 바뀐 값을 보게 되어 새 명세가 꺼진 채로 남는다.
+      const added=[...next].filter(path=>!known.current.has(path));
       setEnabled(previous=>{const updated=new Set([...previous].filter(p=>next.has(p)));
-        for(const path of next) if(!known.current.has(path))updated.add(path);return updated;});
-      for(const path of next) if(!known.current.has(path))void loadSpec(path);
+        for(const path of added)updated.add(path);return updated;});
+      for(const path of added)void loadSpec(path);
       known.current=next;setWorkspace(data);setError('');
       if(!baseInitialized.current) {
         baseInitialized.current=true;
