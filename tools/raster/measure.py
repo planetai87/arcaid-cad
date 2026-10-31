@@ -21,7 +21,7 @@
 보정(calib)은 대응점 3개 이상을 최소제곱으로 맞추고, 아핀으로 다시 맞춰 x·y 축척 차(비균등 확대)를 확인한다.
 보정에 쓰지 않은 검증점(--check)의 오차와 잔차 중 큰 값을 보정 오차(err_mm)로 둔다.
 사진(휨·원근)은 --vline·--hline으로 X 또는 Y 하나만 아는 선(축선·치수 연장선·외곽면)을 주면, 닮음 위에 px → WCS 다항식
-보정량(--warp 2|3)을 맞춘다. 선 구간은 대략이면 되고, 도구가 60 px 조각마다 직선을 맞춰 휜 선을 따라 표본을 뽑는다.
+보정량(--warp 2|3)을 맞춘다. 좌표를 모르는 곧은 선(치수선 줄 등)은 =?로 주면 선마다 미지 상수로 함께 푼다. 선 구간은 대략이면 되고, 도구가 60 px 조각마다 직선을 맞춰 휜 선을 따라 표본을 뽑는다.
 선이 덮지 않는 바깥은 외삽이라 믿지 않는다(검증점으로 확인).
 profile의 tilted는 띠 안에서 줄마다 잰 중심의 기울기가 10°를 넘거나, 그 기울기로 띠 안 위치가 1 px 넘게 바뀔 때 붙는다.
 경고가 없다고 frame이 맞다는 뜻은 아니다(좁은 띠·저해상도에서는 몇 도 어긋남이 드러나지 않음). frame 방향은
@@ -253,16 +253,27 @@ def _warp_fit(calib, pairs, vlines, hlines, degree):
         return np.column_stack([un ** i * vn ** j for i, j in terms]), Q
     out = {}
     for axis, k, lines in (("x", 0, vlines), ("y", 1, hlines)):
+        lines = [(pts_, c) for pts_, c in lines if pts_]
+        unknown = [i for i, (_, c) in enumerate(lines) if c is None]      # 좌표를 모르는 선(치수선 줄 등): 미지 상수
         pts = [p for p, _ in pairs] + [p for pts_, _ in lines for p in pts_]
-        target = [w[k] for _, w in pairs] + [c for pts_, c in lines for _ in pts_]
-        if len(pts) < 2 * len(terms):
+        target = [w[k] for _, w in pairs] + [0.0 if c is None else c for pts_, c in lines for _ in pts_]
+        if len(pts) < 2 * (len(terms) + len(unknown)):
             word = "세로 선(--vline)" if axis == "x" else "가로 선(--hline)"
-            return None, f"{word} 표본 {len(pts)}개: 차수 {degree}에는 {2 * len(terms)}개 이상 필요"
-        distinct = len({round(c, 3) for c in target})
+            return None, f"{word} 표본 {len(pts)}개: 차수 {degree}에는 {2 * (len(terms) + len(unknown))}개 이상 필요"
+        known = {round(w[k], 3) for _, w in pairs} | {round(c, 3) for _, c in lines if c is not None}
+        distinct = len(known) + len(unknown)
         if distinct < degree + 1:
             word = "세로 선(--vline)·점의 서로 다른 X" if axis == "x" else "가로 선(--hline)·점의 서로 다른 Y"
             return None, f"{word}가 {distinct}개: 차수 {degree}에는 {degree + 1}개 이상 필요"
         A, Q = rows(pts)
+        if unknown:
+            extra = np.zeros((len(pts), len(unknown)))
+            row = len(pairs)
+            for i, (pts_, c) in enumerate(lines):
+                if c is None:
+                    extra[row:row + len(pts_), unknown.index(i)] = -1.0
+                row += len(pts_)
+            A = np.column_stack([A, extra])
         sv = np.linalg.svd(A, compute_uv=False)
         if sv[-1] <= 0 or sv[0] / sv[-1] > WARP_MAX_COND:
             word = "세로 선(--vline)·점" if axis == "x" else "가로 선(--hline)·점"
@@ -271,8 +282,11 @@ def _warp_fit(calib, pairs, vlines, hlines, degree):
                           f"이상, 그림 전체에 고르게")
         sim = calib._sim_wcs(Q[:, 0], Q[:, 1])[k]
         rhs = np.array(target) - sim
-        coef = np.linalg.lstsq(A, rhs, rcond=None)[0]
-        out[axis] = (coef, float(np.sqrt(np.mean((A @ coef - rhs) ** 2))))
+        sol = np.linalg.lstsq(A, rhs, rcond=None)[0]
+        coef = sol[:len(terms)]
+        out[axis] = (coef, float(np.sqrt(np.mean((A @ sol - rhs) ** 2))))
+        if unknown:
+            warp[f"unknown_{axis}"] = [_r(c) for c in sol[len(terms):]]
         warp[f"bbox_{axis}"] = [float(Q[:, 0].min()), float(Q[:, 1].min()), float(Q[:, 0].max()), float(Q[:, 1].max())]
     warp["qx"], warp["qy"] = [float(c) for c in out["x"][0]], [float(c) for c in out["y"][0]]
     return warp, {"rms_x_mm": _r(out["x"][1]), "rms_y_mm": _r(out["y"][1]),
@@ -787,13 +801,13 @@ def _pair(text):
 
 
 def _seg(text):
-    """U1,V1,U2,V2=C: px 구간과 그 선의 WCS 좌표 하나(세로선이면 X, 가로선이면 Y)"""
+    """U1,V1,U2,V2=C: px 구간과 그 선의 WCS 좌표 하나(세로선이면 X, 가로선이면 Y). C가 ?이면 모르는 좌표(곧은 선이라는 것만)"""
     try:
         left, right = text.split("=")
         seg = tuple(float(c) for c in left.split(","))
         if len(seg) != 4:
             raise ValueError
-        return seg, float(right)
+        return seg, None if right.strip() == "?" else float(right)
     except ValueError as e:
         raise argparse.ArgumentTypeError(f"U1,V1,U2,V2=C 형식이 아님: {text}") from e
 
@@ -945,7 +959,7 @@ def _parser():
     c.add_argument("--vline", type=_seg, action="append", default=[],
                    help="U1,V1,U2,V2=X: X가 일정한(세로) 선의 대략 px 구간(사진 보정)")
     c.add_argument("--hline", type=_seg, action="append", default=[],
-                   help="U1,V1,U2,V2=Y: Y가 일정한(가로) 선의 대략 px 구간(사진 보정)")
+                   help="U1,V1,U2,V2=Y: Y가 일정한(가로) 선의 대략 px 구간(사진 보정). Y를 모르면 =?(치수선 줄 등)")
     c.add_argument("--warp", type=int, choices=(2, 3), help="사진 보정 다항식 차수(선을 주면 기본 2)")
     c.add_argument("--band", type=float, default=12.0, help="선 표본 맞춤 띠 폭 px")
     c.add_argument("--piece-rms", type=float, default=LINE_PIECE_RMS_PX,
