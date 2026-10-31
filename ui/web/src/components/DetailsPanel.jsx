@@ -1,5 +1,9 @@
 import React from 'react';
+import EditFields from './EditFields.jsx';
 export default function DetailsPanel({
+  record,
+  onEdit,
+  busy,
   selected,
   item,
   instances,
@@ -46,7 +50,7 @@ export default function DetailsPanel({
             {item && (
               <>
                 <div className="instance-count">
-                  이 항목의 인스턴스 {instances}개
+                  이 항목은 {instances}곳에 반영됩니다
                 </div>
                 <h3>원본 위치 · sources</h3>
                 {selected.sources.map((source, i) => (
@@ -65,7 +69,15 @@ export default function DetailsPanel({
                 ))}
               </>
             )}
-            <h3>주요 좌표 · mm</h3>
+            {item && (
+              <EditFields
+                selected={selected}
+                record={record}
+                onEdit={onEdit}
+                busy={busy}
+              />
+            )}
+            <h3>세계 좌표 · mm</h3>
             <pre>
               {JSON.stringify(
                 Object.fromEntries(
