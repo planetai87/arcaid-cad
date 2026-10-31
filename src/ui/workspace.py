@@ -2,6 +2,7 @@
 import hashlib
 import json
 from pathlib import Path, PureWindowsPath
+from threading import RLock
 
 from src.engine.spec import SpecError, parse_spec
 
@@ -11,6 +12,8 @@ class Workspace:
         self.root = Path(root).resolve(strict=True)
         if not self.root.is_dir():
             raise ValueError("작업 경로는 폴더여야 합니다")
+        self._hashes = {}
+        self._hash_lock = RLock()
         self.base = Path(base).resolve(strict=True) if base else None
         if self.base and self.base.suffix.lower() != ".dxf":
             raise ValueError("기준 도면은 DXF여야 합니다")
@@ -33,13 +36,21 @@ class Workspace:
             raise FileNotFoundError("선택한 파일이 없습니다")
         return path
 
-    @staticmethod
-    def fingerprint(path):
-        content = path.read_bytes()
-        return {"mtime_ns": path.stat().st_mtime_ns,
-                "sha256": hashlib.sha256(content).hexdigest()}
+    def fingerprint(self, path):
+        # SSE 연결과 목록 조회가 겹쳐도 완성된 캐시만 반환한다.
+        with self._hash_lock:
+            stat = path.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+            previous = self._hashes.get(path)
+            if previous and previous[0] == signature:
+                return dict(previous[1])
+            content = path.read_bytes()
+            result = {'mtime_ns': stat.st_mtime_ns, 'size': stat.st_size,
+                      'sha256': hashlib.sha256(content).hexdigest()}
+            self._hashes[path] = (signature, result)
+            return dict(result)
 
-    def files(self):
+    def files(self, ordered=True):
         folders = [self.root] + sorted(p for p in self.root.iterdir()
                                       if p.is_dir() and p.resolve().is_relative_to(self.root))
         found = []
@@ -49,7 +60,7 @@ class Workspace:
                      and p.resolve().is_relative_to(self.root)]
             order = {}
             try:
-                entries = json.loads((folder / "hashes.json").read_text(encoding="utf-8-sig"))
+                entries = json.loads((folder / "hashes.json").read_text(encoding="utf-8-sig")) if ordered else []
                 if isinstance(entries, list):
                     order = {row["op"] + ".json": i for i, row in enumerate(entries)
                              if isinstance(row, dict) and isinstance(row.get("op"), str)}
@@ -60,7 +71,7 @@ class Workspace:
 
     def snapshot(self):
         result = {}
-        for path in self.files():
+        for path in self.files(ordered=False):
             try:
                 result[path.relative_to(self.root).as_posix()] = self.fingerprint(path)
             except OSError:
@@ -75,7 +86,8 @@ class Workspace:
     def discover(self):
         specs, bases = [], []
         for path in self.files():
-            if path.name in ("hashes.json", "bind.json"):
+            if (path.name in ("hashes.json", "bind.json")
+                    or path.relative_to(self.root).as_posix().lower() == "review/notes.json"):
                 continue
             try:
                 row = {"path": path.relative_to(self.root).as_posix(), **self.fingerprint(path)}
