@@ -33,6 +33,7 @@ $rec = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 & $py $m blob IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1      (문자·기호의 외곽 상자와 중심)
 # 기록: 위 profile·fitline에 붙인다
 #   profile ... --record REGION.yaml "--names=EA-f1,_,EA-f2"     (구간마다 이름 하나, 건너뛰기 _)
+#   profile ... --record REGION.yaml "--names=EA-f1/EA-f2"       (빗금 벽: 넓은 띠 하나의 시작·끝 가장자리 = 두 면선)
 #   fitline ... --record REGION.yaml --name EW-f1
 #   blob ... --record REGION.yaml --name T1-p
 & $py $rec add-element REGION.yaml --id EA --type wall --ref f1=EA-f1 --ref f2=EA-f2 [--link host=EW1] [--candidate meaning=창,커튼월] [--note "설명"] [--replace]
@@ -46,6 +47,7 @@ $rec = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 - profile의 `--axis`는 단면선이 나아가는 방향이다. 벽이 u 방향으로 뻗으면 `--axis v`로 가로지른다.
 - profile 결과의 `runs`: 구간마다 `center`(mm), `width_px`(선 굵기 관측), `flags`, `status`. 이름은 이 순서대로 붙인다.
 - `blob`은 창 안 잉크 전체의 외곽 상자(bbox_local)와 그 중심(point_local)을 낸다. 창에는 대상 하나만 온전히 담는다. 다른 선이 걸치거나 대상이 창 가장자리에 닿으면 truncated로 기록이 거부되므로 창을 옮기거나 넓힌다. 외곽 상자를 쓰는 역할(레벨 기호 p, 위생기구 box)은 요소와 같은 frame으로 잰다.
+- 빗금으로 채운 벽은 두 면선이 넓은 구간 하나(width_px가 큼, double·inconsistent가 붙기 쉬움)로 잡힌다. 그 구간의 `edges.start`·`edges.end`가 두 면선(바깥에서 처음 만나는 선의 중심)이고, 판정은 가장자리의 `status`·`flags`로 한다(가운데 기준 double·inconsistent는 무시). 기록은 `--names=바깥이름/안쪽이름`.
 - `flags`: tilted(기울기가 10°를 넘거나 띠 안 위치를 1 px 넘게 바꿈 → frame이 틀렸거나 기울어진 선. 경고가 없다고 frame이 맞다는 뜻은 아니다), inconsistent(띠 안에서 위치가 흩어짐 → 문자·해치 간섭, 위치를 옮김), double(붙은 선 의심), truncated(범위 끝에서 잘림 → 범위를 넓힘), budget(오차 예산 초과). 판독 불가 구간은 기록이 거부된다.
 - 그림(PNG)은 받은 폴더에만 쓰고 Read로 본다.
 

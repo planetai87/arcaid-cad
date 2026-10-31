@@ -134,6 +134,7 @@ class LineObservation(_Model):
     flags: List[str] = []
     command: List[str]
     pick: Optional[int] = None
+    edge: Optional[Literal["start", "end"]] = None     # 넓은 띠(빗금 벽)의 시작·끝 가장자리로 잰 면선
     image_sha256: str
     calib_sha256: str
 
@@ -577,7 +578,7 @@ def _same(a, b):
 
 REVERIFY_FIELDS = {
     "line": ("axis", "coord", "angle_local_deg", "angle_wcs_deg", "point_wcs", "width_px", "tol_mm", "flags",
-             "image_sha256", "calib_sha256"),
+             "edge", "image_sha256", "calib_sha256"),
     "point": ("kind", "tool", "frame", "point_local", "point_wcs", "bbox_local", "tol_mm", "flags", "image_sha256",
               "calib_sha256")}
 
@@ -617,7 +618,7 @@ def validate(path, lock_path=None, reverify=False):
         from tools.raster import measure
         for name, o in obs.items():
             try:
-                again = measure.rerun_observation(o["command"], o.get("pick"))
+                again = measure.rerun_observation(o["command"], o.get("pick"), o.get("edge"))
             except (ValueError, OSError, SystemExit) as e:
                 errors.append(f"관측 {name}: 다시 실행하지 못함({e})")
                 continue

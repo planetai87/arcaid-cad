@@ -543,6 +543,67 @@ def _edge(t, h, i_in, i_out, half):
     return t[i_in] + (t[i_out] - t[i_in]) * f
 
 
+EDGE_SEARCH_PX = 3.0           # 띠 가장자리: 반높이 경계에서 안쪽으로 이 안의 첫 봉우리 = 면선 중심
+
+
+def _band_edges(t, D, offs, bg, r, s, band, max_tol_flag):
+    """넓은 띠(빗금 벽)의 두 가장자리. 줄마다 바깥에서 들어오며 반높이(띠 봉우리의 반)를 처음 넘는 곳부터
+    EDGE_SEARCH_PX 안의 첫 봉우리를 면선 중심으로 잡고, 줄 위치에 직선을 맞춰 단면선 위 값·기울기·흩어짐을 낸다"""
+    step = t[1] - t[0] if len(t) > 1 else 1.0
+    k = max(1, int(round(EDGE_SEARCH_PX / s / step)))
+    pad = max(r["right"] - r["left"], 2 / s)
+    idx = np.where((t >= r["left"] - pad) & (t <= r["right"] + pad))[0]
+    thr = 0.5 * r["peak"]
+    sides = {"start": ([], []), "end": ([], [])}
+    for row, o in zip(D, offs):
+        seg = row[idx] - bg
+        if np.isnan(seg).any():
+            continue
+        above = np.where(seg >= thr)[0]
+        if len(above) == 0:
+            continue
+        for side, i0, sgn in (("start", above[0], 1), ("end", above[-1], -1)):
+            span = range(i0, i0 + sgn * (k + 1), sgn)
+            j = max((i for i in span if 0 <= i < len(seg)), key=lambda i: seg[i])
+            x = t[idx[j]]
+            if 0 < j < len(seg) - 1:            # 포물선 보간
+                a, b, c = seg[j - 1], seg[j], seg[j + 1]
+                den = a - 2 * b + c
+                if den < 0:
+                    x += float(np.clip(0.5 * (a - c) / den, -1.0, 1.0)) * step
+            sides[side][0].append(float(x))
+            sides[side][1].append(float(o))
+    out = {}
+    for side, (xs, os_) in sides.items():
+        flags = []
+        if not xs:
+            out[side] = {"coord": None, "flags": ["empty"], "status": "unreadable"}
+            continue
+        tilt, resid, spread, coord = 0.0, 0.0, 0.0, float(np.median(xs))
+        if len(xs) >= 3:
+            mm, c0 = np.polyfit(os_, xs, 1)
+            tilt = math.degrees(math.atan(mm))
+            resid = float(np.max(np.abs(np.array(xs) - (c0 + mm * np.array(os_)))))
+            spread = float(np.ptp(xs))
+            coord = float(c0 + mm * np.median(offs))
+            if len(xs) < 0.8 * len(offs):
+                flags.append("rows_missing")
+        if resid > CONSISTENT_PX / s:
+            flags.append("inconsistent")
+        elif abs(tilt) > TILT_GROSS_DEG or (abs(tilt) > TILT_DEG and
+                                            abs(math.tan(math.radians(tilt))) * band * s > TILT_DRIFT_PX):
+            flags.append("tilted")
+        if r["truncated"]:
+            flags.append("truncated")
+        if max_tol_flag:
+            flags.append("budget")
+        out[side] = {"coord": _r(coord), "tilt_deg": _r(tilt, 3), "spread_mm": _r(spread), "flags": flags,
+                     "status": "ok" if not flags else ("unreadable" if set(flags) & {"inconsistent", "budget",
+                                                                                     "truncated", "rows_missing"}
+                                                       else "check")}
+    return out
+
+
 def profile(dark, calib, frame, axis, at, start, end, band=0.0, step=None, min_contrast=MIN_CONTRAST,
             max_tol=None):
     """지역 좌표 단면선(axis 방향으로 start→end, 다른 축 값 at)을 따라 어두움을 재고, 선(어두운 구간)마다
@@ -641,7 +702,9 @@ def profile(dark, calib, frame, axis, at, start, end, band=0.0, step=None, min_c
             flags.append("budget")
         cu, cv = (center, at) if axis == "u" else (at, center)
         wx, wy = frame.to_wcs(cu, cv)
+        edges = _band_edges(t, D, offs, bg, r, s, band, calib.tol_mm() > max_tol)
         out_runs.append({
+            "edges": edges,
             "index": k, "start": _r(r["left"]), "end": _r(r["right"]), "center": _r(center),
             "width_mm": _r(width), "width_px": _r(width * s, 3), "peak": _r(r["peak"], 3), "peaks": r["peaks"],
             "center_local": [_r(cu), _r(cv)], "center_wcs": [_r(wx), _r(wy)],
@@ -851,7 +914,8 @@ def canonical_command(args):
 
 
 def profile_observations(result, frame, names, base):
-    """프로파일 구간을 이름별 관측으로. names는 구간마다 하나(건너뛰기 '_' 또는 '-')"""
+    """프로파일 구간을 이름별 관측으로. names는 구간마다 하나(건너뛰기 '_' 또는 '-').
+    '바깥/안쪽'처럼 둘을 주면 그 구간(빗금 벽 같은 넓은 띠)의 시작·끝 가장자리(면선)를 각각 관측으로(한쪽은 _)"""
     runs = result["runs"]
     if len(names) != len(runs):
         raise ValueError(f"--names는 구간 {len(runs)}개에 하나씩(건너뛰기는 _), 받은 것 {len(names)}개")
@@ -860,6 +924,23 @@ def profile_observations(result, frame, names, base):
     items = {}
     for k, (name, r) in enumerate(zip(names, runs)):
         if name in ("_", "-"):
+            continue
+        if "/" in name:
+            parts = name.split("/")
+            if len(parts) != 2:
+                raise ValueError(f"가장자리 이름은 '시작/끝' 둘(받은 것 {name})")
+            for side, nm in zip(("start", "end"), parts):
+                if nm in ("_", "-", ""):
+                    continue
+                e = r["edges"][side]
+                if e["status"] == "unreadable":
+                    raise ValueError(f"구간 {k}의 {side} 가장자리({nm})는 판독 불가({', '.join(e['flags'])})라 기록하지 않음")
+                cu, cv = (e["coord"], result["at"]) if line_axis == "v" else (result["at"], e["coord"])
+                wx, wy = frame.to_wcs(cu, cv)
+                items[nm] = {**base, "tool": "profile", "axis": line_axis, "coord": e["coord"],
+                             "angle_local_deg": ang_local, "angle_wcs_deg": _r(_angle180(frame.deg + ang_local), 4),
+                             "point_wcs": [_r(wx), _r(wy)], "width_px": r["width_px"], "tol_mm": result["tol_mm"],
+                             "flags": e["flags"], "pick": k, "edge": side}
             continue
         if r["status"] == "unreadable":
             raise ValueError(f"구간 {k}({name})은 판독 불가({', '.join(r['flags'])})라 기록하지 않음")
@@ -916,7 +997,7 @@ def _load(args, need_calib=True):
     return dark, sha, calib
 
 
-def rerun_observation(command, pick):
+def rerun_observation(command, pick, edge=None):
     """기록된 명령을 다시 실행해 같은 방식으로 관측을 만든다(record.py validate --reverify)"""
     args = _parser().parse_args(command)
     if args.command not in ("profile", "fitline", "blob") or getattr(args, "record", None):
@@ -930,7 +1011,7 @@ def rerun_observation(command, pick):
         names = ["_"] * len(result["runs"])
         if pick is None or not 0 <= pick < len(names):
             raise ValueError(f"재실행 결과에 구간 {pick}이 없음(구간 {len(names)}개)")
-        names[pick] = "x"
+        names[pick] = "x" if not edge else ("x/_" if edge == "start" else "_/x")
         return profile_observations(result, frame, names, base)["x"]
     if args.command == "blob":
         return blob_observation(result, "x", base)["x"]
