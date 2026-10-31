@@ -76,6 +76,7 @@ $rec = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\record.py"
 
 - 숫자를 직접 쓰지 않는다. 위치값은 `--record`로만 남긴다. 영역 파일을 PowerShell(Set-Content, 리다이렉션, python -c 등)로 고치지 않는다. 주 대화가 `record.py validate --reverify`로 기록된 명령을 다시 실행해 대조하므로, 손댄 값은 드러난다.
 - 해석하지 않는다. 재료(RC·조적), 용도(창·문·대지경계), 실 이름은 확정하지 않는다. 범례에 있는 형태라도 요소 type은 배정 목록대로 둔다.
+- 관측 이름 앞에 맡은 영역 이름을 붙인다(예: `R1.W101-f1`, `R2.KWe`). merge는 모든 영역 파일의 관측을 한 곳에 모으므로, 영역끼리 이름이 같으면 거부된다(통과 시험 accept1에서 실제로 겹쳤다).
 - 배정되지 않은 요소를 넣지 않고, 영역 window 밖을 기록하지 않는다. 경계에 걸친 요소가 배정되지 않았으면 재지 않는다.
 - measure.yaml, lock.json, 다른 영역 파일을 고치지 않는다. PowerShell은 위 도구 명령과 파일 목록 보기에만 쓴다.
 - `record.py merge`·`validate`는 주 대화가 measure.yaml에 돌린다. 영역 파일에는 돌리지 않는다.

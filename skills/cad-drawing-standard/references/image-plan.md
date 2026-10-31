@@ -47,6 +47,7 @@ CAD MCP도 없는 환경(claude.ai 웹 대화 등)에서는 어림 경로의 명
 5. **합치기.**
    - `python tools/raster/record.py merge measure.yaml --lock lock.json region-R1.yaml region-R2.yaml … -o merged.yaml`을 실행한다. 영역 파일은 하나씩 나열한다(와일드카드는 펼쳐지지 않음).
    - 불일치(errors)가 있으면 해당 에이전트에 SendMessage로 재측정을 요청한다. 에이전트는 새 이름으로 기록하고 `add-element --replace`, `drop-observation` 순으로 처리한다.
+   - 대칭 벽(같은 면 위치의 다른 벽)과 영역마다 다르게 고른 외벽 면은 불일치로 많이 나온다. 그림으로 확인해 같은 선이 아니면 `merge … --accept 관측A:관측B`로 그 쌍만 승인한다. 외벽 면은 주 대화가 한 번에 정해 `set-value`로 적는다.
    - 재측정이 끝나면 **잠근 measure.yaml에서** 다시 merge한다.
    - **누락 대조**: 영역마다 배정한 요소 id와 merged.yaml의 요소 id를 대조한다. merge는 배정 밖 요소만 잡고, 빠진 요소는 잡지 않는다. 빠진 요소는 재측정을 맡기거나, 사용자에게 범위에서 뺄지 확인한다.
    - `python tools/raster/record.py validate merged.yaml --lock lock.json --reverify`로 기록된 명령을 다시 실행해, 손으로 고친 값이 없는지 확인한다.
