@@ -250,6 +250,89 @@ def test_add_element_refuses_confirmed_state_in_a_region_file(plan_project, caps
     assert _element(plan_project["files"]["A"], {"id": "EA", "type": "wall", "status": "확정"}) == 1
 
 
+def _drop(path, name):
+    return rec.main(["drop-observation", str(path), "--name", name])
+
+
+def test_replace_swaps_an_assigned_element_for_a_remeasure(plan_project, capsys):
+    a = plan_project["files"]["A"]
+    assert _profile(plan_project, "A", "s-out,-,s-in") == 0
+    assert _element(a, {"id": "EA", "type": "wall", "refs": {"f1": "s-out", "f2": "s-in"}}) == 0
+    assert _profile(plan_project, "A", "s-out2,-,s-in2", at=6000) == 0
+    capsys.readouterr()
+    assert _element(a, {"id": "EA", "type": "wall", "refs": {"f1": "s-out2", "f2": "s-in2"}}) == 1
+    assert "이미 있음" in json.loads(capsys.readouterr().out)["message"]
+    assert rec.main(["add-element", str(a), "--id", "EA", "--type", "wall", "--ref", "f1=s-out2", "--ref", "f2=s-in2",
+                     "--replace"]) == 0
+    assert _read(a)["elements"]["EA"]["refs"] == {"f1": "s-out2", "f2": "s-in2"}
+    capsys.readouterr()
+    assert rec.main(["add-element", str(plan_project["files"]["B"]), "--id", "EB", "--type", "wall",
+                     "--replace"]) == 1
+    assert "없음" in json.loads(capsys.readouterr().out)["message"]
+    assert rec.main(["add-element", str(a), "--id", "EB", "--type", "wall", "--replace"]) == 1
+    assert "맡지 않은" in json.loads(capsys.readouterr().out)["message"]
+
+
+def test_replace_keeps_the_owner_region_in_the_merged_measure(merged, capsys):
+    assert rec.main(["add-element", str(merged["merged"]), "--id", "EA", "--type", "wall", "--ref", "f1=s-out",
+                     "--ref", "f2=s-in", "--link", "next=EA2", "--replace"]) == 0
+    el = _read(merged["merged"])["elements"]["EA"]
+    assert el["region"] == "A" and el["links"] == {"next": "EA2"} and "candidates" not in el     # 요소 전체를 바꿈
+    assert rec.lock_hash(_read(merged["merged"])) == rec.lock_hash(_read(merged["measure"]))
+
+
+def test_elements_in_a_rotated_region_take_the_region_frame(tmp_path, capsys):
+    img, sc = rs.plan(beta=0.8)
+    regions = {"W": {"frame": "wing", "window": [0, -500, 9000, 5500], "elements": ["EW", "EX"]}}
+    p = _project(tmp_path, capsys, img, sc, [(0, 0), (9850, 0), (0, 5700)], (9850, 5700), regions, WING_FRAME)
+    w = p["files"]["W"]
+    assert rec.main(["add-element", str(w), "--id", "EW", "--type", "wall"]) == 0
+    assert rec.main(["add-element", str(w), "--id", "EX", "--type", "wall", "--frame", "wing"]) == 0
+    els = _read(w)["elements"]
+    assert els["EW"]["frame"] == "wing" and els["EX"]["frame"] == "wing"
+    capsys.readouterr()
+    assert rec.main(["add-element", str(w), "--id", "EW", "--type", "wall", "--frame", "nope", "--replace"]) == 1
+    assert "frame" in json.loads(capsys.readouterr().out)["message"]
+
+
+def test_drop_observation_only_when_nothing_refers_to_it(plan_project, capsys):
+    a = plan_project["files"]["A"]
+    assert _profile(plan_project, "A", "s-out,-,s-in") == 0
+    assert _element(a, {"id": "EA", "type": "wall", "refs": {"f1": "s-out", "f2": "s-in"}}) == 0
+    assert _profile(plan_project, "A", "spare,-,-", at=6000) == 0
+    capsys.readouterr()
+    assert _drop(a, "s-out") == 1
+    assert "EA" in json.loads(capsys.readouterr().out)["message"]
+    assert _drop(a, "nope") == 1
+    capsys.readouterr()
+    assert _drop(a, "spare") == 0
+    assert set(_read(a)["observations"]) == {"s-out", "s-in"}
+
+
+def test_drop_observation_refuses_one_a_header_value_measured_from(merged, capsys):
+    data = _read(merged["merged"])
+    data["grids"] = {"wcs": {"Y": {"Y0": {"value": data["observations"]["s-out"]["coord"], "source": "실측",
+                                          "ref": "s-out.coord"}}}}
+    data["elements"]["EA"]["refs"] = {"f2": "s-in"}
+    merged["merged"].write_text(yaml.safe_dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    assert _drop(merged["merged"], "s-out") == 1
+    assert "grids.wcs.Y.Y0" in json.loads(capsys.readouterr().out)["message"]
+
+
+def test_dropping_a_superseded_observation_clears_a_merge_conflict(tmp_path, capsys):
+    p = _kink_project(tmp_path, capsys, 0.8)
+    for region, at, name in (("A", 2500, "fa"), ("B", 7500, "fb")):
+        assert m.main(["profile", str(p["image"]), "--calib", str(p["calib"]), "--axis", "v", "--at", str(at),
+                       "--range", "0", "200", "--band", "300", "--record", str(p["files"][region]),
+                       "--names", name]) == 0
+    capsys.readouterr()
+    assert _merge(p)[0] == 1
+    capsys.readouterr()
+    assert _drop(p["files"]["B"], "fb") == 0
+    capsys.readouterr()
+    assert _merge(p)[0] == 0
+
+
 def test_merge_combines_regions_and_carries_questions(plan_project, capsys):
     assert _profile(plan_project, "A", "s-out,-,s-in") == 0
     assert _element(plan_project["files"]["A"], {"id": "EA", "type": "wall",

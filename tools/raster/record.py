@@ -313,7 +313,8 @@ def region_init(measure_path, lock_path, region, out):
     return {"status": "ok", "written": str(out)}
 
 
-def add_element(path, element):
+def add_element(path, element, replace=False):
+    """요소를 넣는다. replace면 이미 있는 요소를 바꾼다(재측정: 새 관측으로 refs를 바꿀 때). 영역 파일은 배정 요소만"""
     data = load(path)
     element = dict(element)
     eid = element.pop("id", None)
@@ -327,14 +328,54 @@ def add_element(path, element):
         raise RecordError("region은 merge가 채움")
     if data["kind"] == "region" and eid not in data["assigned"]:
         raise RecordError(f"맡지 않은 요소: {eid}(영역 {data['region']}의 배정: {', '.join(data['assigned']) or '없음'})")
-    if eid in data["elements"]:
-        raise RecordError(f"요소 id가 이미 있음: {eid}")
+    if eid in data["elements"] and not replace:
+        raise RecordError(f"요소 id가 이미 있음: {eid}(재측정이면 --replace)")
+    if replace and eid not in data["elements"]:
+        raise RecordError(f"바꿀 요소가 없음: {eid}")
+    if data["kind"] == "region":
+        if element.get("frame") not in (None, data["frame"]):
+            raise RecordError(f"영역 {data['region']}의 요소 frame은 영역 frame({data['frame']})이어야 함")
+        if data["frame"]:
+            element["frame"] = data["frame"]
+    elif element.get("frame") and element["frame"] not in data["frames"]:
+        raise RecordError(f"없는 frame: {element['frame']}")
+    if replace and data["elements"][eid].get("region"):
+        element["region"] = data["elements"][eid]["region"]       # merge가 붙인 소유 영역은 둔다
     missing = [o for o in element.get("refs", {}).values() if o not in data["observations"]]
     if missing:
         raise RecordError(f"이 파일에 없는 관측을 참조함: {', '.join(missing)}")
     data["elements"][eid] = element
     save(path, data)
     return {"status": "ok", "element": eid}
+
+
+def _users(data, name):
+    """관측 name을 참조하는 곳(요소 refs, 출처 있는 값의 ref·refs)"""
+    users = [f"요소 {eid}.{role}" for eid, el in data["elements"].items()
+             for role, ref in el.get("refs", {}).items() if ref == name]
+    if data["kind"] == "measure":
+        values = _values(data)
+    else:
+        values = ((f"elements.{eid}.values.{k}", v) for eid, el in data["elements"].items()
+                  for k, v in el.get("values", {}).items())
+    for where, v in values:
+        refs = ([v["ref"]] if v.get("ref") else []) + list(v.get("refs") or [])
+        if any(r.partition(".")[0] == name for r in refs):
+            users.append(where)
+    return users
+
+
+def drop_observation(path, name):
+    """어느 곳도 참조하지 않는 관측만 지운다(재측정으로 버린 관측). 값을 고치는 명령이 아니다"""
+    data = load(path)
+    if name not in data["observations"]:
+        raise RecordError(f"없는 관측: {name}")
+    users = _users(data, name)
+    if users:
+        raise RecordError(f"관측 {name}을 참조하는 곳이 있어 지우지 않음: {', '.join(users)}")
+    del data["observations"][name]
+    save(path, data)
+    return {"status": "ok", "dropped": name}
 
 
 def add_question(path, qid, text, element=None):
@@ -586,7 +627,7 @@ def _pairs(items, what):
 
 def _element_args(args):
     if args.json:
-        if args.id or args.type or args.ref or args.link or args.candidate or args.note:
+        if args.id or args.type or args.ref or args.link or args.candidate or args.note or args.frame:
             raise RecordError("--json과 --id·--type·--ref·--link·--candidate·--note를 함께 쓰지 않음")
         try:
             return json.loads(args.json)
@@ -595,6 +636,8 @@ def _element_args(args):
     if not args.id or not args.type:
         raise RecordError("--json 또는 --id·--type이 필요함")
     element = {"id": args.id, "type": args.type}
+    if args.frame:
+        element["frame"] = args.frame
     if args.ref:
         element["refs"] = _pairs(args.ref, "ref")
     if args.link:
@@ -634,6 +677,11 @@ def main(argv=None):
     e.add_argument("--link", action="append", default=[], help="역할=요소id(여러 번, 예: host=EW1)")
     e.add_argument("--candidate", action="append", default=[], help="속성=후보1,후보2(여러 번)")
     e.add_argument("--note")
+    e.add_argument("--frame", help="요소 frame(영역 파일은 영역 frame을 물려받음)")
+    e.add_argument("--replace", action="store_true", help="이미 있는 요소를 통째로 바꾼다(재측정: refs·links·후보 모두 다시 줌)")
+    dr = sub.add_parser("drop-observation", help="참조하지 않는 관측 지우기(재측정으로 버린 관측)")
+    dr.add_argument("file")
+    dr.add_argument("--name", required=True)
     q = sub.add_parser("question", help="질문")
     qs = q.add_subparsers(dest="action", required=True)
     qa = qs.add_parser("add")
@@ -673,7 +721,9 @@ def main(argv=None):
         elif args.command == "region-init":
             result = region_init(args.measure, args.lock, args.region, args.out)
         elif args.command == "add-element":
-            result = add_element(args.file, _element_args(args))
+            result = add_element(args.file, _element_args(args), args.replace)
+        elif args.command == "drop-observation":
+            result = drop_observation(args.file, args.name)
         elif args.command == "question" and args.action == "add":
             result = add_question(args.file, args.id, args.text, args.element)
         elif args.command == "question":

@@ -251,3 +251,39 @@ def test_blob_rejects_empty_truncated_outside_and_over_budget():
     x0, y0, x1, y1 = rs.BOX
     budget = m.blob(D, cal, IDENT, (x0 - 300, y0 - 300, x1 + 300, y1 + 300), max_tol=1.0)
     assert budget["status"] == "unreadable" and "budget" in budget["flags"]
+
+
+# ---------- 기울어짐 판정(띠 안 위치 변화 기준) ----------
+
+def test_straight_walls_are_not_flagged_tilted_by_pixel_noise():
+    D, sc, res = _calib(0.8)
+    cal = _cal(res)
+    for at in (1500, 3000, 5000, 7000, 8500):                 # 남측 벽(가로선) 여러 곳
+        runs = m.profile(D, cal, IDENT, "v", at, -400, 400, band=300)["runs"]
+        assert not any("tilted" in r["flags"] for r in runs), (at, [(r["center"], r["tilt_deg"]) for r in runs])
+    for at in (1000, 3000, 4500):                             # 동측 벽(세로선)
+        runs = m.profile(D, cal, IDENT, "u", at, 9600, 10100, band=300)["runs"]
+        assert not any("tilted" in r["flags"] for r in runs), (at, [(r["center"], r["tilt_deg"]) for r in runs])
+
+
+def _tilted_line(s, deg):
+    sc = rs.Scene((int(6000 * s), int(3000 * s)), s, origin=(3000 * s, 1500 * s))
+    t = math.tan(math.radians(deg))
+    sc.line((-2500, -2500 * t), (2500, 2500 * t), rs.THICK)
+    return rs.dark_of(sc.image()), m.Calib(s, 0.0, *sc.px(0, 0))
+
+
+@pytest.mark.parametrize("s,flagged", [(0.24, True), (0.06, False)])
+def test_a_small_tilt_is_flagged_only_when_it_moves_the_line_a_pixel_within_the_band(s, flagged):
+    D, cal = _tilted_line(s, 2.0)                             # 2°: 띠 300 mm에서 0.24 px/mm면 2.5 px, 0.06이면 0.6 px
+    [run] = m.profile(D, cal, IDENT, "v", 0, -300, 300, band=300)["runs"]
+    assert ("tilted" in run["flags"]) is flagged, run
+    assert abs(run["center"]) <= 1 / s
+
+
+def test_a_gross_tilt_is_flagged_even_with_a_narrow_band():
+    D, sc, res = _calib(0.0)
+    cal = _cal(res)
+    runs = m.profile(D, cal, IDENT, "v", 3000, 7000, 9000, band=20)["runs"]   # 회전동 벽(23.76°)을 정방향 좁은 띠로
+    assert runs and all("tilted" in r["flags"] for r in runs if r["tilt_deg"] != 0.0)
+    assert any("tilted" in r["flags"] for r in runs)
