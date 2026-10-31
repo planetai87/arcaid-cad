@@ -19,6 +19,9 @@
 - 보정은 닮음 변환이다: u = u0 + s(cosβ·x − sinβ·y), v = v0 − s(sinβ·x + cosβ·y). β는 화면에서 반시계가 +다.
 보정(calib)은 대응점 3개 이상을 최소제곱으로 맞추고, 아핀으로 다시 맞춰 x·y 축척 차(비균등 확대)를 확인한다.
 보정에 쓰지 않은 검증점(--check)의 오차와 잔차 중 큰 값을 보정 오차(err_mm)로 둔다.
+profile의 tilted는 띠 안에서 줄마다 잰 중심의 기울기가 10°를 넘거나, 그 기울기로 띠 안 위치가 1 px 넘게 바뀔 때 붙는다.
+경고가 없다고 frame이 맞다는 뜻은 아니다(좁은 띠·저해상도에서는 몇 도 어긋남이 드러나지 않음). frame 방향은
+angles·fitline(0.05~0.1°)으로 확인한다.
 측정값의 허용오차(tol_mm)는 보정 오차 + 경계 보간 오차(0.5 px)다. --max-tol(기본 2 px)을 넘으면 판독 불가로 본다.
 blob은 창 안 잉크의 외곽 상자와 그 중심(점 관측)을 낸다. 창은 대상 하나만 온전히 담아야 한다(가장자리에 닿으면 거부).
 선폭(width_px)은 관측값일 뿐이고, 벽·창 같은 의미는 정하지 않는다.
@@ -48,7 +51,10 @@ MAX_ANISOTROPY = 0.003         # 아핀 맞춤의 x·y 축척 차 상한(0.3%)
 MAX_RESIDUAL_PX = 1.0          # 대응점 잔차 RMS 상한
 EDGE_ERR_PX = 0.5              # 반높이 경계 보간 오차(가정)
 CONSISTENT_PX = 1.0            # 띠 안 줄마다 잰 중심이 이보다 흩어지면 판독 불가
-TILT_DEG = 0.5                 # 선이 단면선과 직각에서 이만큼 벗어나면 '기울어짐'
+TILT_DEG = 0.5                 # 선이 단면선과 직각에서 이만큼 벗어나고
+TILT_DRIFT_PX = 1.0            # 그 기울기로 띠 안 위치가 이만큼 넘게 바뀌면 '기울어짐'(짧은 띠의 작은 기울기 추정은
+                               # 래스터화·보간 효과다: 곧은 선에서도 ±0.8° 안팎)
+TILT_GROSS_DEG = 10.0          # 이보다 크면 띠가 좁아도 '기울어짐'(frame을 잘못 고른 경우)
 MIN_CONTRAST = 0.2             # 바탕보다 이만큼 어두워야 선으로 본다(어두움 0~1)
 MAX_TOL_PX = 2.0
 MAX_VIEW_SIDE = 2400
@@ -455,7 +461,8 @@ def profile(dark, calib, frame, axis, at, start, end, band=0.0, step=None, min_c
                 flags.append("rows_missing")
         if resid > CONSISTENT_PX / s:
             flags.append("inconsistent")
-        elif abs(tilt) > TILT_DEG:
+        elif abs(tilt) > TILT_GROSS_DEG or (abs(tilt) > TILT_DEG and
+                                            abs(math.tan(math.radians(tilt))) * band * s > TILT_DRIFT_PX):
             flags.append("tilted")
         if r["peaks"] > 1:
             flags.append("double")

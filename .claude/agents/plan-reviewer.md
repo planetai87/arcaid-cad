@@ -34,13 +34,14 @@ $tool = "D:\worktable\python\cad mcp\CAD-MCP\tools\review\render.py"
 $m = "D:\worktable\python\cad mcp\CAD-MCP\tools\raster\measure.py"
 & $py $m view IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1 -o OUT.png [--grid 100]
 & $py $m profile IMG --calib CAL [--frame X,Y,DEG] --axis u|v --at C --range A B --band 300 [--plot P.png]
+& $py $m angles IMG --calib CAL [--frame X,Y,DEG] --window U0 V0 U1 V1
 ```
 
 - render: 공통 회색, 추가 빨강, 삭제 파랑. 그린 PNG는 Read로 본다.
 - list: 꼭짓점·문자 위치·호 중심과 반지름·oid/path를 mm로 낸다. `--frame`이면 지역 좌표(`local`)도 낸다. 기울어진 구역의 거리는 지역 좌표로 잰다.
 - diff의 영역은 객체가 많으면 한 덩어리가 된다. `--gap`을 줄이거나 실·문 단위로 창을 직접 정한다.
 - overlay: 원본을 연하게 깔고 DXF를 빨강으로 겹친다. `--frame`이면 window는 지역 좌표이고 그림이 지역 좌표로 펴진다. `--compare`면 회색 = 일치, 빨강 = DXF에만(추가 후보), 파랑 = 원본에만(누락 후보)이고, JSON의 `only_image`·`only_dxf`에 영역(WCS `window`, frame이면 `window_local`)이 나온다. 이것은 **후보**다: 원본 문자·해치·치수는 원본에만으로 나오고, 원본 굵은 획이 DXF 선을 가릴 수 있으며, 이미지 밖은 비교하지 않는다(`outside_pct`). 허용거리는 `tol_mm`(대각 √2배).
-- measure.py는 view·profile만 쓴다. `--record`·`--names`·`--name`을 붙이지 않는다(기록 파일을 바꾸는 명령이다). profile은 원본 면선 위치를 잴 때 쓰고, `status`가 ok이고 flags가 없는 구간만 근거로 쓴다(tilted·double·unreadable은 근거 아님).
+- measure.py는 view·profile·angles만 쓴다. `--record`·`--names`·`--name`을 붙이지 않는다(기록 파일을 바꾸는 명령이다). profile은 원본 면선 위치를 잴 때 쓰고, `status`가 ok이고 flags가 없는 구간만 근거로 쓴다(tilted·double·unreadable은 근거 아님). 경고 없는 profile 값은 **위치** 근거일 뿐 방향(frame) 근거가 아니다. 기울어짐은 angles와 overlay 겹침으로 판단한다.
 - 레이어 뜻은 `skills\cad-drawing-standard\references\layers.md`를 읽어 확인한다(예: CON·WAL·WAL1 벽, DOR 문, WIN 창, TOL 위생, FUR 가구, ROM 실명, REM 주기, HAT·HAT1 해치).
 
 ## 절차
