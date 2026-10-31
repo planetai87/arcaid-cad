@@ -210,9 +210,10 @@ def _angle180(deg):
 
 # ---------- 보정 ----------
 
-def line_samples(dark, seg, band):
+def line_samples(dark, seg, band, max_rms=LINE_PIECE_RMS_PX):
     """대략의 선 구간 seg(u1, v1, u2, v2 px)를 조각으로 나눠 조각마다 직선을 맞추고, 조각 중점에서 맞춘 선 위의 점을 낸다.
-    휜 선을 따라가는 표본이다. 교차선·문자가 걸려 흐트러진 조각(rms·방향)은 버린다"""
+    휜 선을 따라가는 표본이다. 교차선·문자가 걸려 흐트러진 조각(rms·방향)은 버린다. 굵고 번진 연필선 사진은 맞춤 rms가
+    2~3 px라 max_rms를 늘린다(CLI --piece-rms)"""
     a, b = np.array(seg[:2], dtype=np.float64), np.array(seg[2:], dtype=np.float64)
     length = float(np.linalg.norm(b - a))
     if length < LINE_PIECE_PX:
@@ -223,7 +224,7 @@ def line_samples(dark, seg, band):
     for k in range(n):
         p, q = a + t * (k * length / n), a + t * ((k + 1) * length / n)
         r = fit_line(dark, p, q, band)
-        if r["status"] != "ok" or r["rms_px"] > LINE_PIECE_RMS_PX:
+        if r["status"] != "ok" or r["rms_px"] > max_rms:
             continue
         d = np.array(r["dir_px"])
         if math.degrees(math.acos(min(1.0, abs(float(np.dot(d, t)))))) > LINE_PIECE_TURN_DEG:
@@ -947,6 +948,8 @@ def _parser():
                    help="U1,V1,U2,V2=Y: Y가 일정한(가로) 선의 대략 px 구간(사진 보정)")
     c.add_argument("--warp", type=int, choices=(2, 3), help="사진 보정 다항식 차수(선을 주면 기본 2)")
     c.add_argument("--band", type=float, default=12.0, help="선 표본 맞춤 띠 폭 px")
+    c.add_argument("--piece-rms", type=float, default=LINE_PIECE_RMS_PX,
+                   help="선 표본 조각 맞춤 rms 상한 px(굵은 연필선 사진은 3~4)")
     c.add_argument("--max-residual", type=float, default=MAX_RESIDUAL_PX, help="잔차·검증점 상한 px")
     c.add_argument("-o", "--out", required=True)
     x = sub.add_parser("cross", help="두 px 직선의 교점")
@@ -1007,8 +1010,8 @@ def _run(args):
         return cross(*args.line)
     if args.command == "calib":
         dark, sha = load_image(args.image)
-        vlines = [(line_samples(dark, seg, args.band), c) for seg, c in args.vline]
-        hlines = [(line_samples(dark, seg, args.band), c) for seg, c in args.hline]
+        vlines = [(line_samples(dark, seg, args.band, args.piece_rms), c) for seg, c in args.vline]
+        hlines = [(line_samples(dark, seg, args.band, args.piece_rms), c) for seg, c in args.hline]
         degree = args.warp or (2 if (vlines or hlines) else None)
         result = fit_calib(args.point, args.check, max_residual=args.max_residual, vlines=vlines, hlines=hlines,
                            degree=degree)
