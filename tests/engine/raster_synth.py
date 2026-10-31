@@ -14,17 +14,22 @@ WING = (2200.0, 6540.0, 23.76)      # 회전동 지역 좌표계(원점 WCS, 각
 
 
 class Scene:
-    def __init__(self, size, s, beta_deg=0.0, origin=(0.0, 0.0), aniso=0.0, supersample=4):
+    def __init__(self, size, s, beta_deg=0.0, origin=(0.0, 0.0), aniso=0.0, supersample=4, warp=None):
         self.w, self.h = size
         self.s, self.beta, self.aniso, self.F = s, beta_deg, aniso, supersample
         self.u0, self.v0 = origin
+        self.warp = warp                      # (keystone, bend): 사진 원근·휨(px), 아래 px 참고
         self.ink = np.zeros((self.h, self.w), dtype=np.float32)
 
     def px(self, x, y):
         b = math.radians(self.beta)
         X = x * math.cos(b) - y * math.sin(b)
         Y = x * math.sin(b) + y * math.cos(b)
-        return self.u0 + self.s * X * (1 + self.aniso), self.v0 - self.s * Y
+        u, v = self.u0 + self.s * X * (1 + self.aniso), self.v0 - self.s * Y
+        if self.warp:                         # 그림 중심 기준 정규화 좌표로 사다리꼴(u += k·xn·yn·w)과 휨(v += b·xn²·h)
+            xn, yn = u / self.w - 0.5, v / self.h - 0.5
+            u, v = u + self.warp[0] * xn * yn * self.w, v + self.warp[1] * xn * xn * self.h
+        return u, v
 
     @staticmethod
     def local(frame, u, v):
@@ -35,7 +40,13 @@ class Scene:
     def line(self, p1, p2, width_px=1.0, dark=1.0, frame=None):
         if frame:
             p1, p2 = self.local(frame, *p1), self.local(frame, *p2)
-        self.stroke(np.array(self.px(*p1)), np.array(self.px(*p2)), width_px, dark)
+        if not self.warp:
+            self.stroke(np.array(self.px(*p1)), np.array(self.px(*p2)), width_px, dark)
+            return
+        n = max(1, int(math.dist(self.px(*p1), self.px(*p2)) / 4))      # 왜곡이 있으면 4 px 조각으로 휘게
+        pts = [self.px(p1[0] + (p2[0] - p1[0]) * i / n, p1[1] + (p2[1] - p1[1]) * i / n) for i in range(n + 1)]
+        for a, b in zip(pts, pts[1:]):
+            self.stroke(np.array(a), np.array(b), width_px, dark)
 
     def stroke(self, a, b, width, dark):
         """px 선분 a→b(맞댄 끝)를 폭 width px로 칠한다"""
@@ -127,11 +138,11 @@ WING_BOX = (3000.0, 2000.0, 4000.0, 2600.0)    # 회전동 지역 좌표 사각�
 
 
 @lru_cache(maxsize=8)
-def plan(beta=0.0, aniso=0.0, noise=0.03, seed=1):
+def plan(beta=0.0, aniso=0.0, noise=0.03, seed=1, warp=None):
     """시험 평면: 축, RC 벽(굵은선 두 줄), 창(굵은선+가는선), 23.76° 회전동, 문자·해치 간섭, 붙은 이중선, 빈 영역,
     원 표식·사각형(점 관측용).
     (PIL 이미지, Scene) — Scene.px가 정답 변환이다"""
-    sc = Scene((1320, 1140), S, beta, (180.0, 960.0), aniso)
+    sc = Scene((1320, 1140), S, beta, (180.0, 960.0), aniso, warp=warp)
     for x in GRID_X.values():
         sc.line((x, -2500), (x, 14000), THIN, 0.8)
     for y in GRID_Y.values():

@@ -421,16 +421,45 @@ def render(new_path, out_path, window, base_path=None, scale=None, grid=1000.0, 
 # ---------- 원본 겹침 ----------
 
 class ImageCalib:
-    """measure.py calib 보정 파일(닮음 변환): WCS(mm, y 위) → 이미지 px(v 아래, 픽셀 (i, j) 중심 (i+.5, j+.5))"""
+    """measure.py calib 보정 파일: WCS(mm, y 위) → 이미지 px(v 아래, 픽셀 (i, j) 중심 (i+.5, j+.5)).
+    닮음 변환에, 사진 보정(warp)이면 px → WCS 다항식 보정량을 더한다(measure.py Calib와 같은 식, numpy 없이)"""
 
     def __init__(self, data):
         self.s, self.u0, self.v0 = float(data["px_per_mm"]), *(float(v) for v in data["origin_px"])
         self.err_mm = float(data.get("err_mm", 0.0))
         b = math.radians(float(data["beta_deg"]))
         self.c, self.n = math.cos(b), math.sin(b)
+        self.warp = data.get("warp")
+
+    def _sim_px(self, x, y):
+        return self.u0 + self.s * (self.c * x - self.n * y), self.v0 - self.s * (self.n * x + self.c * y)
+
+    def to_wcs(self, u, v):
+        a, b = (u - self.u0) / self.s, -(v - self.v0) / self.s
+        x, y = self.c * a + self.n * b, -self.n * a + self.c * b
+        if self.warp:
+            w = self.warp
+            un, vn = (u - w["center"][0]) / w["scale"], (v - w["center"][1]) / w["scale"]
+            basis = [un ** i * vn ** j for i, j in w["terms"]]
+            x += sum(c * t for c, t in zip(w["qx"], basis))
+            y += sum(c * t for c, t in zip(w["qy"], basis))
+        return x, y
 
     def to_px(self, x, y):
-        return self.u0 + self.s * (self.c * x - self.n * y), self.v0 - self.s * (self.n * x + self.c * y)
+        u, v = self._sim_px(x, y)
+        if not self.warp:
+            return u, v
+        step, best = 1.0, float("inf")
+        for _ in range(30):                                  # measure.py Calib.to_px와 같은 감쇠 고정점 반복
+            wx, wy = self.to_wcs(u, v)
+            ex, ey = x - wx, y - wy
+            e = math.hypot(ex, ey) * self.s
+            step = step / 2 if e > best else min(step * 1.5, 1.0)
+            best = min(best, e)
+            if e < 1e-6:
+                break
+            u, v = u + step * self.s * (self.c * ex - self.n * ey), v - step * self.s * (self.n * ex + self.c * ey)
+        return u, v
 
 
 def _sha(path):
@@ -459,8 +488,28 @@ def _gray(path):
     return im.convert("L")
 
 
+MESH_CELL_PX = 16
+
+
 def warp(img, view, calib, fill=255):
-    """이미지를 그림 창으로 옮긴다. 출력 px 연속 좌표 → WCS → 이미지 px는 아핀이라 세 점으로 계수를 정한다"""
+    """이미지를 그림 창으로 옮긴다. 닮음 보정이면 출력 px 연속 좌표 → WCS → 이미지 px가 아핀이라 세 점으로 계수를 정한다.
+    사진 보정(warp)이면 Image.MESH: 출력 MESH_CELL_PX 칸마다 칸 경계 네 모서리(좌상·좌하·우하·우상)를 이미지 사변형에 대응"""
+    if getattr(calib, "warp", None):
+        w, h = view.size
+        cache = {}
+
+        def src(x, y):
+            if (x, y) not in cache:
+                cache[(x, y)] = calib.to_px(*view.to_wcs((float(x), float(y))))
+            return cache[(x, y)]
+        mesh = []
+        for y0 in range(0, h, MESH_CELL_PX):
+            y1 = min(h, y0 + MESH_CELL_PX)
+            for x0 in range(0, w, MESH_CELL_PX):
+                x1 = min(w, x0 + MESH_CELL_PX)
+                quad = [c for corner in ((x0, y0), (x0, y1), (x1, y1), (x1, y0)) for c in src(*corner)]
+                mesh.append(((x0, y0, x1, y1), tuple(quad)))
+        return img.transform(view.size, Image.MESH, mesh, resample=Image.BILINEAR, fillcolor=fill)
     o = calib.to_px(*view.to_wcs((0.0, 0.0)))
     ex = calib.to_px(*view.to_wcs((1.0, 0.0)))
     ey = calib.to_px(*view.to_wcs((0.0, 1.0)))
