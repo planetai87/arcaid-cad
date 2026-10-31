@@ -5,6 +5,8 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+
+pytest.importorskip("starlette")  # Linux CI 엔진 작업에는 starlette가 없다
 from starlette.testclient import TestClient
 from src.ui.server import create_app, change_events
 from src.ui.workspace import Workspace
