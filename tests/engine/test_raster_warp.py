@@ -234,3 +234,13 @@ def test_a_poly_calibration_supports_record_and_reverify(tmp_path, capsys):
     assert rec.main(["validate", str(measure), "--reverify"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["errors"] == [] and report["reverified"] == 2
+
+
+def test_line_samples_accept_thick_noisy_pencil_lines_only_with_a_looser_piece_rms():
+    sc = rs.Scene((300, 400), S, origin=(150.0, 380.0))
+    sc.line((0, -500), (0, 5800), 4.0, 0.7)                  # 굵고 옅은 연필선
+    D = rs.dark_of(sc.image(noise=0.18, seed=4))
+    seg = sc.px(0, -400) + sc.px(0, 5700)
+    assert len(m.line_samples(D, seg, 10)) <= 1
+    pts = m.line_samples(D, seg, 10, max_rms=4.0)
+    assert len(pts) >= 4 and all(abs(u - sc.px(0, 0)[0]) <= 1.0 for u, _ in pts)
