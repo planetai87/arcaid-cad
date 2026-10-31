@@ -89,3 +89,16 @@ def test_edges_stay_finite_and_near_the_faces_for_any_line_weight(face):
         for e in r["edges"].values():
             assert e["coord"] is None or -500 - PX <= e["coord"] <= 500 + PX
     assert abs(runs[0]["edges"]["start"]["coord"] + 150) <= PX and abs(runs[-1]["edges"]["end"]["coord"] - 150) <= PX
+
+
+def test_edges_do_not_reach_into_a_neighbouring_line():
+    from PIL import ImageFilter
+    sc = rs.Scene((400, 200), S, origin=(60.0, 100.0))
+    for y in (-150.0, 150.0):
+        sc.line((-500, y), (5500, y), 3.0)
+    sc.hatch((-500, -150, 5500, 150), 45.0, 40.0, 1.5, 0.7)
+    sc.line((-500, 280.0), (5500, 280.0), 2.0)                 # 바로 옆(130 mm) 다른 선
+    img = sc.image(noise=0.03, seed=2).filter(ImageFilter.GaussianBlur(1.3))
+    runs = m.profile(rs.dark_of(img), m.Calib(S, 0.0, *sc.px(0, 0)), I, "v", 2500, -500, 500, band=300)["runs"]
+    wall = next(r for r in runs if r["start"] < 0 < r["end"])
+    assert abs(wall["edges"]["end"]["coord"] - 150) <= PX
