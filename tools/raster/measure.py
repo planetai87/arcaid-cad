@@ -551,7 +551,7 @@ def _band_edges(t, D, offs, bg, r, s, band, max_tol_flag):
     EDGE_SEARCH_PX 안의 첫 봉우리를 면선 중심으로 잡고, 줄 위치에 직선을 맞춰 단면선 위 값·기울기·흩어짐을 낸다"""
     step = t[1] - t[0] if len(t) > 1 else 1.0
     k = max(1, int(round(EDGE_SEARCH_PX / s / step)))
-    pad = max(r["right"] - r["left"], 2 / s)
+    pad = 2 / s                         # 구간 경계 ±2 px 안만(옆 구간의 선을 잡지 않게)
     idx = np.where((t >= r["left"] - pad) & (t <= r["right"] + pad))[0]
     thr = 0.5 * r["peak"]
     sides = {"start": ([], []), "end": ([], [])}
